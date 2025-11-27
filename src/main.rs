@@ -1,6 +1,183 @@
-use bevy::{prelude::*, input::mouse::MouseWheel};
+use bevy::{prelude::*, input::mouse::MouseWheel, ecs::schedule::ApplyDeferred};
 use bevy_slippy_tiles::*;
 use std::fs;
+use std::io::Write;
+use std::sync::{Arc, Mutex};
+
+// =============================================================================
+// Constants - All magic numbers centralized here
+// =============================================================================
+
+#[allow(dead_code)]  // Some constants defined for future use
+mod constants {
+    // Mercator projection limits
+    pub const MERCATOR_LAT_LIMIT: f64 = 85.0511;
+
+    // Zoom thresholds for tile level transitions (use stdlib constants)
+    pub const ZOOM_UPGRADE_THRESHOLD: f32 = std::f32::consts::SQRT_2;
+    pub const ZOOM_DOWNGRADE_THRESHOLD: f32 = std::f32::consts::FRAC_1_SQRT_2;
+
+    // Camera zoom bounds
+    pub const MIN_CAMERA_ZOOM: f32 = 0.1;
+    pub const MAX_CAMERA_ZOOM: f32 = 10.0;
+
+    // Tile download settings
+    pub const TILE_DOWNLOAD_RADIUS: u8 = 3;
+
+    // Zoom sensitivity
+    pub const ZOOM_SENSITIVITY_LINE: f32 = 0.1;  // Mouse wheel
+    pub const ZOOM_SENSITIVITY_PIXEL: f32 = 0.002;  // Trackpad
+
+    // Movement threshold for tile requests (degrees, ~100m at equator)
+    pub const PAN_TILE_REQUEST_THRESHOLD: f64 = 0.001;
+
+    // UI and rendering
+    pub const BASE_FONT_SIZE: f32 = 14.0;
+    pub const AIRCRAFT_MARKER_RADIUS: f32 = 8.0;
+    pub const LABEL_SCREEN_OFFSET: f32 = 15.0;
+    pub const BUTTON_FONT_SIZE: f32 = 16.0;
+
+    // Tile fade/despawn timing
+    pub const TILE_FADE_SPEED: f32 = 4.0;
+    pub const OLD_TILE_DESPAWN_DELAY: f32 = 0.4;
+
+    // Z-layers
+    pub const TILE_Z_LAYER: f32 = 0.0;
+    pub const AIRCRAFT_Z_LAYER: f32 = 10.0;
+    pub const LABEL_Z_LAYER: f32 = 11.0;
+
+    // UI colors
+    pub const BUTTON_NORMAL: (f32, f32, f32, f32) = (0.2, 0.2, 0.2, 0.9);
+    pub const BUTTON_HOVERED: (f32, f32, f32, f32) = (0.3, 0.3, 0.3, 0.9);
+    pub const BUTTON_PRESSED: (f32, f32, f32, f32) = (0.4, 0.4, 0.4, 0.9);
+    pub const OVERLAY_BG: (f32, f32, f32, f32) = (0.0, 0.0, 0.0, 0.5);
+
+    // Default map center (London)
+    pub const DEFAULT_LATITUDE: f64 = 51.5074;
+    pub const DEFAULT_LONGITUDE: f64 = -0.1278;
+}
+
+// =============================================================================
+// Coordinate Helpers - Centralized coordinate conversion functions
+// =============================================================================
+
+/// Clamp latitude to valid Mercator projection range
+fn clamp_latitude(lat: f64) -> f64 {
+    lat.clamp(-constants::MERCATOR_LAT_LIMIT, constants::MERCATOR_LAT_LIMIT)
+}
+
+/// Clamp longitude to valid range
+fn clamp_longitude(lon: f64) -> f64 {
+    lon.clamp(-180.0, 180.0)
+}
+
+// =============================================================================
+// Zoom Calculation Helpers
+// =============================================================================
+
+/// Convert mouse wheel event to zoom delta factor
+/// Returns positive for zoom in, negative for zoom out
+fn calculate_zoom_delta(event: &MouseWheel) -> f32 {
+    match event.unit {
+        bevy::input::mouse::MouseScrollUnit::Line => {
+            event.y * constants::ZOOM_SENSITIVITY_LINE
+        }
+        bevy::input::mouse::MouseScrollUnit::Pixel => {
+            event.y * constants::ZOOM_SENSITIVITY_PIXEL
+        }
+    }
+}
+
+/// Calculate new map center to keep the point under cursor stationary during zoom
+///
+/// Returns the new (latitude, longitude) for the map center
+fn calculate_zoom_to_cursor_center(
+    cursor_viewport_pos: Vec2,
+    window_size: (f32, f32),
+    current_center: (f64, f64),
+    camera_zoom_before: f32,
+    camera_zoom_after: f32,
+    old_tile_zoom: ZoomLevel,
+    new_tile_zoom: ZoomLevel,
+) -> (f64, f64) {
+    // Calculate cursor offset from screen center
+    let screen_center = (window_size.0 / 2.0, window_size.1 / 2.0);
+    let cursor_offset = (
+        (cursor_viewport_pos.x - screen_center.0) as f64,
+        -(cursor_viewport_pos.y - screen_center.1) as f64, // Y inverted
+    );
+
+    // Convert to world pixels before zoom (using old camera zoom)
+    let world_offset_before = (
+        cursor_offset.0 / camera_zoom_before as f64,
+        cursor_offset.1 / camera_zoom_before as f64,
+    );
+
+    // Get current center in world pixels at old zoom level
+    let center_pixel = world_coords_to_world_pixel(
+        &LatitudeLongitudeCoordinates {
+            latitude: current_center.0,
+            longitude: current_center.1,
+        },
+        TileSize::Normal,
+        old_tile_zoom,
+    );
+
+    // Calculate cursor geographic position at old zoom level
+    let cursor_geo = world_pixel_to_world_coords(
+        center_pixel.0 + world_offset_before.0,
+        center_pixel.1 + world_offset_before.1,
+        TileSize::Normal,
+        old_tile_zoom,
+    );
+
+    // Calculate world offset after zoom (using new camera zoom)
+    let world_offset_after = (
+        cursor_offset.0 / camera_zoom_after as f64,
+        cursor_offset.1 / camera_zoom_after as f64,
+    );
+
+    // Convert cursor geo back to pixels at new zoom level
+    let cursor_pixel_after = world_coords_to_world_pixel(
+        &LatitudeLongitudeCoordinates {
+            latitude: cursor_geo.latitude,
+            longitude: cursor_geo.longitude,
+        },
+        TileSize::Normal,
+        new_tile_zoom,
+    );
+
+    // New center = cursor position minus the offset
+    let new_center = world_pixel_to_world_coords(
+        cursor_pixel_after.0 - world_offset_after.0,
+        cursor_pixel_after.1 - world_offset_after.1,
+        TileSize::Normal,
+        new_tile_zoom,
+    );
+
+    (new_center.latitude, new_center.longitude)
+}
+
+// =============================================================================
+// Tile Download Helper
+// =============================================================================
+
+/// Send a tile download request for the current map location
+fn request_tiles_at_location(
+    download_events: &mut MessageWriter<DownloadSlippyTilesEvent>,
+    latitude: f64,
+    longitude: f64,
+    zoom_level: ZoomLevel,
+    use_cache: bool,
+) {
+    download_events.write(DownloadSlippyTilesEvent {
+        tile_size: TileSize::Normal,
+        zoom_level,
+        coordinates: Coordinates::from_latitude_longitude(latitude, longitude),
+        radius: Radius(constants::TILE_DOWNLOAD_RADIUS),
+        use_cache,
+    });
+}
 
 fn main() {
     App::new()
@@ -23,17 +200,23 @@ fn main() {
             reference_latitude: 51.5074,   // London latitude (matches MapState default)
             reference_longitude: -0.1278,  // London longitude (matches MapState default)
             z_layer: 0.0,                  // Render tiles at z=0 (behind aircraft at z=10)
+            auto_render: false,            // Disable auto-render, we handle tile display ourselves
             ..default()
         })
-        .add_systems(Startup, (setup_map, setup_ui, spawn_sample_aircraft))
+        .add_systems(Startup, (setup_debug_logger, setup_map, setup_ui, spawn_sample_aircraft))
         .add_systems(Update, handle_pan_drag)
         .add_systems(Update, handle_zoom)
-        .add_systems(Update, update_camera_position.after(handle_pan_drag).after(handle_zoom))
-        .add_systems(Update, apply_camera_zoom.after(handle_zoom))
-        .add_systems(Update, update_aircraft_positions)
+        // Apply deferred commands (like despawns) before updating camera/tiles
+        // This ensures old tiles are gone before new camera position is applied
+        .add_systems(Update, ApplyDeferred.after(handle_zoom))
+        .add_systems(Update, apply_camera_zoom.after(ApplyDeferred))
+        .add_systems(Update, update_camera_position.after(handle_pan_drag).after(apply_camera_zoom))
+        .add_systems(Update, update_aircraft_positions.after(update_camera_position))
         .add_systems(Update, scale_aircraft_and_labels.after(apply_camera_zoom))
         .add_systems(Update, update_aircraft_labels.after(update_aircraft_positions))
         .add_systems(Update, handle_clear_cache_button)
+        .add_systems(Update, display_tiles_filtered.after(ApplyDeferred))
+        .add_systems(Update, animate_tile_fades.after(display_tiles_filtered))
         .run();
 }
 
@@ -59,6 +242,14 @@ struct AircraftLabel {
 #[derive(Component)]
 struct ClearCacheButton;
 
+// Component to track tile fade state for smooth zoom transitions
+#[derive(Component)]
+struct TileFadeState {
+    alpha: f32,
+    /// If Some, this tile is from an old zoom level and will despawn after the timer expires
+    despawn_delay: Option<f32>,
+}
+
 // Resource to track map state
 #[derive(Resource, Clone)]
 struct MapState {
@@ -66,19 +257,14 @@ struct MapState {
     latitude: f64,
     longitude: f64,
     zoom_level: ZoomLevel,
-    // Reference point (where tiles are anchored in world space)
-    reference_latitude: f64,
-    reference_longitude: f64,
 }
 
 impl Default for MapState {
     fn default() -> Self {
         Self {
-            latitude: 51.5074,
-            longitude: -0.1278,
+            latitude: constants::DEFAULT_LATITUDE,
+            longitude: constants::DEFAULT_LONGITUDE,
             zoom_level: ZoomLevel::L10,
-            reference_latitude: 51.5074,
-            reference_longitude: -0.1278,
         }
     }
 }
@@ -105,8 +291,8 @@ impl ZoomState {
     fn new() -> Self {
         Self {
             camera_zoom: 1.0,
-            min_zoom: 0.1,   // Can zoom out to 10% (10x out)
-            max_zoom: 10.0,  // Can zoom in to 1000% (10x in)
+            min_zoom: constants::MIN_CAMERA_ZOOM,
+            max_zoom: constants::MAX_CAMERA_ZOOM,
         }
     }
 }
@@ -114,6 +300,55 @@ impl ZoomState {
 impl Default for ZoomState {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+// Resource to hold debug log file handle
+#[derive(Resource, Clone)]
+struct ZoomDebugLogger {
+    file: Arc<Mutex<std::fs::File>>,
+}
+
+impl ZoomDebugLogger {
+    fn log(&self, msg: &str) {
+        if let Ok(mut file) = self.file.lock() {
+            let _ = writeln!(file, "{}", msg);
+            let _ = file.flush();
+        }
+    }
+}
+
+fn setup_debug_logger(mut commands: Commands) {
+    use std::fs::OpenOptions;
+
+    // Create or truncate the debug log file in tmp directory (per project conventions)
+    let log_path = std::env::current_dir()
+        .ok()
+        .map(|path| {
+            let tmp_dir = path.join("tmp");
+            // Ensure tmp directory exists
+            let _ = std::fs::create_dir_all(&tmp_dir);
+            tmp_dir.join("zoom_debug.log")
+        })
+        .unwrap_or_else(|| std::path::PathBuf::from("tmp/zoom_debug.log"));
+
+    match OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(&log_path)
+    {
+        Ok(file) => {
+            let logger = ZoomDebugLogger {
+                file: Arc::new(Mutex::new(file)),
+            };
+            logger.log("=== ZOOM DEBUG LOG INITIALIZED ===");
+            commands.insert_resource(logger);
+            info!("Debug logging enabled to {:?}", log_path);
+        }
+        Err(e) => {
+            warn!("Failed to create debug log file: {}", e);
+        }
     }
 }
 
@@ -125,13 +360,13 @@ fn setup_map(mut commands: Commands, mut download_events: MessageWriter<Download
     let map_state = MapState::default();
 
     // Send initial tile download request
-    download_events.write(DownloadSlippyTilesEvent {
-        tile_size: TileSize::Normal,
-        zoom_level: map_state.zoom_level,
-        coordinates: Coordinates::from_latitude_longitude(map_state.latitude, map_state.longitude),
-        radius: Radius(3), // Download a 7x7 grid of tiles (covers 1792x1792 pixels)
-        use_cache: true,
-    });
+    request_tiles_at_location(
+        &mut download_events,
+        map_state.latitude,
+        map_state.longitude,
+        map_state.zoom_level,
+        true,
+    );
 
     commands.insert_resource(map_state);
 }
@@ -213,7 +448,8 @@ fn spawn_sample_aircraft(
         )).id();
 
         // Spawn label for this aircraft
-        let label_text = format!("{}\n{:.0} ft", id, alt);
+        let label_text = format!("{}
+{:.0} ft", id, alt);
         commands.spawn((
             Text2d::new(label_text),
             TextFont {
@@ -234,6 +470,7 @@ fn handle_pan_drag(
     mut cursor_moved: MessageReader<CursorMoved>,
     mut map_state: ResMut<MapState>,
     mut drag_state: ResMut<DragState>,
+    zoom_state: Res<ZoomState>,
     mut download_events: MessageWriter<DownloadSlippyTilesEvent>,
     window_query: Query<&Window>,
 ) {
@@ -256,14 +493,16 @@ fn handle_pan_drag(
             // Only request if moved significantly (more than ~100m at equator)
             let lat_diff = (map_state.latitude - last_lat).abs();
             let lon_diff = (map_state.longitude - last_lon).abs();
-            if lat_diff > 0.001 || lon_diff > 0.001 {
-                download_events.write(DownloadSlippyTilesEvent {
-                    tile_size: TileSize::Normal,
-                    zoom_level: map_state.zoom_level,
-                    coordinates: Coordinates::from_latitude_longitude(map_state.latitude, map_state.longitude),
-                    radius: Radius(3),
-                    use_cache: true,
-                });
+            if lat_diff > constants::PAN_TILE_REQUEST_THRESHOLD
+                || lon_diff > constants::PAN_TILE_REQUEST_THRESHOLD
+            {
+                request_tiles_at_location(
+                    &mut download_events,
+                    map_state.latitude,
+                    map_state.longitude,
+                    map_state.zoom_level,
+                    true,
+                );
                 drag_state.last_tile_request_coords = Some((map_state.latitude, map_state.longitude));
             }
         } else {
@@ -277,24 +516,37 @@ fn handle_pan_drag(
             if let Some(last_pos) = drag_state.last_position {
                 let delta = event.position - last_pos;
 
-                // Calculate the degrees per pixel based on zoom level
-                // At zoom level 10, the world is 2^10 * 256 = 262,144 pixels wide
-                // 360 degrees / 262,144 pixels = ~0.00137 degrees per pixel
-                let zoom_factor = 2u32.pow(map_state.zoom_level.to_u8() as u32) as f64;
-                let pixels_per_degree_lon = (zoom_factor * 256.0) / 360.0;
+                // Convert screen delta to world delta (account for ortho projection)
+                // When ortho.scale = 1/camera_zoom, world_delta = screen_delta / camera_zoom
+                let delta_world_x = -(delta.x as f64) / zoom_state.camera_zoom as f64; // Negative for natural pan direction
+                let delta_world_y = (delta.y as f64) / zoom_state.camera_zoom as f64;
 
-                // Latitude scaling is more complex due to Mercator projection
-                // Use a simplified approximation based on current latitude
-                let lat_rad = map_state.latitude.to_radians();
-                let pixels_per_degree_lat = (zoom_factor * 256.0) / 360.0 * lat_rad.cos();
+                // Get current center in world pixels
+                let center_ll = LatitudeLongitudeCoordinates {
+                    latitude: map_state.latitude,
+                    longitude: map_state.longitude,
+                };
+                let center_pixel = world_coords_to_world_pixel(
+                    &center_ll,
+                    TileSize::Normal,
+                    map_state.zoom_level
+                );
 
-                // Convert pixel delta to degree delta (inverted Y for screen coordinates)
-                let lon_delta = -(delta.x as f64) / pixels_per_degree_lon;
-                let lat_delta = (delta.y as f64) / pixels_per_degree_lat;
+                // Calculate new center in world pixels
+                let new_center_x = center_pixel.0 + delta_world_x;
+                let new_center_y = center_pixel.1 + delta_world_y;
+
+                // Convert back to geographic coordinates
+                let new_center_geo = world_pixel_to_world_coords(
+                    new_center_x,
+                    new_center_y,
+                    TileSize::Normal,
+                    map_state.zoom_level
+                );
 
                 // Update map coordinates
-                map_state.latitude = (map_state.latitude + lat_delta).clamp(-85.0511, 85.0511);
-                map_state.longitude = (map_state.longitude + lon_delta).clamp(-180.0, 180.0);
+                map_state.latitude = clamp_latitude(new_center_geo.latitude);
+                map_state.longitude = clamp_longitude(new_center_geo.longitude);
             }
             drag_state.last_position = Some(event.position);
         }
@@ -303,28 +555,47 @@ fn handle_pan_drag(
 
 fn update_camera_position(
     map_state: Res<MapState>,
-    zoom_state: Res<ZoomState>,
+    tile_settings: Res<SlippyTilesSettings>,
     mut camera_query: Query<&mut Transform, With<Camera2d>>,
+    logger: Option<Res<ZoomDebugLogger>>,
 ) {
+    let zoom_level = map_state.zoom_level;
+
     if let Ok(mut camera_transform) = camera_query.single_mut() {
-        // Calculate the offset from reference point to current map center
-        let lat_delta = map_state.latitude - map_state.reference_latitude;
-        let lon_delta = map_state.longitude - map_state.reference_longitude;
+        let reference_ll = LatitudeLongitudeCoordinates {
+            latitude: tile_settings.reference_latitude,
+            longitude: tile_settings.reference_longitude,
+        };
+        let reference_pixel = world_coords_to_world_pixel(
+            &reference_ll,
+            TileSize::Normal,
+            zoom_level
+        );
 
-        // Calculate pixel offset based on tile zoom level
-        let zoom_factor = 2u32.pow(map_state.zoom_level.to_u8() as u32) as f64;
-        let pixels_per_degree_lon = (zoom_factor * 256.0) / 360.0;
+        let center_ll = LatitudeLongitudeCoordinates {
+            latitude: map_state.latitude,
+            longitude: map_state.longitude,
+        };
+        let center_pixel = world_coords_to_world_pixel(
+            &center_ll,
+            TileSize::Normal,
+            zoom_level
+        );
 
-        // Use Mercator projection compensation for latitude
-        // IMPORTANT: Use reference_latitude to match tile coordinate system
-        let lat_rad = map_state.reference_latitude.to_radians();
-        let pixels_per_degree_lat = pixels_per_degree_lon * lat_rad.cos();
+        let offset_x = center_pixel.0 - reference_pixel.0;
+        let offset_y = center_pixel.1 - reference_pixel.1;
 
-        // Position camera to show the current map center
-        // Scale by camera_zoom to keep position consistent when tile zoom changes
-        let camera_zoom_scale = zoom_state.camera_zoom as f64;
-        camera_transform.translation.x = (lon_delta * pixels_per_degree_lon * camera_zoom_scale) as f32;
-        camera_transform.translation.y = (lat_delta * pixels_per_degree_lat * camera_zoom_scale) as f32;
+        if let Some(ref log) = logger {
+            if map_state.is_changed() {
+                log.log(&format!("=== CAMERA POS UPDATE (zoom: {}) ===", zoom_level.to_u8()));
+                log.log(&format!("  center: ({:.6}, {:.6}) -> pixel ({:.2}, {:.2})",
+                    map_state.latitude, map_state.longitude, center_pixel.0, center_pixel.1));
+                log.log(&format!("  camera offset: ({:.2}, {:.2})", offset_x, offset_y));
+            }
+        }
+
+        camera_transform.translation.x = offset_x as f32;
+        camera_transform.translation.y = offset_y as f32;
     }
 }
 
@@ -334,146 +605,148 @@ fn handle_zoom(
     mut zoom_state: ResMut<ZoomState>,
     mut download_events: MessageWriter<DownloadSlippyTilesEvent>,
     window_query: Query<&Window>,
-    camera_query: Query<(&Camera, &GlobalTransform), With<Camera2d>>,
+    mut tile_query: Query<(&mut TileFadeState, &mut Transform), With<MapTile>>,
+    logger: Option<Res<ZoomDebugLogger>>,
 ) {
     let Ok(window) = window_query.single() else {
         return;
     };
 
-    let Ok((camera, camera_transform)) = camera_query.single() else {
-        return;
-    };
+    // Macro to log to both console and file
+    macro_rules! log_info {
+        ($($arg:tt)*) => {
+            {
+                let msg = format!($($arg)*);
+                info!("{}", msg);
+                if let Some(ref log) = logger {
+                    log.log(&msg);
+                }
+            }
+        };
+    }
+
+    // Use constants for zoom level transition thresholds
+    use constants::{ZOOM_UPGRADE_THRESHOLD, ZOOM_DOWNGRADE_THRESHOLD};
 
     for event in scroll_events.read() {
+        log_info!("=== SCROLL EVENT START ===");
+        log_info!("Event: unit={:?}, y={}", event.unit, event.y);
+        log_info!("Before: camera_zoom={}, zoom_level={}", zoom_state.camera_zoom, map_state.zoom_level.to_u8());
+        log_info!("Before: map center=({:.6}, {:.6})", map_state.latitude, map_state.longitude);
+
+        // === Calculate zoom delta from scroll event ===
+        let zoom_delta = calculate_zoom_delta(event);
+        log_info!("Zoom delta: {}", zoom_delta);
+
         // Get cursor position in viewport coordinates (None if cursor not in window)
         let Some(cursor_viewport_pos) = window.cursor_position() else {
             // No cursor, just zoom at center
-            let zoom_delta = match event.unit {
-                bevy::input::mouse::MouseScrollUnit::Line => event.y * 0.1,
-                bevy::input::mouse::MouseScrollUnit::Pixel => event.y * 0.002,
-            };
             let zoom_factor = 1.0 - zoom_delta;
             zoom_state.camera_zoom = (zoom_state.camera_zoom * zoom_factor)
                 .clamp(zoom_state.min_zoom, zoom_state.max_zoom);
+            log_info!("No cursor - new camera_zoom={}", zoom_state.camera_zoom);
             continue;
         };
 
-        // Convert cursor viewport position to world position
-        let Ok(cursor_world_pos) = camera.viewport_to_world_2d(camera_transform, cursor_viewport_pos) else {
-            continue;
-        };
+        log_info!("Cursor position: ({:.2}, {:.2})", cursor_viewport_pos.x, cursor_viewport_pos.y);
 
-        // Calculate what geographic location is under the cursor BEFORE zoom
-        let zoom_factor_tiles = 2u32.pow(map_state.zoom_level.to_u8() as u32) as f64;
-        let pixels_per_degree_lon = (zoom_factor_tiles * 256.0) / 360.0;
-
-        // IMPORTANT: Use reference_latitude to match tile coordinate system
-        let lat_rad = map_state.reference_latitude.to_radians();
-        let pixels_per_degree_lat = pixels_per_degree_lon * lat_rad.cos();
-        let camera_zoom_scale = zoom_state.camera_zoom as f64;
-
-        // Calculate camera position in world space (where camera is currently looking)
-        let lat_delta_cam = map_state.latitude - map_state.reference_latitude;
-        let lon_delta_cam = map_state.longitude - map_state.reference_longitude;
-        let camera_world_x = lon_delta_cam * pixels_per_degree_lon * camera_zoom_scale;
-        let camera_world_y = lat_delta_cam * pixels_per_degree_lat * camera_zoom_scale;
-
-        // Cursor world position relative to camera (world offset from camera)
-        let cursor_world_offset_x = (cursor_world_pos.x as f64) - camera_world_x;
-        let cursor_world_offset_y = (cursor_world_pos.y as f64) - camera_world_y;
-
-        // Convert world offset to screen offset (in screen pixels)
-        // screen_offset = world_offset * camera_zoom (since ortho_scale = 1/camera_zoom)
-        let cursor_screen_offset_x = cursor_world_offset_x * camera_zoom_scale;
-        let cursor_screen_offset_y = cursor_world_offset_y * camera_zoom_scale;
-
-        // Geographic offset from map center using formula: geo_offset = screen_offset / (pixels_per_degree * camera_zoom²)
-        let lon_offset_before = cursor_screen_offset_x / (pixels_per_degree_lon * camera_zoom_scale * camera_zoom_scale);
-        let lat_offset_before = cursor_screen_offset_y / (pixels_per_degree_lat * camera_zoom_scale * camera_zoom_scale);
-
-        // Geographic location under cursor
-        let cursor_lat_before = map_state.latitude + lat_offset_before;
-        let cursor_lon_before = map_state.longitude + lon_offset_before;
-
-        // Zoom factor per scroll unit (adjust for sensitivity)
-        let zoom_delta = match event.unit {
-            bevy::input::mouse::MouseScrollUnit::Line => {
-                // Mouse wheel - larger steps
-                event.y * 0.1
-            }
-            bevy::input::mouse::MouseScrollUnit::Pixel => {
-                // Trackpad - smooth, smaller steps
-                event.y * 0.002
-            }
-        };
+        // Save old camera zoom BEFORE applying scroll zoom (needed for zoom-to-cursor)
+        let camera_zoom_before_scroll = zoom_state.camera_zoom;
 
         // Update camera zoom (multiplicative for smooth feel)
         // Positive scroll = zoom in (smaller scale), negative = zoom out (larger scale)
         let zoom_factor = 1.0 - zoom_delta;
-        zoom_state.camera_zoom = (zoom_state.camera_zoom * zoom_factor)
+        let new_camera_zoom = (zoom_state.camera_zoom * zoom_factor)
             .clamp(zoom_state.min_zoom, zoom_state.max_zoom);
 
-        // After zoom, we want cursor to still point at the same geographic location
-        // The cursor screen position (cursor_screen_offset_x/y) doesn't change
+        log_info!("Camera zoom: {} -> {}", zoom_state.camera_zoom, new_camera_zoom);
+        zoom_state.camera_zoom = new_camera_zoom;
 
-        let new_camera_zoom_scale = zoom_state.camera_zoom as f64;
-
-        // Calculate new geographic offset using formula: geo_offset = screen_offset / (pixels_per_degree * camera_zoom²)
-        let new_lon_offset = cursor_screen_offset_x / (pixels_per_degree_lon * new_camera_zoom_scale * new_camera_zoom_scale);
-        let new_lat_offset = cursor_screen_offset_y / (pixels_per_degree_lat * new_camera_zoom_scale * new_camera_zoom_scale);
-
-        // Set map center so cursor points to the same geographic location:
-        // cursor_geo = new_map_geo + new_geo_offset
-        // Therefore: new_map_geo = cursor_geo - new_geo_offset
-        map_state.latitude = cursor_lat_before - new_lat_offset;
-        map_state.longitude = cursor_lon_before - new_lon_offset;
-
-        // Clamp to valid ranges
-        map_state.latitude = map_state.latitude.clamp(-85.0511, 85.0511);
-        map_state.longitude = map_state.longitude.clamp(-180.0, 180.0);
-    }
-
-    // Determine what tile zoom level we should be at based on camera zoom
-    // Use camera_zoom directly since it represents the zoom relative to current tile level
-    let current_tile_zoom = map_state.zoom_level.to_u8();
-
-    let ideal_tile_zoom = if zoom_state.camera_zoom >= 1.5 {
-        // Zoomed in enough, upgrade tiles and adjust camera zoom to compensate for world scale change
-        if current_tile_zoom < 19 {
-            // Tiles will be 2x more detailed (world becomes 2x bigger in pixels)
-            // Divide camera_zoom by 2 to maintain visual continuity
+        // === Check for zoom level transitions ===
+        let old_tile_zoom = map_state.zoom_level;
+        let current_tile_zoom = old_tile_zoom.to_u8();
+        let mut zoom_level_changed = false;
+        if zoom_state.camera_zoom >= ZOOM_UPGRADE_THRESHOLD && current_tile_zoom < 19 {
+            // Upgrade zoom level
+            log_info!("*** ZOOM LEVEL TRANSITION: UPGRADE ***");
+            log_info!("  Threshold check: camera_zoom={} >= threshold={}", zoom_state.camera_zoom, ZOOM_UPGRADE_THRESHOLD);
+            let old_cam = zoom_state.camera_zoom;
             zoom_state.camera_zoom /= 2.0;
-            current_tile_zoom + 1
-        } else {
-            current_tile_zoom
-        }
-    } else if zoom_state.camera_zoom <= 0.75 {
-        // Zoomed out enough, downgrade tiles and adjust camera zoom to compensate for world scale change
-        if current_tile_zoom > 0 {
-            // Tiles will be 2x less detailed (world becomes 2x smaller in pixels)
-            // Multiply camera_zoom by 2 to maintain visual continuity
+            log_info!("  Camera zoom adjusted: {} -> {}", old_cam, zoom_state.camera_zoom);
+            if let Ok(new_zoom_level) = ZoomLevel::try_from(current_tile_zoom + 1) {
+                log_info!("  Zoom level: {} -> {}", current_tile_zoom, current_tile_zoom + 1);
+                map_state.zoom_level = new_zoom_level;
+                zoom_level_changed = true;
+            }
+        } else if zoom_state.camera_zoom <= ZOOM_DOWNGRADE_THRESHOLD && current_tile_zoom > 0 {
+            // Downgrade zoom level
+            log_info!("*** ZOOM LEVEL TRANSITION: DOWNGRADE ***");
+            log_info!("  Threshold check: camera_zoom={} <= threshold={}", zoom_state.camera_zoom, ZOOM_DOWNGRADE_THRESHOLD);
+            let old_cam = zoom_state.camera_zoom;
             zoom_state.camera_zoom *= 2.0;
-            current_tile_zoom - 1
-        } else {
-            current_tile_zoom
+            log_info!("  Camera zoom adjusted: {} -> {}", old_cam, zoom_state.camera_zoom);
+            if let Ok(new_zoom_level) = ZoomLevel::try_from(current_tile_zoom - 1) {
+                log_info!("  Zoom level: {} -> {}", current_tile_zoom, current_tile_zoom - 1);
+                map_state.zoom_level = new_zoom_level;
+                zoom_level_changed = true;
+            }
         }
-    } else {
-        current_tile_zoom
-    };
 
-    // Request new tiles if zoom level changed
-    if ideal_tile_zoom != current_tile_zoom {
-        if let Ok(new_zoom_level) = ZoomLevel::try_from(ideal_tile_zoom) {
-            map_state.zoom_level = new_zoom_level;
+        // === Calculate new center (zoom-to-cursor) ===
+        log_info!("--- Zoom-to-cursor calculation ---");
+        log_info!("  old_zoom_level={}, new_zoom_level={}, zoom_level_changed={}",
+            old_tile_zoom.to_u8(), map_state.zoom_level.to_u8(), zoom_level_changed);
 
-            download_events.write(DownloadSlippyTilesEvent {
-                tile_size: TileSize::Normal,
-                zoom_level: map_state.zoom_level,
-                coordinates: Coordinates::from_latitude_longitude(map_state.latitude, map_state.longitude),
-                radius: Radius(3),
-                use_cache: true,
-            });
+        let old_lat = map_state.latitude;
+        let old_lon = map_state.longitude;
+        let (new_lat, new_lon) = calculate_zoom_to_cursor_center(
+            cursor_viewport_pos,
+            (window.width(), window.height()),
+            (map_state.latitude, map_state.longitude),
+            camera_zoom_before_scroll,
+            zoom_state.camera_zoom,
+            old_tile_zoom,
+            map_state.zoom_level,
+        );
+        map_state.latitude = clamp_latitude(new_lat);
+        map_state.longitude = clamp_longitude(new_lon);
+        log_info!("  Map center updated: ({:.6}, {:.6}) -> ({:.6}, {:.6})", old_lat, old_lon, map_state.latitude, map_state.longitude);
+
+        // === Handle zoom level transition (scale old tiles, request new) ===
+        if zoom_level_changed {
+            // Calculate scale factor: when zooming IN, positions double; when zooming OUT, positions halve
+            let scale_factor = if map_state.zoom_level.to_u8() > old_tile_zoom.to_u8() {
+                2.0_f32 // Zooming in: scale up
+            } else {
+                0.5_f32 // Zooming out: scale down
+            };
+
+            // Scale and reposition old tiles to match new coordinate system, then mark for despawn
+            let mut marked = 0;
+            for (mut fade_state, mut transform) in tile_query.iter_mut() {
+                // Scale the tile position to match the new zoom level's coordinate system
+                transform.translation.x *= scale_factor;
+                transform.translation.y *= scale_factor;
+                // Also scale the tile itself so it visually matches
+                transform.scale *= scale_factor;
+
+                fade_state.despawn_delay = Some(constants::OLD_TILE_DESPAWN_DELAY);
+                marked += 1;
+            }
+            log_info!("  Scaled {} tiles by {} and marked for delayed despawn", marked, scale_factor);
+
+            request_tiles_at_location(
+                &mut download_events,
+                map_state.latitude,
+                map_state.longitude,
+                map_state.zoom_level,
+                true,
+            );
+            log_info!("  Requested new tiles at zoom level {}", map_state.zoom_level.to_u8());
         }
+
+        log_info!("=== SCROLL EVENT END ===
+");
     }
 }
 
@@ -492,69 +765,95 @@ fn apply_camera_zoom(
     }
 }
 
-// Scale aircraft markers and labels based on camera zoom
+// Keep aircraft and labels at constant screen size despite zoom changes
 fn scale_aircraft_and_labels(
     zoom_state: Res<ZoomState>,
-    mut aircraft_query: Query<&mut Transform, With<Aircraft>>,
-    mut label_query: Query<&mut TextFont, With<AircraftLabel>>,
+    mut aircraft_query: Query<&mut Transform, (With<Aircraft>, Without<AircraftLabel>)>,
+    mut label_query: Query<(&mut Transform, &mut TextFont), With<AircraftLabel>>,
 ) {
-    // Aircraft are positioned in world-space (scaled with tiles), so we scale inversely
-    // to camera zoom to keep them constant screen size
-    let inverse_scale = 1.0 / zoom_state.camera_zoom;
-
-    for mut transform in aircraft_query.iter_mut() {
-        transform.scale = Vec3::splat(inverse_scale);
+    // ONLY update scales when zoom actually changes
+    // This prevents triggering Bevy's change detection every frame
+    if !zoom_state.is_changed() {
+        return;
     }
 
-    // Keep label font size constant for readability
-    let base_font_size = 14.0;
+    // To maintain constant SCREEN size:
+    // - Orthographic projection: screen_size = world_size / ortho.scale
+    // - ortho.scale = 1 / camera_zoom
+    // - So: screen_size = world_size * camera_zoom
+    // - For constant screen size: world_size = constant / camera_zoom
+    // - Therefore: transform.scale = 1 / camera_zoom (which equals ortho.scale)
+    let scale = 1.0 / zoom_state.camera_zoom;
 
-    for mut text_font in label_query.iter_mut() {
-        text_font.font_size = base_font_size;
+    // Scale aircraft markers to maintain constant screen size
+    for mut transform in aircraft_query.iter_mut() {
+        transform.scale = Vec3::splat(scale);
+    }
+
+    // Scale label transforms to maintain constant screen size
+    for (mut transform, mut text_font) in label_query.iter_mut() {
+        transform.scale = Vec3::splat(scale);
+        text_font.font_size = constants::BASE_FONT_SIZE;
     }
 }
 
 fn update_aircraft_positions(
     map_state: Res<MapState>,
-    zoom_state: Res<ZoomState>,
+    tile_settings: Res<SlippyTilesSettings>,
     mut aircraft_query: Query<(&Aircraft, &mut Transform)>,
 ) {
-    // Calculate zoom-aware scaling factor based on tile zoom level
-    let zoom_factor = 2u32.pow(map_state.zoom_level.to_u8() as u32) as f64;
-    let pixels_per_degree_lon = (zoom_factor * 256.0) / 360.0;
+    // Position aircraft RELATIVE to SlippyTilesSettings.reference
+    // This matches how bevy_slippy_tiles positions tiles
 
-    // Scale by camera_zoom to keep positions consistent when tile zoom changes
-    let camera_zoom_scale = zoom_state.camera_zoom as f64;
+    // Reference point from SlippyTilesSettings (single source of truth)
+    let reference_ll = LatitudeLongitudeCoordinates {
+        latitude: tile_settings.reference_latitude,
+        longitude: tile_settings.reference_longitude,
+    };
+    let reference_pixel = world_coords_to_world_pixel(
+        &reference_ll,
+        TileSize::Normal,
+        map_state.zoom_level
+    );
 
     for (aircraft, mut transform) in aircraft_query.iter_mut() {
-        // Position aircraft relative to the reference point (same as tiles)
-        let lat_diff = aircraft.latitude - map_state.reference_latitude;
-        let lon_diff = aircraft.longitude - map_state.reference_longitude;
+        let aircraft_ll = LatitudeLongitudeCoordinates {
+            latitude: aircraft.latitude,
+            longitude: aircraft.longitude,
+        };
+        let aircraft_pixel = world_coords_to_world_pixel(
+            &aircraft_ll,
+            TileSize::Normal,
+            map_state.zoom_level
+        );
 
-        // Use Mercator projection compensation for latitude
-        let lat_rad = map_state.reference_latitude.to_radians();
-        let pixels_per_degree_lat = pixels_per_degree_lon * lat_rad.cos();
+        // Position at offset from reference
+        let offset_x = aircraft_pixel.0 - reference_pixel.0;
+        let offset_y = aircraft_pixel.1 - reference_pixel.1;
 
-        // Set world position (camera handles viewing the correct area)
-        // Scale by camera_zoom to match camera position scaling
-        transform.translation.x = (lon_diff * pixels_per_degree_lon * camera_zoom_scale) as f32;
-        transform.translation.y = (lat_diff * pixels_per_degree_lat * camera_zoom_scale) as f32;
+        transform.translation.x = offset_x as f32;
+        transform.translation.y = offset_y as f32;
         transform.rotation = Quat::from_rotation_z(aircraft.heading.to_radians());
     }
 }
 
 fn update_aircraft_labels(
+    zoom_state: Res<ZoomState>,
     aircraft_query: Query<&Transform, With<Aircraft>>,
     mut label_query: Query<(&AircraftLabel, &mut Transform), Without<Aircraft>>,
 ) {
-    // Use constant world-space offset
-    let offset = 15.0;
+    // Use screen-space offset that adapts to camera zoom
+    // This keeps labels at a constant visual distance from aircraft markers
+    // World offset = screen_offset / camera_zoom (since ortho.scale = 1/camera_zoom)
+    // When zoomed in (camera_zoom > 1), world offset is smaller
+    // When zoomed out (camera_zoom < 1), world offset is larger
+    let world_space_offset = constants::LABEL_SCREEN_OFFSET / zoom_state.camera_zoom;
 
     for (label, mut label_transform) in label_query.iter_mut() {
         if let Ok(aircraft_transform) = aircraft_query.get(label.aircraft_entity) {
             // Position label above and slightly to the right of the aircraft
-            label_transform.translation.x = aircraft_transform.translation.x + offset;
-            label_transform.translation.y = aircraft_transform.translation.y + offset;
+            label_transform.translation.x = aircraft_transform.translation.x + world_space_offset;
+            label_transform.translation.y = aircraft_transform.translation.y + world_space_offset;
         }
     }
 }
@@ -568,12 +867,24 @@ fn handle_clear_cache_button(
     mut download_events: MessageWriter<DownloadSlippyTilesEvent>,
     mut commands: Commands,
     tile_query: Query<Entity, With<MapTile>>,
+    mut slippy_tile_download_status: ResMut<SlippyTileDownloadStatus>,
 ) {
     for (interaction, mut background_color) in interaction_query.iter_mut() {
         match *interaction {
             Interaction::Pressed => {
                 // Change button color when pressed
-                *background_color = BackgroundColor(Color::srgba(0.4, 0.4, 0.4, 0.9));
+                let c = constants::BUTTON_PRESSED;
+                *background_color = BackgroundColor(Color::srgba(c.0, c.1, c.2, c.3));
+
+                info!("=== CLEAR CACHE BUTTON PRESSED ===");
+                info!("Current zoom level: {}", map_state.zoom_level.to_u8());
+                info!("Current map center: ({}, {})", map_state.latitude, map_state.longitude);
+
+                // Clear the bevy_slippy_tiles download status tracking
+                // This is critical! Without this, the plugin thinks tiles are already downloaded
+                // and won't re-download them even with use_cache: false
+                slippy_tile_download_status.0.clear();
+                info!("Cleared SlippyTileDownloadStatus tracking");
 
                 // Despawn all existing tile entities to refresh the display
                 let mut despawned_count = 0;
@@ -587,23 +898,26 @@ fn handle_clear_cache_button(
                 clear_tile_cache();
 
                 // Request fresh tiles after clearing cache
-                download_events.write(DownloadSlippyTilesEvent {
-                    tile_size: TileSize::Normal,
-                    zoom_level: map_state.zoom_level,
-                    coordinates: Coordinates::from_latitude_longitude(map_state.latitude, map_state.longitude),
-                    radius: Radius(3),
-                    use_cache: false,  // Force fresh download
-                });
+                info!("Requesting fresh tiles at zoom level {}", map_state.zoom_level.to_u8());
+                request_tiles_at_location(
+                    &mut download_events,
+                    map_state.latitude,
+                    map_state.longitude,
+                    map_state.zoom_level,
+                    false,  // Force fresh download
+                );
 
-                info!("Tile cache cleared and requesting fresh tiles");
+                info!("Tile cache cleared and download request sent");
             }
             Interaction::Hovered => {
                 // Highlight on hover
-                *background_color = BackgroundColor(Color::srgba(0.3, 0.3, 0.3, 0.9));
+                let c = constants::BUTTON_HOVERED;
+                *background_color = BackgroundColor(Color::srgba(c.0, c.1, c.2, c.3));
             }
             Interaction::None => {
                 // Default color
-                *background_color = BackgroundColor(Color::srgba(0.2, 0.2, 0.2, 0.9));
+                let c = constants::BUTTON_NORMAL;
+                *background_color = BackgroundColor(Color::srgba(c.0, c.1, c.2, c.3));
             }
         }
     }
@@ -612,9 +926,8 @@ fn handle_clear_cache_button(
 fn clear_tile_cache() {
     // Get the assets directory path
     let assets_path = std::env::current_dir()
-        .ok()
-        .and_then(|path| Some(path.join("assets")))
-        .unwrap_or_else(|| std::path::PathBuf::from("assets"));
+        .map(|path| path.join("assets"))
+        .unwrap_or_else(|_| std::path::PathBuf::from("assets"));
 
     if !assets_path.exists() {
         warn!("Assets directory not found at {:?}", assets_path);
@@ -646,4 +959,130 @@ fn clear_tile_cache() {
     }
 
     info!("Cleared {} tile(s) from cache", deleted_count);
+}
+
+// Custom tile display system that filters tiles by current zoom level
+// This prevents stale tiles from wrong zoom levels from being displayed
+fn display_tiles_filtered(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    tile_settings: Res<SlippyTilesSettings>,
+    map_state: Res<MapState>,
+    mut tile_events: MessageReader<SlippyTileDownloadedEvent>,
+    logger: Option<Res<ZoomDebugLogger>>,
+) {
+    for event in tile_events.read() {
+        info!("Received tile download event: zoom={}, path={:?}", event.zoom_level.to_u8(), event.path);
+
+        // CRITICAL: Only display tiles that match the current zoom level
+        // This prevents stale async downloads from wrong zoom levels from appearing
+        if event.zoom_level != map_state.zoom_level {
+            info!("TILE IGNORED: tile zoom {} != current zoom {}", event.zoom_level.to_u8(), map_state.zoom_level.to_u8());
+            if let Some(ref log) = logger {
+                log.log("=== TILE IGNORED (wrong zoom) ===");
+                log.log(&format!("  tile zoom_level: {} (current map zoom: {})",
+                    event.zoom_level.to_u8(), map_state.zoom_level.to_u8()));
+            }
+            continue;
+        }
+
+        info!("Spawning tile at zoom level {}", event.zoom_level.to_u8());
+
+        // Calculate tile position (same logic as bevy_slippy_tiles display_tiles)
+        let reference_point = LatitudeLongitudeCoordinates {
+            latitude: tile_settings.reference_latitude,
+            longitude: tile_settings.reference_longitude,
+        };
+        let (ref_x, ref_y) = world_coords_to_world_pixel(
+            &reference_point,
+            event.tile_size,
+            event.zoom_level
+        );
+
+        let current_coords = match &event.coordinates {
+            Coordinates::LatitudeLongitude(coords) => *coords,
+            Coordinates::SlippyTile(coords) => coords.to_latitude_longitude(event.zoom_level),
+        };
+        let (tile_x, tile_y) = world_coords_to_world_pixel(
+            &current_coords,
+            event.tile_size,
+            event.zoom_level
+        );
+
+        // SlippyTile.to_latitude_longitude returns the NW corner of the tile.
+        // Since Bevy sprites are centered on their Transform, we need to offset
+        // by half a tile to position the sprite's center at the tile's center.
+        // In world coords: +X is east, +Y is north
+        // Tile center = NW corner + (half_tile_east, half_tile_south)
+        //             = NW corner + (128, -128) for 256-pixel tiles
+        let half_tile = event.tile_size.to_pixels() as f64 / 2.0;
+        let tile_center_x = tile_x + half_tile;  // East of NW corner
+        let tile_center_y = tile_y - half_tile;  // South of NW corner (in Bevy coords where +Y is north)
+
+        let transform_x = (tile_center_x - ref_x) as f32;
+        let transform_y = (tile_center_y - ref_y) as f32;
+
+        // Load the tile image and force a reload to ensure fresh data from disk
+        // This is necessary because AssetServer caches handles by path, and after
+        // clearing the cache, we need to re-read the file from disk
+        let tile_path = event.path.clone();
+        let tile_handle = asset_server.load(tile_path.clone());
+        asset_server.reload(tile_path);
+
+        // Spawn the tile sprite at full opacity for immediate visibility
+        commands.spawn((
+            Sprite {
+                image: tile_handle,
+                color: Color::WHITE, // Full opacity
+                ..default()
+            },
+            Transform::from_xyz(transform_x, transform_y, tile_settings.z_layer),
+            MapTile,
+            TileFadeState {
+                alpha: 1.0,
+                despawn_delay: None, // Not scheduled for despawn
+            },
+        ));
+
+        if let Some(ref log) = logger {
+            log.log("=== TILE DISPLAYED ===");
+            log.log(&format!("  tile zoom_level: {} (current map zoom: {})",
+                event.zoom_level.to_u8(), map_state.zoom_level.to_u8()));
+            log.log(&format!("  tile coords: ({:.6}, {:.6})", current_coords.latitude, current_coords.longitude));
+            log.log(&format!("  tile transform: ({:.2}, {:.2})", transform_x, transform_y));
+        }
+    }
+}
+
+// Animate tile fade-in and handle delayed despawn for smooth zoom transitions
+// Uses crossfade technique: new tiles fade in ON TOP of old tiles, old tiles stay
+// fully visible until they're covered, then get despawned after a delay.
+fn animate_tile_fades(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut tile_query: Query<(Entity, &mut TileFadeState, &mut Sprite), With<MapTile>>,
+) {
+    let delta = time.delta_secs();
+
+    for (entity, mut fade_state, mut sprite) in tile_query.iter_mut() {
+        // Handle tiles scheduled for despawn (old tiles from previous zoom level)
+        if let Some(ref mut delay) = fade_state.despawn_delay {
+            *delay -= delta;
+            if *delay <= 0.0 {
+                // Timer expired - despawn the old tile (it's hidden under new tiles anyway)
+                commands.entity(entity).despawn();
+            }
+            // Old tiles stay at their current alpha (fully visible) - don't change anything
+            continue;
+        }
+
+        // Handle tiles fading in (new tiles)
+        if fade_state.alpha < 1.0 {
+            fade_state.alpha += constants::TILE_FADE_SPEED * delta;
+            fade_state.alpha = fade_state.alpha.min(1.0);
+
+            // Update sprite color alpha
+            sprite.color = Color::srgba(1.0, 1.0, 1.0, fade_state.alpha);
+        }
+    }
 }
