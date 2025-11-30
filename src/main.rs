@@ -3,6 +3,10 @@ use bevy_slippy_tiles::*;
 use std::fs;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
+
+// ADS-B client types
+use adsb_client::{Client as AdsbClient, ClientConfig, ConnectionConfig, TrackerConfig, ConnectionState};
 
 // =============================================================================
 // Constants - All magic numbers centralized here
@@ -52,9 +56,14 @@ mod constants {
     pub const BUTTON_PRESSED: (f32, f32, f32, f32) = (0.4, 0.4, 0.4, 0.9);
     pub const OVERLAY_BG: (f32, f32, f32, f32) = (0.0, 0.0, 0.0, 0.5);
 
-    // Default map center (London)
-    pub const DEFAULT_LATITUDE: f64 = 51.5074;
-    pub const DEFAULT_LONGITUDE: f64 = -0.1278;
+    // Default map center (Wichita, KS)
+    pub const DEFAULT_LATITUDE: f64 = 37.6872;
+    pub const DEFAULT_LONGITUDE: f64 = -97.3301;
+
+    // ADS-B connection settings
+    pub const ADSB_SERVER_ADDRESS: &str = "98.186.33.60:30003";
+    pub const ADSB_MAX_DISTANCE_MILES: f64 = 250.0;
+    pub const ADSB_AIRCRAFT_TIMEOUT_SECS: i64 = 180;
 }
 
 // =============================================================================
@@ -197,13 +206,15 @@ fn main() {
         .insert_resource(SlippyTilesSettings {
             endpoint: "https://cartodb-basemaps-a.global.ssl.fastly.net/dark_all".to_string(),
             tiles_directory: std::path::PathBuf::from(""),  // Root assets directory
-            reference_latitude: 51.5074,   // London latitude (matches MapState default)
-            reference_longitude: -0.1278,  // London longitude (matches MapState default)
+            reference_latitude: constants::DEFAULT_LATITUDE,   // Wichita, KS (matches MapState default)
+            reference_longitude: constants::DEFAULT_LONGITUDE,  // Wichita, KS (matches MapState default)
             z_layer: 0.0,                  // Render tiles at z=0 (behind aircraft at z=10)
             auto_render: false,            // Disable auto-render, we handle tile display ourselves
             ..default()
         })
-        .add_systems(Startup, (setup_debug_logger, setup_map, setup_ui, spawn_sample_aircraft))
+        .add_systems(Startup, (setup_debug_logger, setup_map, setup_ui))
+        // Setup ADS-B client after map is initialized (needs MapState)
+        .add_systems(Startup, setup_adsb_client.after(setup_map))
         .add_systems(Update, handle_pan_drag)
         .add_systems(Update, handle_zoom)
         // Apply deferred commands (like despawns) before updating camera/tiles
@@ -211,10 +222,13 @@ fn main() {
         .add_systems(Update, ApplyDeferred.after(handle_zoom))
         .add_systems(Update, apply_camera_zoom.after(ApplyDeferred))
         .add_systems(Update, update_camera_position.after(handle_pan_drag).after(apply_camera_zoom))
-        .add_systems(Update, update_aircraft_positions.after(update_camera_position))
+        .add_systems(Update, sync_aircraft_from_adsb)
+        .add_systems(Update, update_aircraft_positions.after(update_camera_position).after(sync_aircraft_from_adsb))
+        .add_systems(Update, update_aircraft_label_text.after(sync_aircraft_from_adsb))
         .add_systems(Update, scale_aircraft_and_labels.after(apply_camera_zoom))
         .add_systems(Update, update_aircraft_labels.after(update_aircraft_positions))
         .add_systems(Update, handle_clear_cache_button)
+        .add_systems(Update, update_connection_status)
         .add_systems(Update, display_tiles_filtered.after(ApplyDeferred))
         .add_systems(Update, animate_tile_fades.after(display_tiles_filtered))
         .run();
@@ -223,13 +237,22 @@ fn main() {
 // Component for aircraft entities
 #[derive(Component)]
 struct Aircraft {
-    #[allow(dead_code)]
-    id: String,
+    /// ICAO 24-bit address (hex string)
+    icao: String,
+    /// Callsign (optional)
+    callsign: Option<String>,
+    /// Current latitude in degrees
     latitude: f64,
+    /// Current longitude in degrees
     longitude: f64,
-    #[allow(dead_code)]
-    altitude: f32,
-    heading: f32,
+    /// Altitude in feet
+    altitude: Option<i32>,
+    /// Track/heading in degrees (0-360)
+    heading: Option<f32>,
+    /// Ground speed in knots
+    velocity: Option<f64>,
+    /// Vertical rate in feet per minute
+    vertical_rate: Option<i32>,
 }
 
 // Component to link aircraft labels to their aircraft
@@ -316,6 +339,105 @@ impl ZoomDebugLogger {
             let _ = file.flush();
         }
     }
+}
+
+// =============================================================================
+// ADS-B Client Integration
+// =============================================================================
+
+/// Shared state for aircraft data from the ADS-B client.
+/// This is updated by the background tokio thread and read by Bevy systems.
+#[derive(Resource, Clone)]
+struct AdsbAircraftData {
+    /// Aircraft data keyed by ICAO address
+    aircraft: Arc<Mutex<Vec<adsb_client::Aircraft>>>,
+    /// Current connection state
+    connection_state: Arc<Mutex<ConnectionState>>,
+}
+
+impl AdsbAircraftData {
+    fn new() -> Self {
+        Self {
+            aircraft: Arc::new(Mutex::new(Vec::new())),
+            connection_state: Arc::new(Mutex::new(ConnectionState::Disconnected)),
+        }
+    }
+
+    fn get_aircraft(&self) -> Vec<adsb_client::Aircraft> {
+        self.aircraft.lock().map(|a| a.clone()).unwrap_or_default()
+    }
+
+    fn get_connection_state(&self) -> ConnectionState {
+        self.connection_state
+            .lock()
+            .map(|s| s.clone())
+            .unwrap_or(ConnectionState::Disconnected)
+    }
+}
+
+/// Component to mark the connection status UI text
+#[derive(Component)]
+struct ConnectionStatusText;
+
+/// Setup the ADS-B client in a background thread with its own tokio runtime.
+fn setup_adsb_client(mut commands: Commands, map_state: Res<MapState>) {
+    let adsb_data = AdsbAircraftData::new();
+    let aircraft_data = Arc::clone(&adsb_data.aircraft);
+    let connection_state = Arc::clone(&adsb_data.connection_state);
+
+    // Get the center coordinates from map state
+    let center_lat = map_state.latitude;
+    let center_lon = map_state.longitude;
+
+    // Spawn a background thread with its own tokio runtime
+    std::thread::spawn(move || {
+        // Create a new tokio runtime for this thread
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to create tokio runtime for ADS-B client");
+
+        rt.block_on(async move {
+            info!("Starting ADS-B client, connecting to {}", constants::ADSB_SERVER_ADDRESS);
+
+            let mut client = AdsbClient::spawn(ClientConfig {
+                connection: ConnectionConfig {
+                    address: constants::ADSB_SERVER_ADDRESS.to_string(),
+                    ..Default::default()
+                },
+                tracker: TrackerConfig {
+                    center: Some((center_lat, center_lon)),
+                    max_distance_miles: constants::ADSB_MAX_DISTANCE_MILES,
+                    aircraft_timeout_secs: constants::ADSB_AIRCRAFT_TIMEOUT_SECS,
+                    ..Default::default()
+                },
+                ..Default::default()
+            });
+
+            // Processing loop
+            loop {
+                // Process next event from the connection
+                if !client.process_next().await {
+                    warn!("ADS-B client connection closed, restarting...");
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    continue;
+                }
+
+                // Update shared connection state
+                if let Ok(mut state) = connection_state.lock() {
+                    *state = client.connection_state();
+                }
+
+                // Update shared aircraft data
+                if let Ok(mut data) = aircraft_data.lock() {
+                    *data = client.get_aircraft();
+                }
+            }
+        });
+    });
+
+    commands.insert_resource(adsb_data);
+    info!("ADS-B client background thread started");
 }
 
 fn setup_debug_logger(mut commands: Commands) {
@@ -418,50 +540,165 @@ fn setup_ui(mut commands: Commands) {
         },
         TextColor(Color::WHITE),
     ));
+
+    // Connection status indicator
+    commands.spawn((
+        Text::new("ADS-B: Connecting..."),
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(10.0),
+            right: Val::Px(10.0),
+            padding: UiRect::all(Val::Px(5.0)),
+            ..default()
+        },
+        TextFont {
+            font_size: 14.0,
+            ..default()
+        },
+        TextColor(Color::srgb(1.0, 0.8, 0.0)), // Yellow for connecting
+        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.7)),
+        ConnectionStatusText,
+    ));
 }
 
-fn spawn_sample_aircraft(
+/// Sync aircraft entities from the shared ADS-B data.
+/// This system runs every frame and updates Bevy entities to match the ADS-B client state.
+fn sync_aircraft_from_adsb(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
+    adsb_data: Option<Res<AdsbAircraftData>>,
+    mut aircraft_query: Query<(Entity, &mut Aircraft, &mut Transform)>,
+    label_query: Query<(Entity, &AircraftLabel)>,
 ) {
-    // Spawn some sample aircraft around London
-    let sample_aircraft = vec![
-        ("BA123", 51.5074, -0.1278, 35000.0, 90.0),
-        ("AA456", 51.4774, -0.0878, 38000.0, 180.0),
-        ("LH789", 51.5374, -0.1678, 32000.0, 270.0),
-    ];
+    let Some(adsb_data) = adsb_data else {
+        return; // ADS-B client not yet initialized
+    };
 
-    for (id, lat, lon, alt, heading) in sample_aircraft {
-        // Spawn aircraft marker
-        let aircraft_entity = commands.spawn((
-            Mesh2d(meshes.add(Circle::new(8.0))),
-            MeshMaterial2d(materials.add(Color::srgb(1.0, 0.0, 0.0))),
-            Transform::from_xyz(0.0, 0.0, 10.0),
-            Aircraft {
-                id: id.to_string(),
-                latitude: lat,
-                longitude: lon,
-                altitude: alt,
-                heading,
-            },
-        )).id();
+    let adsb_aircraft = adsb_data.get_aircraft();
 
-        // Spawn label for this aircraft
-        let label_text = format!("{}
-{:.0} ft", id, alt);
-        commands.spawn((
-            Text2d::new(label_text),
-            TextFont {
-                font_size: 14.0,
-                ..default()
-            },
-            TextColor(Color::WHITE),
-            Transform::from_xyz(0.0, 0.0, 11.0), // Slightly higher z-index than aircraft
-            AircraftLabel {
-                aircraft_entity,
-            },
-        ));
+    // Build a map of existing aircraft entities by ICAO
+    let mut existing_aircraft: HashMap<String, Entity> = aircraft_query
+        .iter()
+        .map(|(entity, aircraft, _)| (aircraft.icao.clone(), entity))
+        .collect();
+
+    // Update or spawn aircraft
+    for adsb_ac in &adsb_aircraft {
+        // Skip aircraft without position data
+        let (Some(lat), Some(lon)) = (adsb_ac.latitude, adsb_ac.longitude) else {
+            continue;
+        };
+
+        if let Some(&entity) = existing_aircraft.get(&adsb_ac.icao) {
+            // Update existing aircraft
+            if let Ok((_, mut aircraft, _)) = aircraft_query.get_mut(entity) {
+                aircraft.latitude = lat;
+                aircraft.longitude = lon;
+                aircraft.altitude = adsb_ac.altitude;
+                aircraft.heading = adsb_ac.track.map(|t| t as f32);
+                aircraft.velocity = adsb_ac.velocity;
+                aircraft.vertical_rate = adsb_ac.vertical_rate;
+                aircraft.callsign = adsb_ac.callsign.clone();
+            }
+            existing_aircraft.remove(&adsb_ac.icao);
+        } else {
+            // Spawn new aircraft
+            let aircraft_entity = commands.spawn((
+                Mesh2d(meshes.add(Circle::new(constants::AIRCRAFT_MARKER_RADIUS))),
+                MeshMaterial2d(materials.add(Color::srgb(1.0, 0.0, 0.0))),
+                Transform::from_xyz(0.0, 0.0, constants::AIRCRAFT_Z_LAYER),
+                Aircraft {
+                    icao: adsb_ac.icao.clone(),
+                    callsign: adsb_ac.callsign.clone(),
+                    latitude: lat,
+                    longitude: lon,
+                    altitude: adsb_ac.altitude,
+                    heading: adsb_ac.track.map(|t| t as f32),
+                    velocity: adsb_ac.velocity,
+                    vertical_rate: adsb_ac.vertical_rate,
+                },
+            )).id();
+
+            // Spawn label for this aircraft
+            let callsign_display = adsb_ac.callsign.as_deref().unwrap_or(&adsb_ac.icao);
+            let alt_display = adsb_ac.altitude.map(|a| format!("{} ft", a)).unwrap_or_default();
+            let label_text = format!("{}\n{}", callsign_display, alt_display);
+
+            commands.spawn((
+                Text2d::new(label_text),
+                TextFont {
+                    font_size: constants::BASE_FONT_SIZE,
+                    ..default()
+                },
+                TextColor(Color::WHITE),
+                Transform::from_xyz(0.0, 0.0, constants::LABEL_Z_LAYER),
+                AircraftLabel {
+                    aircraft_entity,
+                },
+            ));
+        }
+    }
+
+    // Remove aircraft that are no longer in the ADS-B data
+    for (icao, entity) in existing_aircraft {
+        // Find and despawn the label first
+        for (label_entity, label) in label_query.iter() {
+            if label.aircraft_entity == entity {
+                commands.entity(label_entity).despawn();
+                break;
+            }
+        }
+        // Despawn the aircraft
+        commands.entity(entity).despawn();
+        info!("Removed aircraft {} from display", icao);
+    }
+}
+
+/// Update aircraft labels with current data
+fn update_aircraft_label_text(
+    aircraft_query: Query<&Aircraft>,
+    mut label_query: Query<(&AircraftLabel, &mut Text2d)>,
+) {
+    for (label, mut text) in label_query.iter_mut() {
+        if let Ok(aircraft) = aircraft_query.get(label.aircraft_entity) {
+            let callsign_display = aircraft.callsign.as_deref().unwrap_or(&aircraft.icao);
+            let alt_display = aircraft.altitude.map(|a| format!("{} ft", a)).unwrap_or_default();
+            **text = format!("{}\n{}", callsign_display, alt_display);
+        }
+    }
+}
+
+/// Update the connection status UI indicator
+fn update_connection_status(
+    adsb_data: Option<Res<AdsbAircraftData>>,
+    mut status_query: Query<(&mut Text, &mut TextColor), With<ConnectionStatusText>>,
+) {
+    let Some(adsb_data) = adsb_data else {
+        return;
+    };
+
+    let connection_state = adsb_data.get_connection_state();
+    let aircraft_count = adsb_data.get_aircraft().len();
+
+    for (mut text, mut color) in status_query.iter_mut() {
+        let (status_text, status_color) = match connection_state {
+            ConnectionState::Connected => {
+                (format!("ADS-B: {} aircraft", aircraft_count), Color::srgb(0.0, 1.0, 0.0))
+            }
+            ConnectionState::Connecting => {
+                ("ADS-B: Connecting...".to_string(), Color::srgb(1.0, 0.8, 0.0))
+            }
+            ConnectionState::Disconnected => {
+                ("ADS-B: Disconnected".to_string(), Color::srgb(1.0, 0.3, 0.3))
+            }
+            ConnectionState::Error(ref msg) => {
+                (format!("ADS-B: Error - {}", msg), Color::srgb(1.0, 0.0, 0.0))
+            }
+        };
+
+        **text = status_text;
+        *color = TextColor(status_color);
     }
 }
 
@@ -833,7 +1070,10 @@ fn update_aircraft_positions(
 
         transform.translation.x = offset_x as f32;
         transform.translation.y = offset_y as f32;
-        transform.rotation = Quat::from_rotation_z(aircraft.heading.to_radians());
+        // Apply rotation based on heading (track angle), defaulting to north-facing if no heading data
+        if let Some(heading) = aircraft.heading {
+            transform.rotation = Quat::from_rotation_z(-heading.to_radians());
+        }
     }
 }
 

@@ -9,6 +9,9 @@ bevy_slippy_tiles = "0.10"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 reqwest = { version = "0.12", features = ["blocking"] }
+adsb-client = { path = "/Users/ccustine/development/airjedi-desktop/crates/adsb-client" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+chrono = { version = "0.4", features = ["serde"] }
 
 [profile.dev]
 opt-level = 1
