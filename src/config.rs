@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -154,4 +155,81 @@ impl SettingsUiState {
             },
         })
     }
+}
+
+pub fn render_settings_panel(
+    mut contexts: EguiContexts,
+    mut ui_state: ResMut<SettingsUiState>,
+    mut app_config: ResMut<AppConfig>,
+) {
+    if !ui_state.open {
+        return;
+    }
+
+    let ctx = contexts.ctx_mut();
+
+    egui::SidePanel::left("settings_panel")
+        .default_width(300.0)
+        .resizable(false)
+        .show(ctx, |ui| {
+            ui.heading("Settings");
+            ui.separator();
+
+            // Feed section
+            ui.collapsing("Feed", |ui| {
+                ui.label("Endpoint URL:");
+                ui.text_edit_singleline(&mut ui_state.endpoint_url);
+                ui.add_space(8.0);
+
+                ui.label("Refresh Interval (ms):");
+                ui.text_edit_singleline(&mut ui_state.refresh_interval_ms);
+            });
+
+            ui.add_space(12.0);
+
+            // Map section
+            ui.collapsing("Map Defaults", |ui| {
+                ui.label("Default Latitude:");
+                ui.text_edit_singleline(&mut ui_state.default_latitude);
+                ui.add_space(8.0);
+
+                ui.label("Default Longitude:");
+                ui.text_edit_singleline(&mut ui_state.default_longitude);
+                ui.add_space(8.0);
+
+                ui.label("Default Zoom (0-19):");
+                ui.text_edit_singleline(&mut ui_state.default_zoom);
+            });
+
+            ui.add_space(16.0);
+
+            // Error message
+            if let Some(ref error) = ui_state.error_message {
+                ui.colored_label(egui::Color32::RED, error);
+                ui.add_space(8.0);
+            }
+
+            // Buttons
+            ui.horizontal(|ui| {
+                if ui.button("Cancel").clicked() {
+                    ui_state.open = false;
+                    ui_state.error_message = None;
+                }
+
+                if ui.button("Save").clicked() {
+                    match ui_state.validate_and_build() {
+                        Ok(new_config) => {
+                            save_config(&new_config);
+                            *app_config = new_config;
+                            ui_state.open = false;
+                            ui_state.error_message = None;
+                            info!("Configuration saved");
+                        }
+                        Err(e) => {
+                            ui_state.error_message = Some(e);
+                        }
+                    }
+                }
+            });
+        });
 }
