@@ -232,6 +232,7 @@ fn main() {
         .add_systems(Update, scale_aircraft_and_labels.after(apply_camera_zoom))
         .add_systems(Update, update_aircraft_labels.after(update_aircraft_positions))
         .add_systems(Update, handle_clear_cache_button)
+        .add_systems(Update, handle_settings_button)
         .add_systems(Update, update_connection_status)
         .add_systems(Update, display_tiles_filtered.after(ApplyDeferred))
         .add_systems(Update, animate_tile_fades.after(display_tiles_filtered))
@@ -268,6 +269,10 @@ struct AircraftLabel {
 // Component to mark the clear cache button
 #[derive(Component)]
 struct ClearCacheButton;
+
+// Component to mark the settings button
+#[derive(Component)]
+struct SettingsButton;
 
 // Component to track tile fade state for smooth zoom transitions
 #[derive(Component)]
@@ -538,6 +543,27 @@ fn setup_ui(mut commands: Commands) {
         ClearCacheButton,
     )).with_child((
         Text::new("Clear Cache"),
+        TextFont {
+            font_size: 16.0,
+            ..default()
+        },
+        TextColor(Color::WHITE),
+    ));
+
+    // Settings button
+    commands.spawn((
+        Button,
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(100.0),
+            left: Val::Px(10.0),
+            padding: UiRect::all(Val::Px(10.0)),
+            ..default()
+        },
+        BackgroundColor(Color::srgba(0.2, 0.2, 0.2, 0.9)),
+        SettingsButton,
+    )).with_child((
+        Text::new("Settings"),
         TextFont {
             font_size: 16.0,
             ..default()
@@ -1160,6 +1186,37 @@ fn handle_clear_cache_button(
             }
             Interaction::None => {
                 // Default color
+                let c = constants::BUTTON_NORMAL;
+                *background_color = BackgroundColor(Color::srgba(c.0, c.1, c.2, c.3));
+            }
+        }
+    }
+}
+
+fn handle_settings_button(
+    mut interaction_query: Query<
+        (&Interaction, &mut BackgroundColor),
+        (Changed<Interaction>, With<SettingsButton>),
+    >,
+    mut ui_state: ResMut<config::SettingsUiState>,
+    app_config: Res<config::AppConfig>,
+) {
+    for (interaction, mut background_color) in interaction_query.iter_mut() {
+        match *interaction {
+            Interaction::Pressed => {
+                let c = constants::BUTTON_PRESSED;
+                *background_color = BackgroundColor(Color::srgba(c.0, c.1, c.2, c.3));
+
+                ui_state.open = !ui_state.open;
+                if ui_state.open {
+                    ui_state.populate_from_config(&app_config);
+                }
+            }
+            Interaction::Hovered => {
+                let c = constants::BUTTON_HOVERED;
+                *background_color = BackgroundColor(Color::srgba(c.0, c.1, c.2, c.3));
+            }
+            Interaction::None => {
                 let c = constants::BUTTON_NORMAL;
                 *background_color = BackgroundColor(Color::srgba(c.0, c.1, c.2, c.3));
             }
