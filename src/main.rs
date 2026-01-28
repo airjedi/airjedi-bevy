@@ -5,6 +5,8 @@ use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 
+mod config;
+
 // ADS-B client types
 use adsb_client::{Client as AdsbClient, ClientConfig, ConnectionConfig, TrackerConfig, ConnectionState};
 
