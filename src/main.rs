@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 
 mod config;
+use config::ConfigPlugin;
 
 // ADS-B client types
 use adsb_client::{Client as AdsbClient, ClientConfig, ConnectionConfig, TrackerConfig, ConnectionState};
@@ -202,6 +203,7 @@ fn main() {
                 ..default()
             }),
             SlippyTilesPlugin,
+            ConfigPlugin,
         ))
         .init_resource::<DragState>()
         .insert_resource(ZoomState::new())
