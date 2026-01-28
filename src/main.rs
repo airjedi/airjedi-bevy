@@ -486,12 +486,20 @@ fn setup_debug_logger(mut commands: Commands) {
     }
 }
 
-fn setup_map(mut commands: Commands, mut download_events: MessageWriter<DownloadSlippyTilesEvent>) {
+fn setup_map(
+    mut commands: Commands,
+    mut download_events: MessageWriter<DownloadSlippyTilesEvent>,
+    app_config: Res<config::AppConfig>,
+) {
     // Set up camera
     commands.spawn(Camera2d);
 
-    // Initialize map state resource
-    let map_state = MapState::default();
+    // Initialize map state resource from config
+    let map_state = MapState {
+        latitude: app_config.map.default_latitude,
+        longitude: app_config.map.default_longitude,
+        zoom_level: ZoomLevel::try_from(app_config.map.default_zoom).unwrap_or(ZoomLevel::L10),
+    };
 
     // Send initial tile download request
     request_tiles_at_location(
