@@ -7,6 +7,7 @@ use std::collections::HashMap;
 
 mod config;
 use config::ConfigPlugin;
+use bevy_egui::EguiContexts;
 
 // ADS-B client types
 use adsb_client::{Client as AdsbClient, ClientConfig, ConnectionConfig, TrackerConfig, ConnectionState};
@@ -219,6 +220,7 @@ fn main() {
         .add_systems(Startup, (setup_debug_logger, setup_map, setup_ui))
         // Setup ADS-B client after map is initialized (needs MapState)
         .add_systems(Startup, setup_adsb_client.after(setup_map))
+        .add_systems(Update, check_egui_wants_input.before(handle_pan_drag).before(handle_zoom))
         .add_systems(Update, handle_pan_drag)
         .add_systems(Update, handle_zoom)
         // Apply deferred commands (like despawns) before updating camera/tiles
@@ -740,6 +742,19 @@ fn update_connection_status(
 
         **text = status_text;
         *color = TextColor(status_color);
+    }
+}
+
+fn check_egui_wants_input(
+    mut contexts: EguiContexts,
+    mut drag_state: ResMut<DragState>,
+) {
+    if let Ok(ctx) = contexts.ctx_mut() {
+        if ctx.wants_keyboard_input() || ctx.wants_pointer_input() {
+            // Reset drag state to prevent map panning while in settings
+            drag_state.is_dragging = false;
+            drag_state.last_position = None;
+        }
     }
 }
 
