@@ -166,7 +166,9 @@ pub fn render_settings_panel(
         return;
     }
 
-    let ctx = contexts.ctx_mut();
+    let Ok(ctx) = contexts.ctx_mut() else {
+        return;
+    };
 
     egui::SidePanel::left("settings_panel")
         .default_width(300.0)
@@ -232,4 +234,31 @@ pub fn render_settings_panel(
                 }
             });
         });
+}
+
+pub fn toggle_settings_panel(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut ui_state: ResMut<SettingsUiState>,
+    app_config: Res<AppConfig>,
+) {
+    if keyboard.just_pressed(KeyCode::Escape) {
+        ui_state.open = !ui_state.open;
+        if ui_state.open {
+            ui_state.populate_from_config(&app_config);
+        }
+    }
+}
+
+pub struct ConfigPlugin;
+
+impl Plugin for ConfigPlugin {
+    fn build(&self, app: &mut App) {
+        let config = load_config();
+
+        app.add_plugins(EguiPlugin::default())
+            .insert_resource(config)
+            .init_resource::<SettingsUiState>()
+            .add_systems(Update, toggle_settings_panel)
+            .add_systems(Update, render_settings_panel);
+    }
 }
