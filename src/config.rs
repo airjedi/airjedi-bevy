@@ -85,3 +85,73 @@ pub fn save_config(config: &AppConfig) {
         }
     }
 }
+
+#[derive(Resource, Default)]
+pub struct SettingsUiState {
+    pub open: bool,
+    pub endpoint_url: String,
+    pub refresh_interval_ms: String,
+    pub default_latitude: String,
+    pub default_longitude: String,
+    pub default_zoom: String,
+    pub error_message: Option<String>,
+}
+
+impl SettingsUiState {
+    pub fn populate_from_config(&mut self, config: &AppConfig) {
+        self.endpoint_url = config.feed.endpoint_url.clone();
+        self.refresh_interval_ms = config.feed.refresh_interval_ms.to_string();
+        self.default_latitude = config.map.default_latitude.to_string();
+        self.default_longitude = config.map.default_longitude.to_string();
+        self.default_zoom = config.map.default_zoom.to_string();
+        self.error_message = None;
+    }
+
+    pub fn validate_and_build(&self) -> Result<AppConfig, String> {
+        // Validate endpoint URL
+        let endpoint = self.endpoint_url.trim();
+        if !endpoint.starts_with("http://") && !endpoint.starts_with("https://") {
+            return Err("Endpoint URL must start with http:// or https://".to_string());
+        }
+
+        // Validate refresh interval
+        let refresh_ms: u64 = self.refresh_interval_ms.trim().parse()
+            .map_err(|_| "Refresh interval must be a number")?;
+        if refresh_ms < 100 || refresh_ms > 60000 {
+            return Err("Refresh interval must be 100-60000 ms".to_string());
+        }
+
+        // Validate latitude
+        let lat: f64 = self.default_latitude.trim().parse()
+            .map_err(|_| "Latitude must be a number")?;
+        if lat < -90.0 || lat > 90.0 {
+            return Err("Latitude must be -90 to 90".to_string());
+        }
+
+        // Validate longitude
+        let lon: f64 = self.default_longitude.trim().parse()
+            .map_err(|_| "Longitude must be a number")?;
+        if lon < -180.0 || lon > 180.0 {
+            return Err("Longitude must be -180 to 180".to_string());
+        }
+
+        // Validate zoom
+        let zoom: u8 = self.default_zoom.trim().parse()
+            .map_err(|_| "Zoom must be a number")?;
+        if zoom > 19 {
+            return Err("Zoom must be 0-19".to_string());
+        }
+
+        Ok(AppConfig {
+            feed: FeedConfig {
+                endpoint_url: endpoint.to_string(),
+                refresh_interval_ms: refresh_ms,
+            },
+            map: MapConfig {
+                default_latitude: lat,
+                default_longitude: lon,
+                default_zoom: zoom,
+            },
+        })
+    }
+}
