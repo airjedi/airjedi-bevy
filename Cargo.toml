@@ -12,6 +12,8 @@ reqwest = { version = "0.12", features = ["blocking"] }
 adsb-client = { path = "/Users/ccustine/development/aviation/airjedi-desktop/crates/adsb-client" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
 chrono = { version = "0.4", features = ["serde"] }
+bevy_egui = "0.33"
+toml = "0.8"
 
 [profile.dev]
 opt-level = 1
