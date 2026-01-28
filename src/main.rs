@@ -389,7 +389,7 @@ impl AdsbAircraftData {
 struct ConnectionStatusText;
 
 /// Setup the ADS-B client in a background thread with its own tokio runtime.
-fn setup_adsb_client(mut commands: Commands, map_state: Res<MapState>) {
+fn setup_adsb_client(mut commands: Commands, map_state: Res<MapState>, app_config: Res<config::AppConfig>) {
     let adsb_data = AdsbAircraftData::new();
     let aircraft_data = Arc::clone(&adsb_data.aircraft);
     let connection_state = Arc::clone(&adsb_data.connection_state);
@@ -397,6 +397,9 @@ fn setup_adsb_client(mut commands: Commands, map_state: Res<MapState>) {
     // Get the center coordinates from map state
     let center_lat = map_state.latitude;
     let center_lon = map_state.longitude;
+
+    // Get endpoint URL from config
+    let endpoint_url = app_config.feed.endpoint_url.clone();
 
     // Spawn a background thread with its own tokio runtime
     std::thread::spawn(move || {
@@ -407,11 +410,11 @@ fn setup_adsb_client(mut commands: Commands, map_state: Res<MapState>) {
             .expect("Failed to create tokio runtime for ADS-B client");
 
         rt.block_on(async move {
-            info!("Starting ADS-B client, connecting to {}", constants::ADSB_SERVER_ADDRESS);
+            info!("Starting ADS-B client, connecting to {}", endpoint_url);
 
             let mut client = AdsbClient::spawn(ClientConfig {
                 connection: ConnectionConfig {
-                    address: constants::ADSB_SERVER_ADDRESS.to_string(),
+                    address: endpoint_url.clone(),
                     ..Default::default()
                 },
                 tracker: TrackerConfig {
