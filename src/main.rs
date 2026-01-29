@@ -1164,7 +1164,13 @@ fn handle_clear_cache_button(
     mut commands: Commands,
     tile_query: Query<Entity, With<MapTile>>,
     mut slippy_tile_download_status: ResMut<SlippyTileDownloadStatus>,
+    ui_state: Res<config::SettingsUiState>,
 ) {
+    // Don't process button clicks when settings panel is open
+    if ui_state.open {
+        return;
+    }
+
     for (interaction, mut background_color) in interaction_query.iter_mut() {
         match *interaction {
             Interaction::Pressed => {
@@ -1226,7 +1232,15 @@ fn handle_settings_button(
     >,
     mut ui_state: ResMut<config::SettingsUiState>,
     app_config: Res<config::AppConfig>,
+    mut contexts: EguiContexts,
 ) {
+    // Don't process button clicks when pointer is over egui panel
+    if let Ok(ctx) = contexts.ctx_mut() {
+        if ctx.is_pointer_over_area() {
+            return;
+        }
+    }
+
     for (interaction, mut background_color) in interaction_query.iter_mut() {
         match *interaction {
             Interaction::Pressed => {
