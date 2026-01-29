@@ -115,7 +115,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "airjedi_bevyui"
+name = "airjedi_bevy"
 version = "0.1.0"
 dependencies = [
  "adsb-client",
