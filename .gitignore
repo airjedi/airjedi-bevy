@@ -3,3 +3,5 @@
 .fleet/
 /assets
 /tmp/
+/.worktrees/
+config.toml

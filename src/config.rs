@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy_egui::{egui, EguiContexts, EguiPlugin};
+use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiPrimaryContextPass};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -29,7 +29,8 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             feed: FeedConfig {
-                endpoint_url: "http://192.168.1.63:8080/aircraft.json".to_string(),
+                // Raw TCP address for ADS-B connection (host:port format)
+                endpoint_url: "98.186.33.60:30003".to_string(),
                 refresh_interval_ms: 1000,
             },
             map: MapConfig {
@@ -109,10 +110,18 @@ impl SettingsUiState {
     }
 
     pub fn validate_and_build(&self) -> Result<AppConfig, String> {
-        // Validate endpoint URL
+        // Validate endpoint address (host:port format for raw TCP connection)
         let endpoint = self.endpoint_url.trim();
-        if !endpoint.starts_with("http://") && !endpoint.starts_with("https://") {
-            return Err("Endpoint URL must start with http:// or https://".to_string());
+        if endpoint.is_empty() {
+            return Err("Endpoint address is required".to_string());
+        }
+        // Check for host:port format
+        let parts: Vec<&str> = endpoint.split(':').collect();
+        if parts.len() != 2 {
+            return Err("Endpoint must be in host:port format (e.g., 192.168.1.1:30003)".to_string());
+        }
+        if parts[1].parse::<u16>().is_err() {
+            return Err("Port must be a valid number (1-65535)".to_string());
         }
 
         // Validate refresh interval
@@ -179,7 +188,7 @@ pub fn render_settings_panel(
 
             // Feed section
             ui.collapsing("Feed", |ui| {
-                ui.label("Endpoint URL:");
+                ui.label("Endpoint (host:port):");
                 ui.text_edit_singleline(&mut ui_state.endpoint_url);
                 ui.add_space(8.0);
 
@@ -259,6 +268,6 @@ impl Plugin for ConfigPlugin {
             .insert_resource(config)
             .init_resource::<SettingsUiState>()
             .add_systems(Update, toggle_settings_panel)
-            .add_systems(Update, render_settings_panel);
+            .add_systems(EguiPrimaryContextPass, render_settings_panel);
     }
 }
