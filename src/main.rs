@@ -46,7 +46,7 @@ mod constants {
     // UI and rendering
     pub const BASE_FONT_SIZE: f32 = 14.0;
     pub const AIRCRAFT_MARKER_RADIUS: f32 = 8.0;
-    pub const LABEL_SCREEN_OFFSET: f32 = 15.0;
+    pub const LABEL_SCREEN_OFFSET: f32 = 25.0;
     pub const BUTTON_FONT_SIZE: f32 = 16.0;
 
     // Tile fade/despawn timing
@@ -1174,14 +1174,12 @@ fn update_aircraft_positions(
         transform.translation.x = offset_x as f32;
         transform.translation.y = offset_y as f32;
         // Apply rotation based on heading (track angle), defaulting to north-facing if no heading data
-        // The SVG airplane is rotated -45° (pointing northeast), so we add 45° to compensate
-        // Then negate because Bevy rotation is counter-clockwise but heading is clockwise
+        // Heading is clockwise from north, Bevy rotation is counter-clockwise, so negate heading
         if let Some(heading) = aircraft.heading {
-            let rotation_offset = 45.0_f32; // SVG points northeast, offset to point north at heading=0
-            transform.rotation = Quat::from_rotation_z((-heading + rotation_offset).to_radians());
+            transform.rotation = Quat::from_rotation_z((-heading).to_radians());
         } else {
-            // Default to north-facing (45° offset for SVG)
-            transform.rotation = Quat::from_rotation_z(45.0_f32.to_radians());
+            // Default to north-facing (no rotation needed)
+            transform.rotation = Quat::IDENTITY;
         }
     }
 }
