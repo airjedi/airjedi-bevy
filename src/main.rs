@@ -177,13 +177,13 @@ fn calculate_zoom_to_cursor_center(
 
 /// Send a tile download request for the current map location
 fn request_tiles_at_location(
-    download_events: &mut MessageWriter<DownloadSlippyTilesEvent>,
+    download_events: &mut MessageWriter<DownloadSlippyTilesMessage>,
     latitude: f64,
     longitude: f64,
     zoom_level: ZoomLevel,
     use_cache: bool,
 ) {
-    download_events.write(DownloadSlippyTilesEvent {
+    download_events.write(DownloadSlippyTilesMessage {
         tile_size: TileSize::Normal,
         zoom_level,
         coordinates: Coordinates::from_latitude_longitude(latitude, longitude),
@@ -490,7 +490,7 @@ fn setup_debug_logger(mut commands: Commands) {
 
 fn setup_map(
     mut commands: Commands,
-    mut download_events: MessageWriter<DownloadSlippyTilesEvent>,
+    mut download_events: MessageWriter<DownloadSlippyTilesMessage>,
     app_config: Res<config::AppConfig>,
 ) {
     // Set up camera
@@ -764,7 +764,7 @@ fn handle_pan_drag(
     mut map_state: ResMut<MapState>,
     mut drag_state: ResMut<DragState>,
     zoom_state: Res<ZoomState>,
-    mut download_events: MessageWriter<DownloadSlippyTilesEvent>,
+    mut download_events: MessageWriter<DownloadSlippyTilesMessage>,
     window_query: Query<&Window>,
 ) {
     let Ok(_window) = window_query.single() else {
@@ -896,7 +896,7 @@ fn handle_zoom(
     mut scroll_events: MessageReader<MouseWheel>,
     mut map_state: ResMut<MapState>,
     mut zoom_state: ResMut<ZoomState>,
-    mut download_events: MessageWriter<DownloadSlippyTilesEvent>,
+    mut download_events: MessageWriter<DownloadSlippyTilesMessage>,
     window_query: Query<&Window>,
     mut tile_query: Query<(&mut TileFadeState, &mut Transform), With<MapTile>>,
     logger: Option<Res<ZoomDebugLogger>>,
@@ -1160,7 +1160,7 @@ fn handle_clear_cache_button(
         (Changed<Interaction>, With<ClearCacheButton>),
     >,
     map_state: Res<MapState>,
-    mut download_events: MessageWriter<DownloadSlippyTilesEvent>,
+    mut download_events: MessageWriter<DownloadSlippyTilesMessage>,
     mut commands: Commands,
     tile_query: Query<Entity, With<MapTile>>,
     mut slippy_tile_download_status: ResMut<SlippyTileDownloadStatus>,
@@ -1309,7 +1309,7 @@ fn display_tiles_filtered(
     asset_server: Res<AssetServer>,
     tile_settings: Res<SlippyTilesSettings>,
     map_state: Res<MapState>,
-    mut tile_events: MessageReader<SlippyTileDownloadedEvent>,
+    mut tile_events: MessageReader<SlippyTileDownloadedMessage>,
     logger: Option<Res<ZoomDebugLogger>>,
 ) {
     for event in tile_events.read() {
