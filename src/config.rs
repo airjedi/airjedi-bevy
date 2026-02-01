@@ -10,6 +10,42 @@ const CONFIG_FILE: &str = "config.toml";
 pub struct AppConfig {
     pub feed: FeedConfig,
     pub map: MapConfig,
+    #[serde(default)]
+    pub overlays: OverlayConfig,
+    #[serde(default)]
+    pub trails: TrailsConfig,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct OverlayConfig {
+    pub show_airports: bool,
+    pub show_runways: bool,
+    pub show_navaids: bool,
+}
+
+impl Default for OverlayConfig {
+    fn default() -> Self {
+        Self {
+            show_airports: true,
+            show_runways: true,
+            show_navaids: false,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TrailsConfig {
+    pub enabled: bool,
+    pub max_age_seconds: u64,
+}
+
+impl Default for TrailsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_age_seconds: 300,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -30,7 +66,7 @@ impl Default for AppConfig {
         Self {
             feed: FeedConfig {
                 // Raw TCP address for ADS-B connection (host:port format)
-                endpoint_url: "98.186.33.60:30003".to_string(),
+                endpoint_url: "192.168.1.10:30003".to_string(),
                 refresh_interval_ms: 1000,
             },
             map: MapConfig {
@@ -38,6 +74,8 @@ impl Default for AppConfig {
                 default_longitude: -97.3301,
                 default_zoom: 10,
             },
+            overlays: OverlayConfig::default(),
+            trails: TrailsConfig::default(),
         }
     }
 }
@@ -96,6 +134,13 @@ pub struct SettingsUiState {
     pub default_latitude: String,
     pub default_longitude: String,
     pub default_zoom: String,
+    // Overlay settings
+    pub show_airports: bool,
+    pub show_runways: bool,
+    pub show_navaids: bool,
+    // Trail settings
+    pub trails_enabled: bool,
+    pub trails_max_age: String,
     pub error_message: Option<String>,
 }
 
@@ -106,6 +151,13 @@ impl SettingsUiState {
         self.default_latitude = config.map.default_latitude.to_string();
         self.default_longitude = config.map.default_longitude.to_string();
         self.default_zoom = config.map.default_zoom.to_string();
+        // Overlay settings
+        self.show_airports = config.overlays.show_airports;
+        self.show_runways = config.overlays.show_runways;
+        self.show_navaids = config.overlays.show_navaids;
+        // Trail settings
+        self.trails_enabled = config.trails.enabled;
+        self.trails_max_age = config.trails.max_age_seconds.to_string();
         self.error_message = None;
     }
 
@@ -152,6 +204,13 @@ impl SettingsUiState {
             return Err("Zoom must be 0-19".to_string());
         }
 
+        // Validate trails max age
+        let trails_max_age: u64 = self.trails_max_age.trim().parse()
+            .map_err(|_| "Trail max age must be a number")?;
+        if trails_max_age < 30 || trails_max_age > 3600 {
+            return Err("Trail max age must be 30-3600 seconds".to_string());
+        }
+
         Ok(AppConfig {
             feed: FeedConfig {
                 endpoint_url: endpoint.to_string(),
@@ -161,6 +220,15 @@ impl SettingsUiState {
                 default_latitude: lat,
                 default_longitude: lon,
                 default_zoom: zoom,
+            },
+            overlays: OverlayConfig {
+                show_airports: self.show_airports,
+                show_runways: self.show_runways,
+                show_navaids: self.show_navaids,
+            },
+            trails: TrailsConfig {
+                enabled: self.trails_enabled,
+                max_age_seconds: trails_max_age,
             },
         })
     }
@@ -212,6 +280,25 @@ pub fn render_settings_panel(
                 ui.text_edit_singleline(&mut ui_state.default_zoom);
             });
 
+            ui.add_space(12.0);
+
+            // Overlays section
+            ui.collapsing("Overlays", |ui| {
+                ui.checkbox(&mut ui_state.show_airports, "Show Airports");
+                ui.checkbox(&mut ui_state.show_runways, "Show Runways");
+                ui.checkbox(&mut ui_state.show_navaids, "Show Navaids");
+            });
+
+            ui.add_space(12.0);
+
+            // Trails section
+            ui.collapsing("Flight Trails", |ui| {
+                ui.checkbox(&mut ui_state.trails_enabled, "Enable Trails");
+                ui.add_space(8.0);
+                ui.label("Max Age (seconds):");
+                ui.text_edit_singleline(&mut ui_state.trails_max_age);
+            });
+
             ui.add_space(16.0);
 
             // Error message
@@ -258,6 +345,33 @@ pub fn toggle_settings_panel(
     }
 }
 
+/// System to sync config changes to render state resources
+pub fn sync_config_to_render_states(
+    app_config: Res<AppConfig>,
+    mut airport_state: Option<ResMut<crate::aviation::AirportRenderState>>,
+    mut runway_state: Option<ResMut<crate::aviation::RunwayRenderState>>,
+    mut navaid_state: Option<ResMut<crate::aviation::NavaidRenderState>>,
+    mut trail_config: Option<ResMut<crate::aircraft::TrailConfig>>,
+) {
+    if !app_config.is_changed() {
+        return;
+    }
+
+    if let Some(ref mut state) = airport_state {
+        state.show_airports = app_config.overlays.show_airports;
+    }
+    if let Some(ref mut state) = runway_state {
+        state.show_runways = app_config.overlays.show_runways;
+    }
+    if let Some(ref mut state) = navaid_state {
+        state.show_navaids = app_config.overlays.show_navaids;
+    }
+    if let Some(ref mut config) = trail_config {
+        config.enabled = app_config.trails.enabled;
+        config.max_age_seconds = app_config.trails.max_age_seconds;
+    }
+}
+
 pub struct ConfigPlugin;
 
 impl Plugin for ConfigPlugin {
@@ -267,7 +381,7 @@ impl Plugin for ConfigPlugin {
         app.add_plugins(EguiPlugin::default())
             .insert_resource(config)
             .init_resource::<SettingsUiState>()
-            .add_systems(Update, toggle_settings_panel)
+            .add_systems(Update, (toggle_settings_panel, sync_config_to_render_states))
             .add_systems(EguiPrimaryContextPass, render_settings_panel);
     }
 }
