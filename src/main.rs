@@ -223,7 +223,7 @@ fn main() {
             auto_render: false,            // Disable auto-render, we handle tile display ourselves
             ..default()
         })
-        .add_systems(Startup, (setup_debug_logger, setup_map, setup_ui))
+        .add_systems(Startup, (setup_debug_logger, setup_map, setup_ui, setup_aircraft_texture))
         // Setup ADS-B client after map is initialized (needs MapState)
         .add_systems(Startup, setup_adsb_client.after(setup_map))
         .add_systems(Update, check_egui_wants_input.before(handle_pan_drag).before(handle_zoom))
@@ -316,6 +316,12 @@ struct DragState {
     is_dragging: bool,
     last_position: Option<Vec2>,
     last_tile_request_coords: Option<(f64, f64)>,
+}
+
+// Resource to hold the aircraft icon texture handle
+#[derive(Resource)]
+struct AircraftTexture {
+    handle: Handle<Image>,
 }
 
 // Resource to track zoom scroll accumulation for smooth trackpad zooming
@@ -632,18 +638,26 @@ fn setup_ui(mut commands: Commands) {
     ));
 }
 
+/// Load the aircraft icon texture
+fn setup_aircraft_texture(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let handle = asset_server.load("airplane1.png");
+    commands.insert_resource(AircraftTexture { handle });
+}
+
 /// Sync aircraft entities from the shared ADS-B data.
 /// This system runs every frame and updates Bevy entities to match the ADS-B client state.
 fn sync_aircraft_from_adsb(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
+    aircraft_texture: Option<Res<AircraftTexture>>,
     adsb_data: Option<Res<AdsbAircraftData>>,
     mut aircraft_query: Query<(Entity, &mut Aircraft, &mut Transform)>,
     label_query: Query<(Entity, &AircraftLabel)>,
 ) {
     let Some(adsb_data) = adsb_data else {
         return; // ADS-B client not yet initialized
+    };
+    let Some(aircraft_texture) = aircraft_texture else {
+        return; // Aircraft texture not yet loaded
     };
 
     let adsb_aircraft = adsb_data.get_aircraft();
@@ -674,10 +688,14 @@ fn sync_aircraft_from_adsb(
             }
             existing_aircraft.remove(&adsb_ac.icao);
         } else {
-            // Spawn new aircraft
+            // Spawn new aircraft with sprite icon
             let aircraft_entity = commands.spawn((
-                Mesh2d(meshes.add(Circle::new(constants::AIRCRAFT_MARKER_RADIUS))),
-                MeshMaterial2d(materials.add(Color::srgb(1.0, 0.0, 0.0))),
+                Sprite {
+                    image: aircraft_texture.handle.clone(),
+                    // Scale sprite to desired size (64px source scaled to marker radius)
+                    custom_size: Some(Vec2::splat(constants::AIRCRAFT_MARKER_RADIUS * 4.0)),
+                    ..default()
+                },
                 Transform::from_xyz(0.0, 0.0, constants::AIRCRAFT_Z_LAYER),
                 Aircraft {
                     icao: adsb_ac.icao.clone(),
@@ -1156,8 +1174,14 @@ fn update_aircraft_positions(
         transform.translation.x = offset_x as f32;
         transform.translation.y = offset_y as f32;
         // Apply rotation based on heading (track angle), defaulting to north-facing if no heading data
+        // The SVG airplane is rotated -45° (pointing northeast), so we add 45° to compensate
+        // Then negate because Bevy rotation is counter-clockwise but heading is clockwise
         if let Some(heading) = aircraft.heading {
-            transform.rotation = Quat::from_rotation_z(-heading.to_radians());
+            let rotation_offset = 45.0_f32; // SVG points northeast, offset to point north at heading=0
+            transform.rotation = Quat::from_rotation_z((-heading + rotation_offset).to_radians());
+        } else {
+            // Default to north-facing (45° offset for SVG)
+            transform.rotation = Quat::from_rotation_z(45.0_f32.to_radians());
         }
     }
 }
