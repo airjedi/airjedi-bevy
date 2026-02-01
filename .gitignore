@@ -1,7 +1,8 @@
 /target
 .idea/
 .fleet/
-/assets
+# Ignore downloaded map tiles but keep icon assets
+/assets/*.tile.png
 /tmp/
 /.worktrees/
 config.toml
