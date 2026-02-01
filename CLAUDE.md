@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AirJedi is an aircraft map tracker built with Bevy 0.17 game engine and bevy_slippy_tiles for map rendering. The application displays aircraft positions on an interactive slippy map (OpenStreetMap-based) with pan, zoom, and real-time position tracking capabilities.
+AirJedi is an aircraft map tracker built with Bevy 0.18 game engine and bevy_slippy_tiles for map rendering. The application displays aircraft positions on an interactive slippy map (OpenStreetMap-based) with pan, zoom, and real-time position tracking capabilities.
 
 ## Build and Run Commands
 
@@ -78,10 +78,11 @@ The application uses Bevy's ECS (Entity-Component-System) architecture with thes
 
 ## Dependencies
 
-- `bevy = "0.17"`: Game engine providing ECS, rendering, input, and windowing
-- `bevy_slippy_tiles = "0.10"`: Slippy map tile downloading and caching
-- `serde`, `serde_json`: JSON serialization (likely for future aircraft data feeds)
-- `reqwest` with blocking feature: HTTP client (likely for future API calls)
+- `bevy = "0.18"`: Game engine providing ECS, rendering, input, and windowing
+- `bevy_slippy_tiles`: Slippy map tile downloading and caching (git fork for 0.18 compatibility)
+- `bevy_egui = "0.39"`: Immediate mode GUI integration for settings panel
+- `serde`, `serde_json`: JSON serialization for aircraft data feeds
+- `reqwest` with blocking feature: HTTP client for API calls
 
 ## Current Sample Data
 
