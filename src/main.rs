@@ -6,7 +6,11 @@ use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 
 mod config;
+mod data;
+mod aviation;
+mod aircraft;
 use config::ConfigPlugin;
+use aircraft::AircraftListButton;
 use bevy_egui::EguiContexts;
 
 // ADS-B client types
@@ -205,6 +209,8 @@ fn main() {
             }),
             SlippyTilesPlugin,
             ConfigPlugin,
+            aviation::AviationPlugin,
+            aircraft::AircraftPlugin,
         ))
         .init_resource::<DragState>()
         .insert_resource(ZoomState::new())
@@ -235,6 +241,7 @@ fn main() {
         .add_systems(Update, update_aircraft_labels.after(update_aircraft_positions))
         .add_systems(Update, handle_clear_cache_button)
         .add_systems(Update, handle_settings_button)
+        .add_systems(Update, handle_aircraft_list_button)
         .add_systems(Update, update_connection_status)
         .add_systems(Update, display_tiles_filtered.after(ApplyDeferred))
         .add_systems(Update, animate_tile_fades.after(display_tiles_filtered))
@@ -584,6 +591,27 @@ fn setup_ui(mut commands: Commands) {
         TextColor(Color::WHITE),
     ));
 
+    // Aircraft List button
+    commands.spawn((
+        Button,
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(150.0),
+            left: Val::Px(10.0),
+            padding: UiRect::all(Val::Px(10.0)),
+            ..default()
+        },
+        BackgroundColor(Color::srgba(0.2, 0.2, 0.2, 0.9)),
+        AircraftListButton,
+    )).with_child((
+        Text::new("Aircraft (L)"),
+        TextFont {
+            font_size: 16.0,
+            ..default()
+        },
+        TextColor(Color::WHITE),
+    ));
+
     // Connection status indicator
     commands.spawn((
         Text::new("ADS-B: Connecting..."),
@@ -661,6 +689,7 @@ fn sync_aircraft_from_adsb(
                     velocity: adsb_ac.velocity,
                     vertical_rate: adsb_ac.vertical_rate,
                 },
+                aircraft::TrailHistory::default(),
             )).id();
 
             // Spawn label for this aircraft
@@ -1251,6 +1280,40 @@ fn handle_settings_button(
                 if ui_state.open {
                     ui_state.populate_from_config(&app_config);
                 }
+            }
+            Interaction::Hovered => {
+                let c = constants::BUTTON_HOVERED;
+                *background_color = BackgroundColor(Color::srgba(c.0, c.1, c.2, c.3));
+            }
+            Interaction::None => {
+                let c = constants::BUTTON_NORMAL;
+                *background_color = BackgroundColor(Color::srgba(c.0, c.1, c.2, c.3));
+            }
+        }
+    }
+}
+
+fn handle_aircraft_list_button(
+    mut interaction_query: Query<
+        (&Interaction, &mut BackgroundColor),
+        (Changed<Interaction>, With<AircraftListButton>),
+    >,
+    mut list_state: ResMut<aircraft::AircraftListState>,
+    mut contexts: EguiContexts,
+) {
+    // Don't process button clicks when pointer is over egui panel
+    if let Ok(ctx) = contexts.ctx_mut() {
+        if ctx.is_pointer_over_area() {
+            return;
+        }
+    }
+
+    for (interaction, mut background_color) in interaction_query.iter_mut() {
+        match *interaction {
+            Interaction::Pressed => {
+                let c = constants::BUTTON_PRESSED;
+                *background_color = BackgroundColor(Color::srgba(c.0, c.1, c.2, c.3));
+                list_state.expanded = !list_state.expanded;
             }
             Interaction::Hovered => {
                 let c = constants::BUTTON_HOVERED;
