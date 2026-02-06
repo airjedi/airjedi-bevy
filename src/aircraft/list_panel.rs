@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
 
 use crate::MapState;
+use super::CameraFollowState;
 
 /// Sort criteria for aircraft list
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -32,6 +33,12 @@ pub struct AircraftFilters {
     pub min_speed: f64,
     pub max_speed: f64,
     pub max_distance: f64,
+    /// Callsign/operator prefix filter (e.g., "AAL", "UAL", "SWA")
+    pub callsign_prefix: String,
+    /// Whether to include ground traffic (altitude = 0 or very low)
+    pub include_ground_traffic: bool,
+    /// Whether to only show aircraft with valid position data
+    pub require_position: bool,
 }
 
 impl Default for AircraftFilters {
@@ -42,6 +49,9 @@ impl Default for AircraftFilters {
             min_speed: 0.0,
             max_speed: 600.0,
             max_distance: 250.0,
+            callsign_prefix: String::new(),
+            include_ground_traffic: true,
+            require_position: true,
         }
     }
 }
@@ -123,6 +133,9 @@ pub fn update_aircraft_display_list(
     let center_lon = map_state.longitude;
     let search = list_state.search_text.to_lowercase();
 
+    // Get callsign prefix filter (lowercase for comparison)
+    let callsign_prefix = list_state.filters.callsign_prefix.to_lowercase();
+
     // Collect and filter aircraft
     let mut aircraft: Vec<AircraftDisplayData> = aircraft_query
         .iter()
@@ -134,6 +147,16 @@ pub fn update_aircraft_display_list(
                 return None;
             }
 
+            // Ground traffic filter
+            if !list_state.filters.include_ground_traffic {
+                // Consider aircraft on ground if altitude is 0 or below 100 ft
+                if let Some(alt) = a.altitude {
+                    if alt < 100 {
+                        return None;
+                    }
+                }
+            }
+
             if let Some(alt) = a.altitude {
                 if alt < list_state.filters.min_altitude || alt > list_state.filters.max_altitude {
                     return None;
@@ -142,6 +165,16 @@ pub fn update_aircraft_display_list(
 
             if let Some(vel) = a.velocity {
                 if vel < list_state.filters.min_speed || vel > list_state.filters.max_speed {
+                    return None;
+                }
+            }
+
+            // Apply callsign prefix filter
+            if !callsign_prefix.is_empty() {
+                let matches_prefix = a.callsign.as_ref()
+                    .map(|c| c.to_lowercase().starts_with(&callsign_prefix))
+                    .unwrap_or(false);
+                if !matches_prefix {
                     return None;
                 }
             }
@@ -215,6 +248,7 @@ fn get_altitude_color(altitude: Option<i32>) -> (egui::Color32, &'static str) {
 pub fn render_aircraft_list_panel(
     mut contexts: EguiContexts,
     mut list_state: ResMut<AircraftListState>,
+    mut follow_state: ResMut<CameraFollowState>,
     display_list: Res<AircraftDisplayList>,
 ) {
     if !list_state.expanded {
@@ -334,6 +368,26 @@ pub fn render_aircraft_list_panel(
                             .range(0.0..=500.0)
                             .prefix("Max: "));
 
+                        ui.add_space(4.0);
+
+                        // Callsign/operator prefix filter
+                        ui.label(egui::RichText::new("Callsign Prefix:")
+                            .color(header_color)
+                            .size(9.0));
+                        ui.add(egui::TextEdit::singleline(&mut list_state.filters.callsign_prefix)
+                            .hint_text("e.g., AAL, UAL, SWA")
+                            .desired_width(120.0));
+
+                        ui.add_space(4.0);
+
+                        // Ground traffic toggle
+                        ui.checkbox(&mut list_state.filters.include_ground_traffic,
+                            egui::RichText::new("Include ground traffic")
+                                .color(header_color)
+                                .size(9.0));
+
+                        ui.add_space(4.0);
+
                         if ui.button("Close").clicked() {
                             list_state.show_filter_popup = false;
                         }
@@ -363,11 +417,11 @@ pub fn render_aircraft_list_panel(
 
                         // Create card frame with selection highlighting (no outline)
                         let card_frame = if is_selected {
-                            egui::Frame::none()
+                            egui::Frame::NONE
                                 .fill(selected_bg)
                                 .inner_margin(egui::Margin::symmetric(4, 2))
                         } else {
-                            egui::Frame::none()
+                            egui::Frame::NONE
                                 .inner_margin(egui::Margin::symmetric(4, 2))
                         };
 
@@ -439,9 +493,9 @@ pub fn render_aircraft_list_panel(
                                     .monospace());
                             });
 
-                            // Row 3: Vertical rate (if available)
-                            if let Some(vr) = aircraft.vertical_rate {
-                                ui.horizontal(|ui| {
+                            // Row 3: Vertical rate and follow button
+                            ui.horizontal(|ui| {
+                                if let Some(vr) = aircraft.vertical_rate {
                                     let (vr_color, vr_symbol) = if vr > 100 {
                                         (egui::Color32::from_rgb(100, 255, 100), "↑")
                                     } else if vr < -100 {
@@ -453,8 +507,29 @@ pub fn render_aircraft_list_panel(
                                         .color(vr_color)
                                         .size(7.5)
                                         .monospace());
+                                }
+
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    let is_following = follow_state.following_icao.as_ref() == Some(&aircraft.icao);
+                                    let follow_text = if is_following { "Unfollow" } else { "Follow" };
+                                    let follow_color = if is_following {
+                                        egui::Color32::from_rgb(255, 100, 100)
+                                    } else {
+                                        egui::Color32::from_rgb(100, 180, 255)
+                                    };
+                                    if ui.add(egui::Button::new(
+                                        egui::RichText::new(follow_text)
+                                            .color(follow_color)
+                                            .size(8.0)
+                                    ).small()).clicked() {
+                                        if is_following {
+                                            follow_state.following_icao = None;
+                                        } else {
+                                            follow_state.following_icao = Some(aircraft.icao.clone());
+                                        }
+                                    }
                                 });
-                            }
+                            });
                         });
 
                         // Handle click to select
