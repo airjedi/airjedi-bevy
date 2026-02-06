@@ -9,8 +9,19 @@ mod config;
 mod data;
 mod aviation;
 mod aircraft;
+mod keyboard;
+mod weather;
+mod bookmarks;
+mod recording;
+mod tools;
+mod coverage;
+mod airspace;
+mod data_sources;
+mod export;
+mod view3d;
 use config::ConfigPlugin;
 use aircraft::AircraftListButton;
+use keyboard::{HelpOverlayState, handle_keyboard_shortcuts, toggle_overlays_keyboard, update_help_overlay};
 use bevy_egui::EguiContexts;
 
 // ADS-B client types
@@ -211,11 +222,22 @@ fn main() {
             ConfigPlugin,
             aviation::AviationPlugin,
             aircraft::AircraftPlugin,
+            weather::WeatherPlugin,
+            bookmarks::BookmarksPlugin,
+            recording::RecordingPlugin,
+            tools::ToolsPlugin,
+            coverage::CoveragePlugin,
+            airspace::AirspacePlugin,
+            data_sources::DataSourcesPlugin,
+            export::ExportPlugin,
+            view3d::View3DPlugin,
         ))
         .init_resource::<DragState>()
+        .init_resource::<HelpOverlayState>()
         .insert_resource(ZoomState::new())
+        // SlippyTilesSettings will be updated by setup_slippy_tiles_from_config after config is loaded
         .insert_resource(SlippyTilesSettings {
-            endpoint: "https://cartodb-basemaps-a.global.ssl.fastly.net/dark_all".to_string(),
+            endpoint: config::BasemapStyle::default().endpoint_url().to_string(),
             tiles_directory: std::path::PathBuf::from(""),  // Root assets directory
             reference_latitude: constants::DEFAULT_LATITUDE,   // Wichita, KS (matches MapState default)
             reference_longitude: constants::DEFAULT_LONGITUDE,  // Wichita, KS (matches MapState default)
@@ -233,7 +255,8 @@ fn main() {
         // This ensures old tiles are gone before new camera position is applied
         .add_systems(Update, ApplyDeferred.after(handle_zoom))
         .add_systems(Update, apply_camera_zoom.after(ApplyDeferred))
-        .add_systems(Update, update_camera_position.after(handle_pan_drag).after(apply_camera_zoom))
+        .add_systems(Update, follow_aircraft.after(sync_aircraft_from_adsb))
+        .add_systems(Update, update_camera_position.after(handle_pan_drag).after(apply_camera_zoom).after(follow_aircraft))
         .add_systems(Update, sync_aircraft_from_adsb)
         .add_systems(Update, update_aircraft_positions.after(update_camera_position).after(sync_aircraft_from_adsb))
         .add_systems(Update, update_aircraft_label_text.after(sync_aircraft_from_adsb))
@@ -245,6 +268,9 @@ fn main() {
         .add_systems(Update, update_connection_status)
         .add_systems(Update, display_tiles_filtered.after(ApplyDeferred))
         .add_systems(Update, animate_tile_fades.after(display_tiles_filtered))
+        .add_systems(Update, handle_keyboard_shortcuts)
+        .add_systems(Update, toggle_overlays_keyboard)
+        .add_systems(Update, update_help_overlay)
         .run();
 }
 
@@ -267,6 +293,8 @@ struct Aircraft {
     velocity: Option<f64>,
     /// Vertical rate in feet per minute
     vertical_rate: Option<i32>,
+    /// Squawk code (transponder code)
+    squawk: Option<String>,
 }
 
 // Component to link aircraft labels to their aircraft
@@ -504,10 +532,16 @@ fn setup_debug_logger(mut commands: Commands) {
 fn setup_map(
     mut commands: Commands,
     mut download_events: MessageWriter<DownloadSlippyTilesMessage>,
+    mut tile_settings: ResMut<SlippyTilesSettings>,
     app_config: Res<config::AppConfig>,
 ) {
     // Set up camera
     commands.spawn(Camera2d);
+
+    // Update SlippyTilesSettings from config
+    tile_settings.endpoint = app_config.map.basemap_style.endpoint_url().to_string();
+    tile_settings.reference_latitude = app_config.map.default_latitude;
+    tile_settings.reference_longitude = app_config.map.default_longitude;
 
     // Initialize map state resource from config
     let map_state = MapState {
@@ -685,6 +719,8 @@ fn sync_aircraft_from_adsb(
                 aircraft.velocity = adsb_ac.velocity;
                 aircraft.vertical_rate = adsb_ac.vertical_rate;
                 aircraft.callsign = adsb_ac.callsign.clone();
+                // Note: squawk is not available in current adsb_client, set to None
+                aircraft.squawk = None;
             }
             existing_aircraft.remove(&adsb_ac.icao);
         } else {
@@ -706,6 +742,8 @@ fn sync_aircraft_from_adsb(
                     heading: adsb_ac.track.map(|t| t as f32),
                     velocity: adsb_ac.velocity,
                     vertical_rate: adsb_ac.vertical_rate,
+                    // Note: squawk is not available in current adsb_client, set to None
+                    squawk: None,
                 },
                 aircraft::TrailHistory::default(),
             )).id();
@@ -812,6 +850,7 @@ fn handle_pan_drag(
     mut drag_state: ResMut<DragState>,
     zoom_state: Res<ZoomState>,
     mut download_events: MessageWriter<DownloadSlippyTilesMessage>,
+    mut follow_state: ResMut<aircraft::CameraFollowState>,
     window_query: Query<&Window>,
 ) {
     let Ok(_window) = window_query.single() else {
@@ -856,6 +895,11 @@ fn handle_pan_drag(
             if let Some(last_pos) = drag_state.last_position {
                 let delta = event.position - last_pos;
 
+                // Break follow mode when user manually pans
+                if delta.length() > 2.0 && follow_state.following_icao.is_some() {
+                    follow_state.following_icao = None;
+                }
+
                 // Convert screen delta to world delta (account for ortho projection)
                 // When ortho.scale = 1/camera_zoom, world_delta = screen_delta / camera_zoom
                 let delta_world_x = -(delta.x as f64) / zoom_state.camera_zoom as f64; // Negative for natural pan direction
@@ -891,6 +935,33 @@ fn handle_pan_drag(
             drag_state.last_position = Some(event.position);
         }
     }
+}
+
+/// System to follow a selected aircraft (moves map center to aircraft position)
+fn follow_aircraft(
+    mut map_state: ResMut<MapState>,
+    follow_state: Res<aircraft::CameraFollowState>,
+    aircraft_query: Query<&Aircraft>,
+    time: Res<Time>,
+) {
+    let Some(ref following_icao) = follow_state.following_icao else {
+        return;
+    };
+
+    // Find the aircraft we're following
+    let Some(aircraft) = aircraft_query.iter().find(|a| &a.icao == following_icao) else {
+        return;
+    };
+
+    // Lerp towards the aircraft position for smooth following
+    let lerp_speed = 3.0; // How fast to catch up (higher = faster)
+    let t = (lerp_speed * time.delta_secs()).min(1.0);
+
+    let new_lat = map_state.latitude + (aircraft.latitude - map_state.latitude) * t as f64;
+    let new_lon = map_state.longitude + (aircraft.longitude - map_state.longitude) * t as f64;
+
+    map_state.latitude = clamp_latitude(new_lat);
+    map_state.longitude = clamp_longitude(new_lon);
 }
 
 fn update_camera_position(

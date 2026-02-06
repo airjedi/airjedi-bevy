@@ -1,10 +1,53 @@
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiPrimaryContextPass};
+use bevy_slippy_tiles::SlippyTilesSettings;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
 const CONFIG_FILE: &str = "config.toml";
+
+/// Available basemap styles for the map display
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum BasemapStyle {
+    #[default]
+    CartoDark,
+    CartoLight,
+    OpenStreetMap,
+    EsriSatellite,
+}
+
+impl BasemapStyle {
+    /// Get the tile URL endpoint for this basemap style
+    pub fn endpoint_url(&self) -> &'static str {
+        match self {
+            BasemapStyle::CartoDark => "https://basemaps.cartocdn.com/dark_all",
+            BasemapStyle::CartoLight => "https://basemaps.cartocdn.com/light_all",
+            BasemapStyle::OpenStreetMap => "https://tile.openstreetmap.org",
+            BasemapStyle::EsriSatellite => "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile",
+        }
+    }
+
+    /// Get the display name for UI
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            BasemapStyle::CartoDark => "CartoDB Dark",
+            BasemapStyle::CartoLight => "CartoDB Light",
+            BasemapStyle::OpenStreetMap => "OpenStreetMap",
+            BasemapStyle::EsriSatellite => "ESRI Satellite",
+        }
+    }
+
+    /// Get all available styles
+    pub fn all() -> &'static [BasemapStyle] {
+        &[
+            BasemapStyle::CartoDark,
+            BasemapStyle::CartoLight,
+            BasemapStyle::OpenStreetMap,
+            BasemapStyle::EsriSatellite,
+        ]
+    }
+}
 
 #[derive(Resource, Serialize, Deserialize, Clone, Debug)]
 pub struct AppConfig {
@@ -14,6 +57,8 @@ pub struct AppConfig {
     pub overlays: OverlayConfig,
     #[serde(default)]
     pub trails: TrailsConfig,
+    #[serde(default)]
+    pub bookmarks: BookmarksConfig,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -48,6 +93,41 @@ impl Default for TrailsConfig {
     }
 }
 
+/// Bookmark for a specific aircraft by ICAO address
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct AircraftBookmark {
+    /// ICAO 24-bit address (hex string)
+    pub icao: String,
+    /// Optional callsign for display (may change between flights)
+    pub callsign: Option<String>,
+    /// User-defined note
+    pub note: Option<String>,
+}
+
+/// Bookmark for a map location
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct LocationBookmark {
+    /// Display name for this location
+    pub name: String,
+    /// Latitude in degrees
+    pub latitude: f64,
+    /// Longitude in degrees
+    pub longitude: f64,
+    /// Zoom level
+    pub zoom: u8,
+}
+
+/// Bookmarks configuration
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct BookmarksConfig {
+    /// Bookmarked aircraft
+    #[serde(default)]
+    pub aircraft: Vec<AircraftBookmark>,
+    /// Bookmarked locations
+    #[serde(default)]
+    pub locations: Vec<LocationBookmark>,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct FeedConfig {
     pub endpoint_url: String,
@@ -59,6 +139,8 @@ pub struct MapConfig {
     pub default_latitude: f64,
     pub default_longitude: f64,
     pub default_zoom: u8,
+    #[serde(default)]
+    pub basemap_style: BasemapStyle,
 }
 
 impl Default for AppConfig {
@@ -73,9 +155,11 @@ impl Default for AppConfig {
                 default_latitude: 37.6872,
                 default_longitude: -97.3301,
                 default_zoom: 10,
+                basemap_style: BasemapStyle::default(),
             },
             overlays: OverlayConfig::default(),
             trails: TrailsConfig::default(),
+            bookmarks: BookmarksConfig::default(),
         }
     }
 }
@@ -134,6 +218,8 @@ pub struct SettingsUiState {
     pub default_latitude: String,
     pub default_longitude: String,
     pub default_zoom: String,
+    // Map settings
+    pub basemap_style: BasemapStyle,
     // Overlay settings
     pub show_airports: bool,
     pub show_runways: bool,
@@ -151,6 +237,8 @@ impl SettingsUiState {
         self.default_latitude = config.map.default_latitude.to_string();
         self.default_longitude = config.map.default_longitude.to_string();
         self.default_zoom = config.map.default_zoom.to_string();
+        // Map settings
+        self.basemap_style = config.map.basemap_style;
         // Overlay settings
         self.show_airports = config.overlays.show_airports;
         self.show_runways = config.overlays.show_runways;
@@ -220,6 +308,7 @@ impl SettingsUiState {
                 default_latitude: lat,
                 default_longitude: lon,
                 default_zoom: zoom,
+                basemap_style: self.basemap_style,
             },
             overlays: OverlayConfig {
                 show_airports: self.show_airports,
@@ -230,6 +319,7 @@ impl SettingsUiState {
                 enabled: self.trails_enabled,
                 max_age_seconds: trails_max_age,
             },
+            bookmarks: BookmarksConfig::default(),
         })
     }
 }
@@ -268,6 +358,20 @@ pub fn render_settings_panel(
 
             // Map section
             ui.collapsing("Map Defaults", |ui| {
+                ui.label("Basemap Style:");
+                egui::ComboBox::from_id_salt("basemap_style")
+                    .selected_text(ui_state.basemap_style.display_name())
+                    .show_ui(ui, |ui| {
+                        for style in BasemapStyle::all() {
+                            ui.selectable_value(
+                                &mut ui_state.basemap_style,
+                                *style,
+                                style.display_name(),
+                            );
+                        }
+                    });
+                ui.add_space(8.0);
+
                 ui.label("Default Latitude:");
                 ui.text_edit_singleline(&mut ui_state.default_latitude);
                 ui.add_space(8.0);
@@ -372,16 +476,53 @@ pub fn sync_config_to_render_states(
     }
 }
 
+/// Resource to track the last applied basemap style for change detection
+#[derive(Resource)]
+pub struct CurrentBasemapState {
+    pub style: BasemapStyle,
+}
+
+impl Default for CurrentBasemapState {
+    fn default() -> Self {
+        Self {
+            style: BasemapStyle::default(),
+        }
+    }
+}
+
+/// System to detect basemap changes and update SlippyTilesSettings
+pub fn apply_basemap_changes(
+    app_config: Res<AppConfig>,
+    mut current_state: ResMut<CurrentBasemapState>,
+    mut tile_settings: ResMut<SlippyTilesSettings>,
+) {
+    if !app_config.is_changed() {
+        return;
+    }
+
+    let new_style = app_config.map.basemap_style;
+    if current_state.style != new_style {
+        info!("Basemap changed from {:?} to {:?}", current_state.style, new_style);
+        current_state.style = new_style;
+        tile_settings.endpoint = new_style.endpoint_url().to_string();
+        // Note: Tile cache clearing happens in main.rs when cache is cleared
+    }
+}
+
 pub struct ConfigPlugin;
 
 impl Plugin for ConfigPlugin {
     fn build(&self, app: &mut App) {
         let config = load_config();
+        let initial_basemap = CurrentBasemapState {
+            style: config.map.basemap_style,
+        };
 
         app.add_plugins(EguiPlugin::default())
             .insert_resource(config)
+            .insert_resource(initial_basemap)
             .init_resource::<SettingsUiState>()
-            .add_systems(Update, (toggle_settings_panel, sync_config_to_render_states))
+            .add_systems(Update, (toggle_settings_panel, sync_config_to_render_states, apply_basemap_changes))
             .add_systems(EguiPrimaryContextPass, render_settings_panel);
     }
 }
