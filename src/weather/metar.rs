@@ -6,7 +6,8 @@ use std::time::{Duration, Instant};
 
 use crate::aviation::{AirportRenderState, AviationData};
 use crate::{MapState, ZoomState};
-use bevy_slippy_tiles::{LatitudeLongitudeCoordinates, TileSize, world_coords_to_world_pixel};
+use crate::geo::CoordinateConverter;
+use bevy_slippy_tiles::*;
 
 /// Flight category based on visibility and ceiling
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -486,33 +487,22 @@ pub fn render_weather_indicators(
     }
 }
 
-/// Update weather indicator positions based on map state
+/// Update weather indicator positions based on map state.
+/// Uses the same reference-point-based coordinate conversion as all other
+/// rendering systems (airports, navaids, aircraft, etc.).
 pub fn update_weather_indicator_positions(
     mut indicators: Query<(&WeatherIndicator, &mut Transform)>,
     map_state: Res<MapState>,
+    tile_settings: Res<SlippyTilesSettings>,
     zoom_state: Res<ZoomState>,
 ) {
+    let converter = CoordinateConverter::new(&tile_settings, map_state.zoom_level);
+
     for (indicator, mut transform) in indicators.iter_mut() {
-        // Convert lat/lon to world pixel coordinates
-        let coords = LatitudeLongitudeCoordinates {
-            latitude: indicator.latitude,
-            longitude: indicator.longitude,
-        };
-        let (px, py) = world_coords_to_world_pixel(&coords, TileSize::Normal, map_state.zoom_level);
+        let pos = converter.latlon_to_world(indicator.latitude, indicator.longitude);
 
-        // Convert map center to world pixel
-        let center_coords = LatitudeLongitudeCoordinates {
-            latitude: map_state.latitude,
-            longitude: map_state.longitude,
-        };
-        let (cx, cy) = world_coords_to_world_pixel(&center_coords, TileSize::Normal, map_state.zoom_level);
-
-        // Calculate relative position
-        let rel_x = (px - cx) as f32 * zoom_state.camera_zoom;
-        let rel_y = -(py - cy) as f32 * zoom_state.camera_zoom; // Y is inverted
-
-        transform.translation.x = rel_x;
-        transform.translation.y = rel_y;
+        transform.translation.x = pos.x;
+        transform.translation.y = pos.y;
 
         // Scale based on zoom
         let scale = (zoom_state.camera_zoom * 0.5).clamp(0.5, 2.0);

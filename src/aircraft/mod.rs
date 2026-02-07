@@ -1,3 +1,5 @@
+pub mod altitude;
+pub mod components;
 pub mod trails;
 pub mod trail_renderer;
 pub mod list_panel;
@@ -7,6 +9,8 @@ pub mod prediction;
 pub mod stats_panel;
 pub mod plugin;
 
+pub use altitude::*;
+pub use components::*;
 pub use trails::*;
 pub use trail_renderer::*;
 pub use list_panel::*;

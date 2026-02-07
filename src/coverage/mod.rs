@@ -8,6 +8,8 @@ use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
 use std::collections::HashMap;
 
+use crate::geo::{haversine_distance_nm, initial_bearing};
+
 /// Number of sectors to divide the coverage area into
 const NUM_SECTORS: usize = 36;
 /// Degrees per sector
@@ -92,15 +94,12 @@ impl CoverageState {
         aircraft_lat: f64,
         aircraft_lon: f64,
     ) -> f64 {
-        let lat1 = self.receiver_location.0.to_radians();
-        let lat2 = aircraft_lat.to_radians();
-        let dlon = (aircraft_lon - self.receiver_location.1).to_radians();
-
-        let x = dlon.cos() * lat2.cos();
-        let y = lat1.cos() * lat2.sin() - lat1.sin() * lat2.cos() * dlon.cos();
-
-        let bearing = x.atan2(y).to_degrees();
-        (bearing + 360.0) % 360.0
+        initial_bearing(
+            self.receiver_location.0,
+            self.receiver_location.1,
+            aircraft_lat,
+            aircraft_lon,
+        )
     }
 
     /// Calculate distance from receiver to aircraft in nautical miles
@@ -109,18 +108,12 @@ impl CoverageState {
         aircraft_lat: f64,
         aircraft_lon: f64,
     ) -> f64 {
-        let lat1 = self.receiver_location.0.to_radians();
-        let lat2 = aircraft_lat.to_radians();
-        let dlat = lat2 - lat1;
-        let dlon = (aircraft_lon - self.receiver_location.1).to_radians();
-
-        // Haversine formula
-        let a = (dlat / 2.0).sin().powi(2) + lat1.cos() * lat2.cos() * (dlon / 2.0).sin().powi(2);
-        let c = 2.0 * a.sqrt().asin();
-
-        // Earth radius in nautical miles
-        const EARTH_RADIUS_NM: f64 = 3440.065;
-        c * EARTH_RADIUS_NM
+        haversine_distance_nm(
+            self.receiver_location.0,
+            self.receiver_location.1,
+            aircraft_lat,
+            aircraft_lon,
+        )
     }
 
     /// Record an aircraft observation

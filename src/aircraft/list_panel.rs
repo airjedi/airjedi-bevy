@@ -2,7 +2,8 @@ use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
 
 use crate::MapState;
-use super::CameraFollowState;
+use crate::geo::{haversine_distance_nm, CoordinateConverter};
+use super::{CameraFollowState, format_altitude_with_indicator};
 
 /// Sort criteria for aircraft list
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -104,22 +105,6 @@ pub struct AircraftDisplayData {
 #[derive(Resource, Default)]
 pub struct AircraftDisplayList {
     pub aircraft: Vec<AircraftDisplayData>,
-}
-
-/// Calculate distance between two lat/lon points in nautical miles
-fn haversine_distance_nm(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
-    let r = 3440.065; // Earth radius in nautical miles
-
-    let lat1_rad = lat1.to_radians();
-    let lat2_rad = lat2.to_radians();
-    let delta_lat = (lat2 - lat1).to_radians();
-    let delta_lon = (lon2 - lon1).to_radians();
-
-    let a = (delta_lat / 2.0).sin().powi(2)
-        + lat1_rad.cos() * lat2_rad.cos() * (delta_lon / 2.0).sin().powi(2);
-    let c = 2.0 * a.sqrt().asin();
-
-    r * c
 }
 
 /// System to populate and sort the aircraft display list
@@ -457,11 +442,7 @@ pub fn render_aircraft_list_panel(
 
                                 // Altitude with indicator
                                 if let Some(alt) = aircraft.altitude {
-                                    let alt_text = if alt >= 18000 {
-                                        format!("│ {} FL{:03}", alt_indicator, alt / 100)
-                                    } else {
-                                        format!("│ {} {}", alt_indicator, alt)
-                                    };
+                                    let alt_text = format!("│ {}", format_altitude_with_indicator(alt, &alt_indicator));
                                     ui.label(egui::RichText::new(alt_text)
                                         .color(alt_color)
                                         .size(9.5)
@@ -579,32 +560,8 @@ pub fn highlight_selected_aircraft(
         return;
     };
 
-    use bevy_slippy_tiles::*;
-
-    let reference_ll = LatitudeLongitudeCoordinates {
-        latitude: tile_settings.reference_latitude,
-        longitude: tile_settings.reference_longitude,
-    };
-    let reference_pixel = world_coords_to_world_pixel(
-        &reference_ll,
-        TileSize::Normal,
-        map_state.zoom_level,
-    );
-
-    let aircraft_ll = LatitudeLongitudeCoordinates {
-        latitude: aircraft.latitude,
-        longitude: aircraft.longitude,
-    };
-    let aircraft_pixel = world_coords_to_world_pixel(
-        &aircraft_ll,
-        TileSize::Normal,
-        map_state.zoom_level,
-    );
-
-    let pos = Vec2::new(
-        (aircraft_pixel.0 - reference_pixel.0) as f32,
-        (aircraft_pixel.1 - reference_pixel.1) as f32,
-    );
+    let converter = CoordinateConverter::new(&tile_settings, map_state.zoom_level);
+    let pos = converter.latlon_to_world(aircraft.latitude, aircraft.longitude);
 
     // Draw selection ring (yellow)
     let color = Color::srgb(1.0, 1.0, 0.0);

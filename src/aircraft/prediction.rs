@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy_slippy_tiles::*;
 
 use crate::{Aircraft, MapState};
+use crate::geo::{predict_position, CoordinateConverter};
 use super::{AircraftListState, CameraFollowState};
 
 /// Configuration for flight path prediction
@@ -25,44 +26,6 @@ impl Default for PredictionConfig {
             gap_length: 4.0,
         }
     }
-}
-
-/// Calculate a predicted position based on current position, heading, and speed
-fn predict_position(
-    lat: f64,
-    lon: f64,
-    heading_deg: f32,
-    speed_knots: f64,
-    minutes: f32,
-) -> (f64, f64) {
-    // Convert speed from knots to nautical miles per minute
-    let nm_per_minute = speed_knots / 60.0;
-
-    // Distance to travel in nautical miles
-    let distance_nm = nm_per_minute * minutes as f64;
-
-    // Convert heading to radians (0 = north, clockwise positive)
-    let heading_rad = (heading_deg as f64).to_radians();
-
-    // Earth radius in nautical miles
-    let earth_radius_nm = 3440.065;
-
-    // Calculate angular distance
-    let angular_distance = distance_nm / earth_radius_nm;
-
-    // Current position in radians
-    let lat1 = lat.to_radians();
-    let lon1 = lon.to_radians();
-
-    // Calculate new latitude
-    let lat2 = (lat1.sin() * angular_distance.cos()
-        + lat1.cos() * angular_distance.sin() * heading_rad.cos()).asin();
-
-    // Calculate new longitude
-    let lon2 = lon1 + (heading_rad.sin() * angular_distance.sin() * lat1.cos())
-        .atan2(angular_distance.cos() - lat1.sin() * lat2.sin());
-
-    (lat2.to_degrees(), lon2.to_degrees())
 }
 
 /// System to draw flight path predictions using Gizmos
@@ -105,31 +68,10 @@ pub fn draw_predictions(
         return;
     }
 
-    // Calculate reference point for world coordinate conversion
-    let reference_ll = LatitudeLongitudeCoordinates {
-        latitude: tile_settings.reference_latitude,
-        longitude: tile_settings.reference_longitude,
-    };
-    let reference_pixel = world_coords_to_world_pixel(
-        &reference_ll,
-        TileSize::Normal,
-        map_state.zoom_level,
-    );
+    let converter = CoordinateConverter::new(&tile_settings, map_state.zoom_level);
 
     // Get current aircraft position in world coordinates
-    let aircraft_ll = LatitudeLongitudeCoordinates {
-        latitude: aircraft.latitude,
-        longitude: aircraft.longitude,
-    };
-    let aircraft_pixel = world_coords_to_world_pixel(
-        &aircraft_ll,
-        TileSize::Normal,
-        map_state.zoom_level,
-    );
-    let start_pos = Vec2::new(
-        (aircraft_pixel.0 - reference_pixel.0) as f32,
-        (aircraft_pixel.1 - reference_pixel.1) as f32,
-    );
+    let start_pos = converter.latlon_to_world(aircraft.latitude, aircraft.longitude);
 
     // Draw prediction lines for each time horizon
     let mut prev_pos = start_pos;
@@ -152,19 +94,7 @@ pub fn draw_predictions(
             minutes,
         );
 
-        let pred_ll = LatitudeLongitudeCoordinates {
-            latitude: pred_lat,
-            longitude: pred_lon,
-        };
-        let pred_pixel = world_coords_to_world_pixel(
-            &pred_ll,
-            TileSize::Normal,
-            map_state.zoom_level,
-        );
-        let end_pos = Vec2::new(
-            (pred_pixel.0 - reference_pixel.0) as f32,
-            (pred_pixel.1 - reference_pixel.1) as f32,
-        );
+        let end_pos = converter.latlon_to_world(pred_lat, pred_lon);
 
         // Get color for this segment
         let color = colors.get(i).copied().unwrap_or(colors[colors.len() - 1]);

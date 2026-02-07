@@ -3,6 +3,7 @@ use bevy_slippy_tiles::*;
 
 use super::{AviationData, LoadingState, NavaidType};
 use crate::MapState;
+use crate::geo::CoordinateConverter;
 
 /// Component marking a navaid entity
 #[derive(Component)]
@@ -43,31 +44,10 @@ pub fn draw_navaids(
         return;
     }
 
-    let reference_ll = LatitudeLongitudeCoordinates {
-        latitude: tile_settings.reference_latitude,
-        longitude: tile_settings.reference_longitude,
-    };
-    let reference_pixel = world_coords_to_world_pixel(
-        &reference_ll,
-        TileSize::Normal,
-        map_state.zoom_level,
-    );
+    let converter = CoordinateConverter::new(&tile_settings, map_state.zoom_level);
 
     for navaid in &aviation_data.navaids {
-        let navaid_ll = LatitudeLongitudeCoordinates {
-            latitude: navaid.latitude_deg,
-            longitude: navaid.longitude_deg,
-        };
-        let navaid_pixel = world_coords_to_world_pixel(
-            &navaid_ll,
-            TileSize::Normal,
-            map_state.zoom_level,
-        );
-
-        let pos = Vec2::new(
-            (navaid_pixel.0 - reference_pixel.0) as f32,
-            (navaid_pixel.1 - reference_pixel.1) as f32,
-        );
+        let pos = converter.latlon_to_world(navaid.latitude_deg, navaid.longitude_deg);
 
         let color = navaid.color();
         let size = 4.0;
