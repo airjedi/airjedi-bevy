@@ -1,0 +1,311 @@
+2025-11-03T15:37:04.102413Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:04.102434Z  INFO airjedi_bevyui: Map center: (51.507400, -0.127800)
+2025-11-03T15:37:04.102438Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:04.102441Z  INFO airjedi_bevyui: Zoom level: 10, Camera zoom: 1.000
+2025-11-03T15:37:04.102444Z  INFO airjedi_bevyui: Camera position: (0.00, 0.00)
+2025-11-03T15:37:04.102446Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:04.603273Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:04.603308Z  INFO airjedi_bevyui: Map center: (51.507400, -0.127800)
+2025-11-03T15:37:04.603313Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:04.603316Z  INFO airjedi_bevyui: Zoom level: 10, Camera zoom: 1.000
+2025-11-03T15:37:04.603319Z  INFO airjedi_bevyui: Camera position: (0.00, 0.00)
+2025-11-03T15:37:04.603322Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:05.120601Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:05.120645Z  INFO airjedi_bevyui: Map center: (51.507400, -0.127800)
+2025-11-03T15:37:05.120652Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:05.120655Z  INFO airjedi_bevyui: Zoom level: 10, Camera zoom: 1.000
+2025-11-03T15:37:05.120663Z  INFO airjedi_bevyui: Camera position: (0.00, 0.00)
+2025-11-03T15:37:05.120666Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:05.621585Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:05.621611Z  INFO airjedi_bevyui: Map center: (51.507400, -0.127800)
+2025-11-03T15:37:05.621616Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:05.621619Z  INFO airjedi_bevyui: Zoom level: 10, Camera zoom: 1.000
+2025-11-03T15:37:05.621623Z  INFO airjedi_bevyui: Camera position: (0.00, 0.00)
+2025-11-03T15:37:05.621626Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:06.120730Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:06.120788Z  INFO airjedi_bevyui: Map center: (51.507400, -0.127800)
+2025-11-03T15:37:06.120796Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:06.120798Z  INFO airjedi_bevyui: Zoom level: 10, Camera zoom: 1.000
+2025-11-03T15:37:06.120803Z  INFO airjedi_bevyui: Camera position: (0.00, 0.00)
+2025-11-03T15:37:06.120806Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:06.620713Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:06.620738Z  INFO airjedi_bevyui: Map center: (51.507400, -0.127800)
+2025-11-03T15:37:06.620742Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:06.620745Z  INFO airjedi_bevyui: Zoom level: 10, Camera zoom: 1.000
+2025-11-03T15:37:06.620749Z  INFO airjedi_bevyui: Camera position: (0.00, 0.00)
+2025-11-03T15:37:06.620752Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:07.121434Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:07.121460Z  INFO airjedi_bevyui: Map center: (51.502674, -0.123374)
+2025-11-03T15:37:07.121465Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:07.121467Z  INFO airjedi_bevyui: Zoom level: 10, Camera zoom: 1.299
+2025-11-03T15:37:07.121470Z  INFO airjedi_bevyui: Camera position: (3.05, -5.23)
+2025-11-03T15:37:07.121472Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:07.261559Z  INFO airjedi_bevyui: Despawned 49 tiles for zoom level change 10 -> 11
+2025-11-03T15:37:07.621256Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:07.621283Z  INFO airjedi_bevyui: Map center: (51.496624, -0.117709)
+2025-11-03T15:37:07.621288Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:07.621291Z  INFO airjedi_bevyui: Zoom level: 11, Camera zoom: 1.051
+2025-11-03T15:37:07.621293Z  INFO airjedi_bevyui: Camera position: (14.59, -25.03)
+2025-11-03T15:37:07.621296Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:07.944989Z  INFO airjedi_bevyui: Despawned 49 tiles for zoom level change 11 -> 12
+2025-11-03T15:37:08.120905Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:08.120948Z  INFO airjedi_bevyui: Map center: (51.492341, -0.113699)
+2025-11-03T15:37:08.120956Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:08.120958Z  INFO airjedi_bevyui: Zoom level: 12, Camera zoom: 0.935
+2025-11-03T15:37:08.120961Z  INFO airjedi_bevyui: Camera position: (41.07, -70.46)
+2025-11-03T15:37:08.120965Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:08.620286Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:08.620313Z  INFO airjedi_bevyui: Map center: (51.491664, -0.113065)
+2025-11-03T15:37:08.620317Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:08.620319Z  INFO airjedi_bevyui: Zoom level: 12, Camera zoom: 1.066
+2025-11-03T15:37:08.620322Z  INFO airjedi_bevyui: Camera position: (42.92, -73.63)
+2025-11-03T15:37:08.620325Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:09.120317Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:09.120353Z  INFO airjedi_bevyui: Map center: (51.490521, -0.111994)
+2025-11-03T15:37:09.120359Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:09.120361Z  INFO airjedi_bevyui: Zoom level: 12, Camera zoom: 1.398
+2025-11-03T15:37:09.120364Z  INFO airjedi_bevyui: Camera position: (45.92, -78.77)
+2025-11-03T15:37:09.120367Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:09.170125Z  INFO airjedi_bevyui: Despawned 49 tiles for zoom level change 12 -> 13
+2025-11-03T15:37:09.621056Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:09.621088Z  INFO airjedi_bevyui: Map center: (51.489355, -0.110903)
+2025-11-03T15:37:09.621095Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:09.621097Z  INFO airjedi_bevyui: Zoom level: 13, Camera zoom: 1.024
+2025-11-03T15:37:09.621103Z  INFO airjedi_bevyui: Camera position: (98.43, -168.85)
+2025-11-03T15:37:09.621106Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:09.872238Z  INFO airjedi_bevyui: Despawned 49 tiles for zoom level change 13 -> 12
+2025-11-03T15:37:10.120702Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:10.120729Z  INFO airjedi_bevyui: Map center: (51.490867, -0.112318)
+2025-11-03T15:37:10.120734Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:10.120737Z  INFO airjedi_bevyui: Zoom level: 12, Camera zoom: 1.278
+2025-11-03T15:37:10.120740Z  INFO airjedi_bevyui: Camera position: (45.09, -77.36)
+2025-11-03T15:37:10.120742Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:10.622114Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:10.622145Z  INFO airjedi_bevyui: Map center: (51.491015, -0.112457)
+2025-11-03T15:37:10.622151Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:10.622154Z  INFO airjedi_bevyui: Zoom level: 12, Camera zoom: 1.232
+2025-11-03T15:37:10.622158Z  INFO airjedi_bevyui: Camera position: (44.69, -76.66)
+2025-11-03T15:37:10.622160Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:11.121807Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:11.121836Z  INFO airjedi_bevyui: Map center: (51.491015, -0.112457)
+2025-11-03T15:37:11.121841Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:11.121844Z  INFO airjedi_bevyui: Zoom level: 12, Camera zoom: 1.232
+2025-11-03T15:37:11.121848Z  INFO airjedi_bevyui: Camera position: (44.69, -76.66)
+2025-11-03T15:37:11.121852Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:11.620397Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:11.620435Z  INFO airjedi_bevyui: Map center: (51.491015, -0.112457)
+2025-11-03T15:37:11.620441Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:11.620443Z  INFO airjedi_bevyui: Zoom level: 12, Camera zoom: 1.232
+2025-11-03T15:37:11.620447Z  INFO airjedi_bevyui: Camera position: (44.69, -76.66)
+2025-11-03T15:37:11.620450Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:11.986844Z  INFO airjedi_bevyui: Despawned 49 tiles for zoom level change 12 -> 11
+2025-11-03T15:37:12.120256Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:12.120281Z  INFO airjedi_bevyui: Map center: (51.494575, -0.115790)
+2025-11-03T15:37:12.120285Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:12.120287Z  INFO airjedi_bevyui: Zoom level: 11, Camera zoom: 1.330
+2025-11-03T15:37:12.120289Z  INFO airjedi_bevyui: Camera position: (17.49, -30.01)
+2025-11-03T15:37:12.120292Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:12.577832Z  INFO airjedi_bevyui: Despawned 49 tiles for zoom level change 11 -> 12
+2025-11-03T15:37:12.621044Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:12.621060Z  INFO airjedi_bevyui: Map center: (51.493208, -0.114510)
+2025-11-03T15:37:12.621064Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:12.621066Z  INFO airjedi_bevyui: Zoom level: 12, Camera zoom: 0.808
+2025-11-03T15:37:12.621068Z  INFO airjedi_bevyui: Camera position: (38.36, -65.81)
+2025-11-03T15:37:12.621070Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:13.120162Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:13.120182Z  INFO airjedi_bevyui: Map center: (51.490520, -0.111994)
+2025-11-03T15:37:13.120187Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:13.120190Z  INFO airjedi_bevyui: Zoom level: 12, Camera zoom: 1.398
+2025-11-03T15:37:13.120193Z  INFO airjedi_bevyui: Camera position: (45.92, -78.77)
+2025-11-03T15:37:13.120197Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:13.204013Z  INFO airjedi_bevyui: Despawned 49 tiles for zoom level change 12 -> 13
+2025-11-03T15:37:13.620107Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:13.620138Z  INFO airjedi_bevyui: Map center: (51.489821, -0.111339)
+2025-11-03T15:37:13.620142Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:13.620145Z  INFO airjedi_bevyui: Zoom level: 13, Camera zoom: 0.863
+2025-11-03T15:37:13.620147Z  INFO airjedi_bevyui: Camera position: (95.89, -164.49)
+2025-11-03T15:37:13.620150Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:14.119752Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:14.119781Z  INFO airjedi_bevyui: Map center: (51.488731, -0.110318)
+2025-11-03T15:37:14.119786Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:14.119789Z  INFO airjedi_bevyui: Zoom level: 13, Camera zoom: 1.363
+2025-11-03T15:37:14.119793Z  INFO airjedi_bevyui: Camera position: (101.72, -174.49)
+2025-11-03T15:37:14.119796Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:14.220942Z  INFO airjedi_bevyui: Despawned 49 tiles for zoom level change 13 -> 14
+2025-11-03T15:37:14.621831Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:14.621858Z  INFO airjedi_bevyui: Map center: (51.487997, -0.109631)
+2025-11-03T15:37:14.621863Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:14.621867Z  INFO airjedi_bevyui: Zoom level: 14, Camera zoom: 1.115
+2025-11-03T15:37:14.621869Z  INFO airjedi_bevyui: Camera position: (211.68, -363.13)
+2025-11-03T15:37:14.621872Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:14.861613Z  INFO airjedi_bevyui: Despawned 49 tiles for zoom level change 14 -> 13
+2025-11-03T15:37:15.111899Z  INFO airjedi_bevyui: Despawned 49 tiles for zoom level change 13 -> 12
+2025-11-03T15:37:15.129167Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:15.129190Z  INFO airjedi_bevyui: Map center: (51.490741, -0.112201)
+2025-11-03T15:37:15.129196Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:15.129199Z  INFO airjedi_bevyui: Zoom level: 12, Camera zoom: 1.319
+2025-11-03T15:37:15.129201Z  INFO airjedi_bevyui: Camera position: (45.78, -78.53)
+2025-11-03T15:37:15.129204Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:15.429023Z  INFO airjedi_bevyui: Despawned 49 tiles for zoom level change 12 -> 11
+2025-11-03T15:37:15.628660Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:15.628693Z  INFO airjedi_bevyui: Map center: (51.497796, -0.118806)
+2025-11-03T15:37:15.628698Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:15.628701Z  INFO airjedi_bevyui: Zoom level: 11, Camera zoom: 0.939
+2025-11-03T15:37:15.628705Z  INFO airjedi_bevyui: Camera position: (13.34, -22.88)
+2025-11-03T15:37:15.628707Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:16.128284Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:16.128313Z  INFO airjedi_bevyui: Map center: (51.500020, -0.120889)
+2025-11-03T15:37:16.128318Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:16.128320Z  INFO airjedi_bevyui: Zoom level: 11, Camera zoom: 0.780
+2025-11-03T15:37:16.128323Z  INFO airjedi_bevyui: Camera position: (10.07, -17.27)
+2025-11-03T15:37:16.128328Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:16.629810Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:16.629835Z  INFO airjedi_bevyui: Map center: (51.500020, -0.120889)
+2025-11-03T15:37:16.629840Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:16.629843Z  INFO airjedi_bevyui: Zoom level: 11, Camera zoom: 0.780
+2025-11-03T15:37:16.629845Z  INFO airjedi_bevyui: Camera position: (10.07, -17.27)
+2025-11-03T15:37:16.629850Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:17.129001Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:17.129026Z  INFO airjedi_bevyui: Map center: (51.426547, -0.084829)
+2025-11-03T15:37:17.129032Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:17.129035Z  INFO airjedi_bevyui: Zoom level: 11, Camera zoom: 0.780
+2025-11-03T15:37:17.129038Z  INFO airjedi_bevyui: Camera position: (60.66, -187.31)
+2025-11-03T15:37:17.129041Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:17.628324Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:17.628350Z  INFO airjedi_bevyui: Map center: (51.407667, -0.047905)
+2025-11-03T15:37:17.628354Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:17.628357Z  INFO airjedi_bevyui: Zoom level: 11, Camera zoom: 0.780
+2025-11-03T15:37:17.628359Z  INFO airjedi_bevyui: Camera position: (116.36, -233.11)
+2025-11-03T15:37:17.628363Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:18.129521Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:18.129547Z  INFO airjedi_bevyui: Map center: (51.407667, -0.047905)
+2025-11-03T15:37:18.129552Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:18.129555Z  INFO airjedi_bevyui: Zoom level: 11, Camera zoom: 0.780
+2025-11-03T15:37:18.129557Z  INFO airjedi_bevyui: Camera position: (116.36, -233.11)
+2025-11-03T15:37:18.129561Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:18.629006Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:18.629031Z  INFO airjedi_bevyui: Map center: (51.433218, 0.180745)
+2025-11-03T15:37:18.629036Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:18.629039Z  INFO airjedi_bevyui: Zoom level: 11, Camera zoom: 0.780
+2025-11-03T15:37:18.629042Z  INFO airjedi_bevyui: Camera position: (447.17, -173.52)
+2025-11-03T15:37:18.629045Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:19.128843Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:19.128873Z  INFO airjedi_bevyui: Map center: (51.433304, 0.182725)
+2025-11-03T15:37:19.128878Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:19.128880Z  INFO airjedi_bevyui: Zoom level: 11, Camera zoom: 0.780
+2025-11-03T15:37:19.128883Z  INFO airjedi_bevyui: Camera position: (452.23, -173.23)
+2025-11-03T15:37:19.128886Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:19.628480Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:19.628500Z  INFO airjedi_bevyui: Map center: (51.433304, 0.182725)
+2025-11-03T15:37:19.628505Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:19.628507Z  INFO airjedi_bevyui: Zoom level: 11, Camera zoom: 0.780
+2025-11-03T15:37:19.628510Z  INFO airjedi_bevyui: Camera position: (452.23, -173.23)
+2025-11-03T15:37:19.628513Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:20.129402Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:20.129425Z  INFO airjedi_bevyui: Map center: (51.433304, 0.182725)
+2025-11-03T15:37:20.129432Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:20.129435Z  INFO airjedi_bevyui: Zoom level: 11, Camera zoom: 0.780
+2025-11-03T15:37:20.129438Z  INFO airjedi_bevyui: Camera position: (452.23, -173.23)
+2025-11-03T15:37:20.129441Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:20.628689Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:20.628715Z  INFO airjedi_bevyui: Map center: (51.484273, 0.419465)
+2025-11-03T15:37:20.628720Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:20.628723Z  INFO airjedi_bevyui: Zoom level: 11, Camera zoom: 0.780
+2025-11-03T15:37:20.628725Z  INFO airjedi_bevyui: Camera position: (797.23, -56.88)
+2025-11-03T15:37:20.628728Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:21.128291Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:21.128323Z  INFO airjedi_bevyui: Map center: (51.523971, 0.044979)
+2025-11-03T15:37:21.128327Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:21.128329Z  INFO airjedi_bevyui: Zoom level: 11, Camera zoom: 0.780
+2025-11-03T15:37:21.128332Z  INFO airjedi_bevyui: Camera position: (262.15, 38.79)
+2025-11-03T15:37:21.128335Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:21.628698Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:21.628727Z  INFO airjedi_bevyui: Map center: (51.524407, -0.037573)
+2025-11-03T15:37:21.628732Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:21.628734Z  INFO airjedi_bevyui: Zoom level: 11, Camera zoom: 0.780
+2025-11-03T15:37:21.628736Z  INFO airjedi_bevyui: Camera position: (131.40, 39.80)
+2025-11-03T15:37:21.628741Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:22.129016Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:22.129056Z  INFO airjedi_bevyui: Map center: (51.524407, -0.037573)
+2025-11-03T15:37:22.129061Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:22.129064Z  INFO airjedi_bevyui: Zoom level: 11, Camera zoom: 0.780
+2025-11-03T15:37:22.129067Z  INFO airjedi_bevyui: Camera position: (131.40, 39.80)
+2025-11-03T15:37:22.129070Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:22.628951Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:22.628973Z  INFO airjedi_bevyui: Map center: (51.520516, -0.007568)
+2025-11-03T15:37:22.628977Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:22.628980Z  INFO airjedi_bevyui: Zoom level: 11, Camera zoom: 1.459
+2025-11-03T15:37:22.628983Z  INFO airjedi_bevyui: Camera position: (174.90, 30.73)
+2025-11-03T15:37:22.628986Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:22.661849Z  INFO airjedi_bevyui: Despawned 147 tiles for zoom level change 11 -> 12
+2025-11-03T15:37:23.129477Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:23.129535Z  INFO airjedi_bevyui: Map center: (51.518940, 0.004575)
+2025-11-03T15:37:23.129542Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:23.129544Z  INFO airjedi_bevyui: Zoom level: 12, Camera zoom: 1.126
+2025-11-03T15:37:23.129547Z  INFO airjedi_bevyui: Camera position: (385.31, 54.07)
+2025-11-03T15:37:23.129550Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:23.628618Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:23.628647Z  INFO airjedi_bevyui: Map center: (51.519832, -0.002300)
+2025-11-03T15:37:23.628652Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:23.628655Z  INFO airjedi_bevyui: Zoom level: 12, Camera zoom: 0.861
+2025-11-03T15:37:23.628658Z  INFO airjedi_bevyui: Camera position: (366.91, 57.90)
+2025-11-03T15:37:23.628660Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:23.695512Z  INFO airjedi_bevyui: Despawned 49 tiles for zoom level change 12 -> 11
+2025-11-03T15:37:24.128438Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:24.128466Z  INFO airjedi_bevyui: Map center: (51.524297, -0.036724)
+2025-11-03T15:37:24.128474Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:24.128477Z  INFO airjedi_bevyui: Zoom level: 11, Camera zoom: 0.791
+2025-11-03T15:37:24.128480Z  INFO airjedi_bevyui: Camera position: (133.38, 39.39)
+2025-11-03T15:37:24.128488Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:24.186864Z  INFO airjedi_bevyui: Despawned 49 tiles for zoom level change 11 -> 10
+2025-11-03T15:37:24.628938Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:24.628963Z  INFO airjedi_bevyui: Map center: (51.530077, -0.081288)
+2025-11-03T15:37:24.628973Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:24.628976Z  INFO airjedi_bevyui: Zoom level: 10, Camera zoom: 0.930
+2025-11-03T15:37:24.628978Z  INFO airjedi_bevyui: Camera position: (34.50, 26.41)
+2025-11-03T15:37:24.628981Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:24.870145Z  INFO airjedi_bevyui: Despawned 49 tiles for zoom level change 10 -> 9
+2025-11-03T15:37:25.095050Z  INFO airjedi_bevyui: Despawned 49 tiles for zoom level change 9 -> 10
+2025-11-03T15:37:25.129174Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:25.129199Z  INFO airjedi_bevyui: Map center: (51.532734, -0.101778)
+2025-11-03T15:37:25.129204Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:25.129206Z  INFO airjedi_bevyui: Zoom level: 10, Camera zoom: 0.782
+2025-11-03T15:37:25.129209Z  INFO airjedi_bevyui: Camera position: (17.82, 29.88)
+2025-11-03T15:37:25.129211Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:25.628503Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:25.628548Z  INFO airjedi_bevyui: Map center: (51.525060, -0.042606)
+2025-11-03T15:37:25.628553Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:25.628556Z  INFO airjedi_bevyui: Zoom level: 10, Camera zoom: 1.447
+2025-11-03T15:37:25.628558Z  INFO airjedi_bevyui: Camera position: (61.02, 20.88)
+2025-11-03T15:37:25.628561Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:25.645338Z  INFO airjedi_bevyui: Despawned 49 tiles for zoom level change 10 -> 11
+2025-11-03T15:37:26.129400Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:26.129438Z  INFO airjedi_bevyui: Map center: (51.520764, -0.009484)
+2025-11-03T15:37:26.129447Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:26.129449Z  INFO airjedi_bevyui: Zoom level: 11, Camera zoom: 1.382
+2025-11-03T15:37:26.129452Z  INFO airjedi_bevyui: Camera position: (172.31, 31.27)
+2025-11-03T15:37:26.129455Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:26.630629Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:26.630655Z  INFO airjedi_bevyui: Map center: (51.520508, -0.007507)
+2025-11-03T15:37:26.630660Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:26.630662Z  INFO airjedi_bevyui: Zoom level: 11, Camera zoom: 1.461
+2025-11-03T15:37:26.630667Z  INFO airjedi_bevyui: Camera position: (175.19, 30.67)
+2025-11-03T15:37:26.630670Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:27.138241Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:27.138291Z  INFO airjedi_bevyui: Map center: (51.520508, -0.007507)
+2025-11-03T15:37:27.138298Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:27.138301Z  INFO airjedi_bevyui: Zoom level: 11, Camera zoom: 1.461
+2025-11-03T15:37:27.138305Z  INFO airjedi_bevyui: Camera position: (175.19, 30.67)
+2025-11-03T15:37:27.138308Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:27.637776Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:27.637813Z  INFO airjedi_bevyui: Map center: (51.520508, -0.007507)
+2025-11-03T15:37:27.637821Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:27.637824Z  INFO airjedi_bevyui: Zoom level: 11, Camera zoom: 1.461
+2025-11-03T15:37:27.637829Z  INFO airjedi_bevyui: Camera position: (175.19, 30.67)
+2025-11-03T15:37:27.637831Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+2025-11-03T15:37:28.144871Z  INFO airjedi_bevyui: === DEBUG INFO ===
+2025-11-03T15:37:28.144895Z  INFO airjedi_bevyui: Map center: (51.520508, -0.007507)
+2025-11-03T15:37:28.144903Z  INFO airjedi_bevyui: Reference: (51.507400, -0.127800)
+2025-11-03T15:37:28.144906Z  INFO airjedi_bevyui: Zoom level: 11, Camera zoom: 1.461
+2025-11-03T15:37:28.144910Z  INFO airjedi_bevyui: Camera position: (175.19, 30.67)
+2025-11-03T15:37:28.144913Z  INFO airjedi_bevyui: Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
