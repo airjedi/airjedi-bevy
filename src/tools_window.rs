@@ -383,6 +383,4 @@ fn render_view3d_tab(ui: &mut egui::Ui, state: &mut View3DState) {
         ui.add(egui::Slider::new(&mut state.altitude_scale, 0.1..=10.0));
     });
 
-    ui.separator();
-    ui.checkbox(&mut state.show_terrain, "Show Terrain (not implemented)");
 }
