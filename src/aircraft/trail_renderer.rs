@@ -3,18 +3,23 @@ use bevy_slippy_tiles::*;
 
 use super::{TrailHistory, TrailConfig, altitude_color, age_opacity};
 use crate::MapState;
+use crate::view3d::View3DState;
 
-/// System to draw flight trails using Gizmos
+/// System to draw flight trails using Gizmos.
+/// In 2D mode, draws flat trails. In 3D mode, draws trails at altitude using Vec3 positions.
 pub fn draw_trails(
     mut gizmos: Gizmos,
     config: Res<TrailConfig>,
     tile_settings: Res<SlippyTilesSettings>,
     map_state: Res<MapState>,
+    view3d_state: Res<View3DState>,
     trail_query: Query<&TrailHistory>,
 ) {
     if !config.enabled {
         return;
     }
+
+    let is_3d = view3d_state.is_3d_active();
 
     let reference_ll = LatitudeLongitudeCoordinates {
         latitude: tile_settings.reference_latitude,
@@ -31,7 +36,7 @@ pub fn draw_trails(
             continue;
         }
 
-        let mut prev_pos: Option<Vec2> = None;
+        let mut prev_pos: Option<Vec3> = None;
         let mut prev_color: Option<Color> = None;
 
         for point in trail.points.iter() {
@@ -56,18 +61,26 @@ pub fn draw_trails(
                 map_state.zoom_level,
             );
 
-            let pos = Vec2::new(
-                (point_pixel.0 - reference_pixel.0) as f32,
-                (point_pixel.1 - reference_pixel.1) as f32,
-            );
+            let x = (point_pixel.0 - reference_pixel.0) as f32;
+            let y = (point_pixel.1 - reference_pixel.1) as f32;
+            let z = if is_3d {
+                view3d_state.altitude_to_z(point.altitude.unwrap_or(0))
+            } else {
+                0.0
+            };
+
+            let pos = Vec3::new(x, y, z);
 
             let base_color = altitude_color(point.altitude);
             let color = base_color.with_alpha(opacity);
 
             if let Some(prev) = prev_pos {
-                // Use gradient between previous and current color
                 let draw_color = prev_color.unwrap_or(color);
-                gizmos.line_2d(prev, pos, draw_color);
+                if is_3d {
+                    gizmos.line(prev, pos, draw_color);
+                } else {
+                    gizmos.line_2d(prev.truncate(), pos.truncate(), draw_color);
+                }
             }
 
             prev_pos = Some(pos);
