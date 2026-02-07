@@ -392,7 +392,7 @@ pub fn render_export_panel(
 }
 
 /// List available recording files
-fn list_available_recordings() -> Vec<PathBuf> {
+pub fn list_available_recordings() -> Vec<PathBuf> {
     let tmp_dir = std::env::current_dir()
         .map(|p| p.join("tmp"))
         .unwrap_or_else(|_| PathBuf::from("tmp"));

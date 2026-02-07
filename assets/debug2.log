@@ -1,0 +1,461 @@
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.67s
+     Running `target/debug/airjedi_bevyui`
+[2m2025-11-03T17:15:37.790571Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "macOS 26.0.1", kernel: "25.0.0", cpu: "Apple M2 Pro", core_count: "12", memory: "32.0 GiB" }
+[2m2025-11-03T17:15:37.849985Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "Apple M2 Pro", vendor: 0, device: 0, device_type: IntegratedGpu, driver: "", driver_info: "", backend: Metal }
+[2m2025-11-03T17:15:39.604761Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
+[2m2025-11-03T17:15:39.642133Z[0m [32m INFO[0m [2mbevy_winit::system[0m[2m:[0m Creating new window AirJedi - Aircraft Map Tracker (0v0)
+[2m2025-11-03T17:15:40.330673Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:40.330683Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.507400, -0.127800)
+[2m2025-11-03T17:15:40.330686Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:40.330687Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.000
+[2m2025-11-03T17:15:40.330689Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (0.00, 0.00)
+[2m2025-11-03T17:15:40.330691Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:40.830120Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:40.830131Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.507400, -0.127800)
+[2m2025-11-03T17:15:40.830134Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:40.830135Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.000
+[2m2025-11-03T17:15:40.830138Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (0.00, 0.00)
+[2m2025-11-03T17:15:40.830139Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:41.329894Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:41.329906Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.507400, -0.127800)
+[2m2025-11-03T17:15:41.329909Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:41.329910Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.000
+[2m2025-11-03T17:15:41.329913Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (0.00, 0.00)
+[2m2025-11-03T17:15:41.329915Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:41.830032Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:41.830046Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.507400, -0.127800)
+[2m2025-11-03T17:15:41.830049Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:41.830056Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.000
+[2m2025-11-03T17:15:41.830059Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (0.00, 0.00)
+[2m2025-11-03T17:15:41.830061Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:42.330456Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:42.330475Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.469835, -0.323591)
+[2m2025-11-03T17:15:42.330496Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:42.330505Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.000
+[2m2025-11-03T17:15:42.330509Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-139.06, -42.76)
+[2m2025-11-03T17:15:42.330512Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:42.847626Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:42.847643Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.459134, -0.399529)
+[2m2025-11-03T17:15:42.847648Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:42.847650Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.000
+[2m2025-11-03T17:15:42.847654Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-197.87, -56.44)
+[2m2025-11-03T17:15:42.847657Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:43.347544Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:43.347563Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.459134, -0.399529)
+[2m2025-11-03T17:15:43.347569Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:43.347590Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.000
+[2m2025-11-03T17:15:43.347596Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-197.87, -56.44)
+[2m2025-11-03T17:15:43.347599Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:43.847334Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:43.847350Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.491711, -0.032887)
+[2m2025-11-03T17:15:43.847354Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:43.847356Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.000
+[2m2025-11-03T17:15:43.847360Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (68.85, -18.61)
+[2m2025-11-03T17:15:43.847362Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:44.347184Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:44.347202Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.539702, -0.195547)
+[2m2025-11-03T17:15:44.347207Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:44.347209Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.000
+[2m2025-11-03T17:15:44.347213Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-47.71, 37.45)
+[2m2025-11-03T17:15:44.347216Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:44.855150Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:44.855161Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.539289, -0.229193)
+[2m2025-11-03T17:15:44.855164Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:44.855165Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.000
+[2m2025-11-03T17:15:44.855170Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-73.83, 37.32)
+[2m2025-11-03T17:15:44.855172Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:45.355980Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:45.355998Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.539289, -0.229193)
+[2m2025-11-03T17:15:45.356015Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:45.356018Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.000
+[2m2025-11-03T17:15:45.356022Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-73.83, 37.32)
+[2m2025-11-03T17:15:45.356026Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:45.864429Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:45.864450Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.539289, -0.229193)
+[2m2025-11-03T17:15:45.864454Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:45.864457Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.000
+[2m2025-11-03T17:15:45.864462Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-73.83, 37.32)
+[2m2025-11-03T17:15:45.864465Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:46.364372Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:46.364389Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.543648, -0.240851)
+[2m2025-11-03T17:15:46.364394Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:46.364407Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 0.858
+[2m2025-11-03T17:15:46.364415Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-81.84, 42.14)
+[2m2025-11-03T17:15:46.364419Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:46.539391Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === ZOOM TRANSITION 10 -> 9 ===
+[2m2025-11-03T17:15:46.539406Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Before: map center (51.548153, -0.252899)
+[2m2025-11-03T17:15:46.539411Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Before: camera_zoom 1.498
+[2m2025-11-03T17:15:46.539417Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Despawned 98 tiles
+[2m2025-11-03T17:15:46.539419Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera offset at zoom 10: (-91.09, 47.70)
+[2m2025-11-03T17:15:46.539421Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera offset at zoom 9: (-45.55, 23.85)
+[2m2025-11-03T17:15:46.539422Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Offset delta: (45.55, -23.85)
+[2m2025-11-03T17:15:46.867625Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:46.867654Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.551259, -0.261207)
+[2m2025-11-03T17:15:46.867660Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:46.867662Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 9, Camera zoom: 1.377
+[2m2025-11-03T17:15:46.867664Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-48.57, 25.67)
+[2m2025-11-03T17:15:46.867669Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:47.365962Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:47.366000Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.551259, -0.261207)
+[2m2025-11-03T17:15:47.366009Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:47.366019Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 9, Camera zoom: 1.377
+[2m2025-11-03T17:15:47.366022Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-48.57, 25.67)
+[2m2025-11-03T17:15:47.366026Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:47.847890Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === ZOOM TRANSITION 9 -> 10 ===
+[2m2025-11-03T17:15:47.847914Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Before: map center (51.547767, -0.251867)
+[2m2025-11-03T17:15:47.847919Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Before: camera_zoom 0.757
+[2m2025-11-03T17:15:47.847923Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Despawned 49 tiles
+[2m2025-11-03T17:15:47.847925Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera offset at zoom 9: (-45.17, 23.62)
+[2m2025-11-03T17:15:47.847927Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera offset at zoom 10: (-90.34, 47.25)
+[2m2025-11-03T17:15:47.847929Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Offset delta: (-45.17, 23.62)
+[2m2025-11-03T17:15:47.874466Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:47.874481Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.546673, -0.248942)
+[2m2025-11-03T17:15:47.874485Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:47.874487Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 0.782
+[2m2025-11-03T17:15:47.874497Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-89.00, 46.44)
+[2m2025-11-03T17:15:47.874499Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:47.874504Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Added 49 new tiles this frame
+[2m2025-11-03T17:15:47.874506Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m   Tile 0: pos (-930.94, 641.57)
+[2m2025-11-03T17:15:47.874508Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m   Tile 1: pos (-930.94, 385.57)
+[2m2025-11-03T17:15:47.874509Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m   Tile 2: pos (-418.94, 385.57)
+[2m2025-11-03T17:15:48.372437Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:48.372455Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.533329, -0.213258)
+[2m2025-11-03T17:15:48.372459Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:48.372471Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.291
+[2m2025-11-03T17:15:48.372477Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-62.55, 30.54)
+[2m2025-11-03T17:15:48.372480Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:48.523173Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === ZOOM TRANSITION 10 -> 11 ===
+[2m2025-11-03T17:15:48.523192Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Before: map center (51.530383, -0.205381)
+[2m2025-11-03T17:15:48.523197Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Before: camera_zoom 0.754
+[2m2025-11-03T17:15:48.523202Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Despawned 49 tiles
+[2m2025-11-03T17:15:48.523209Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera offset at zoom 10: (-56.49, 26.90)
+[2m2025-11-03T17:15:48.523212Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera offset at zoom 11: (-112.99, 53.79)
+[2m2025-11-03T17:15:48.523214Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Offset delta: (-56.49, 26.90)
+[2m2025-11-03T17:15:48.871530Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:48.871543Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.526824, -0.195865)
+[2m2025-11-03T17:15:48.871547Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:48.871548Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 11, Camera zoom: 0.946
+[2m2025-11-03T17:15:48.871554Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-99.13, 45.46)
+[2m2025-11-03T17:15:48.871556Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:49.372682Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:49.372710Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.526824, -0.195865)
+[2m2025-11-03T17:15:49.372718Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:49.372727Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 11, Camera zoom: 0.946
+[2m2025-11-03T17:15:49.372730Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-99.13, 45.46)
+[2m2025-11-03T17:15:49.372733Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:49.874000Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:49.874017Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.523136, -0.186006)
+[2m2025-11-03T17:15:49.874021Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:49.874023Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 11, Camera zoom: 1.284
+[2m2025-11-03T17:15:49.874026Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-84.77, 36.83)
+[2m2025-11-03T17:15:49.874029Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:49.999451Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === ZOOM TRANSITION 11 -> 12 ===
+[2m2025-11-03T17:15:49.999470Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Before: map center (51.521621, -0.181956)
+[2m2025-11-03T17:15:49.999475Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Before: camera_zoom 0.753
+[2m2025-11-03T17:15:49.999504Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Despawned 49 tiles
+[2m2025-11-03T17:15:49.999512Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera offset at zoom 11: (-78.87, 33.28)
+[2m2025-11-03T17:15:49.999516Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera offset at zoom 12: (-157.74, 66.56)
+[2m2025-11-03T17:15:49.999519Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Offset delta: (-78.87, 33.28)
+[2m2025-11-03T17:15:50.373022Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:50.373046Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.519100, -0.175218)
+[2m2025-11-03T17:15:50.373052Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:50.373055Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 12, Camera zoom: 1.056
+[2m2025-11-03T17:15:50.373058Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-138.11, 54.76)
+[2m2025-11-03T17:15:50.373061Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:50.882187Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:50.882231Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.517757, -0.171627)
+[2m2025-11-03T17:15:50.882236Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:50.882239Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 12, Camera zoom: 1.344
+[2m2025-11-03T17:15:50.882241Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-128.57, 49.02)
+[2m2025-11-03T17:15:50.882244Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:50.939221Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === ZOOM TRANSITION 12 -> 13 ===
+[2m2025-11-03T17:15:50.939243Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Before: map center (51.517222, -0.170198)
+[2m2025-11-03T17:15:50.939248Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Before: camera_zoom 0.754
+[2m2025-11-03T17:15:50.939252Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Despawned 49 tiles
+[2m2025-11-03T17:15:50.939254Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera offset at zoom 12: (-123.49, 45.97)
+[2m2025-11-03T17:15:50.939256Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera offset at zoom 13: (-246.99, 91.94)
+[2m2025-11-03T17:15:50.939258Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Offset delta: (-123.49, 45.97)
+[2m2025-11-03T17:15:51.381612Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:51.381634Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.515726, -0.166198)
+[2m2025-11-03T17:15:51.381640Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:51.381643Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 13, Camera zoom: 1.144
+[2m2025-11-03T17:15:51.381646Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-223.69, 77.93)
+[2m2025-11-03T17:15:51.381648Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:51.856309Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === ZOOM TRANSITION 13 -> 14 ===
+[2m2025-11-03T17:15:51.856325Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Before: map center (51.515017, -0.164303)
+[2m2025-11-03T17:15:51.856329Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Before: camera_zoom 0.758
+[2m2025-11-03T17:15:51.856332Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Despawned 45 tiles
+[2m2025-11-03T17:15:51.856333Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera offset at zoom 13: (-212.65, 71.29)
+[2m2025-11-03T17:15:51.856335Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera offset at zoom 14: (-425.29, 142.58)
+[2m2025-11-03T17:15:51.856336Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Offset delta: (-212.65, 71.29)
+[2m2025-11-03T17:15:51.883842Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:51.883859Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.514900, -0.163991)
+[2m2025-11-03T17:15:51.883862Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:51.883864Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 14, Camera zoom: 0.801
+[2m2025-11-03T17:15:51.883865Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-424.22, 141.94)
+[2m2025-11-03T17:15:51.883868Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:52.382660Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:52.382684Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.514309, -0.162411)
+[2m2025-11-03T17:15:52.382690Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:52.382697Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 14, Camera zoom: 1.123
+[2m2025-11-03T17:15:52.382703Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-403.25, 129.33)
+[2m2025-11-03T17:15:52.382707Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:52.738920Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === ZOOM TRANSITION 14 -> 13 ===
+[2m2025-11-03T17:15:52.738942Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Before: map center (51.515118, -0.164575)
+[2m2025-11-03T17:15:52.738947Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Before: camera_zoom 1.449
+[2m2025-11-03T17:15:52.738956Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Despawned 10 tiles
+[2m2025-11-03T17:15:52.738957Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera offset at zoom 14: (-428.45, 144.49)
+[2m2025-11-03T17:15:52.738959Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera offset at zoom 13: (-214.23, 72.24)
+[2m2025-11-03T17:15:52.738961Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Offset delta: (214.23, -72.24)
+[2m2025-11-03T17:15:52.880591Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:52.880605Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.516082, -0.167150)
+[2m2025-11-03T17:15:52.880610Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:52.880612Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 13, Camera zoom: 1.019
+[2m2025-11-03T17:15:52.880620Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-228.22, 80.66)
+[2m2025-11-03T17:15:52.880622Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:53.074797Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === ZOOM TRANSITION 13 -> 12 ===
+[2m2025-11-03T17:15:53.074811Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Before: map center (51.517262, -0.170306)
+[2m2025-11-03T17:15:53.074819Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Before: camera_zoom 1.494
+[2m2025-11-03T17:15:53.074823Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Despawned 51 tiles
+[2m2025-11-03T17:15:53.074824Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera offset at zoom 13: (-247.61, 92.32)
+[2m2025-11-03T17:15:53.074826Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera offset at zoom 12: (-123.81, 46.16)
+[2m2025-11-03T17:15:53.074828Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Offset delta: (123.81, -46.16)
+[2m2025-11-03T17:15:53.389527Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:53.389541Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.520487, -0.178926)
+[2m2025-11-03T17:15:53.389545Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:53.389547Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 12, Camera zoom: 0.864
+[2m2025-11-03T17:15:53.389550Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-147.96, 60.68)
+[2m2025-11-03T17:15:53.389552Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:53.464298Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === ZOOM TRANSITION 12 -> 11 ===
+[2m2025-11-03T17:15:53.464325Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Before: map center (51.521683, -0.182123)
+[2m2025-11-03T17:15:53.464330Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Before: camera_zoom 1.495
+[2m2025-11-03T17:15:53.464332Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Despawned 56 tiles
+[2m2025-11-03T17:15:53.464337Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera offset at zoom 12: (-158.23, 66.85)
+[2m2025-11-03T17:15:53.464339Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera offset at zoom 11: (-79.11, 33.43)
+[2m2025-11-03T17:15:53.464340Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Offset delta: (79.11, -33.43)
+[2m2025-11-03T17:15:53.897727Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:53.897742Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.527464, -0.197575)
+[2m2025-11-03T17:15:53.897746Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:53.897748Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 11, Camera zoom: 0.904
+[2m2025-11-03T17:15:53.897766Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-101.16, 46.68)
+[2m2025-11-03T17:15:53.897771Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:54.074009Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === ZOOM TRANSITION 11 -> 10 ===
+[2m2025-11-03T17:15:54.074024Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Before: map center (51.530577, -0.205899)
+[2m2025-11-03T17:15:54.074028Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Before: camera_zoom 1.491
+[2m2025-11-03T17:15:54.074031Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Despawned 52 tiles
+[2m2025-11-03T17:15:54.074039Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera offset at zoom 11: (-113.74, 54.24)
+[2m2025-11-03T17:15:54.074041Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera offset at zoom 10: (-56.87, 27.12)
+[2m2025-11-03T17:15:54.074043Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Offset delta: (56.87, -27.12)
+[2m2025-11-03T17:15:54.405987Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:54.406003Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.534524, -0.216452)
+[2m2025-11-03T17:15:54.406007Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:54.406009Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.220
+[2m2025-11-03T17:15:54.406016Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-64.55, 31.74)
+[2m2025-11-03T17:15:54.406018Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:54.905378Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:54.905389Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.534524, -0.216452)
+[2m2025-11-03T17:15:54.905392Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:54.905408Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.220
+[2m2025-11-03T17:15:54.905414Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-64.55, 31.74)
+[2m2025-11-03T17:15:54.905416Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:55.404919Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:55.404931Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.484131, 0.144387)
+[2m2025-11-03T17:15:55.404941Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:55.404942Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.220
+[2m2025-11-03T17:15:55.404944Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (198.10, -27.80)
+[2m2025-11-03T17:15:55.404946Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:55.904974Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:55.904997Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.538181, -0.373345)
+[2m2025-11-03T17:15:55.905001Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:55.905002Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.220
+[2m2025-11-03T17:15:55.905008Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-174.63, 39.05)
+[2m2025-11-03T17:15:55.905010Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:56.407076Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:56.407134Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.454549, -0.209433)
+[2m2025-11-03T17:15:56.407141Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:56.407143Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.220
+[2m2025-11-03T17:15:56.407146Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-60.86, -62.55)
+[2m2025-11-03T17:15:56.407149Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:56.906428Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:56.906453Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.534860, -0.143639)
+[2m2025-11-03T17:15:56.906460Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:56.906462Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.220
+[2m2025-11-03T17:15:56.906464Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-11.53, 32.14)
+[2m2025-11-03T17:15:56.906481Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:57.406566Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:57.406588Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.534860, -0.143639)
+[2m2025-11-03T17:15:57.406593Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:57.406595Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.220
+[2m2025-11-03T17:15:57.406597Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-11.53, 32.14)
+[2m2025-11-03T17:15:57.406600Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:57.915821Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:57.915845Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.534860, -0.143639)
+[2m2025-11-03T17:15:57.915853Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:57.915875Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.220
+[2m2025-11-03T17:15:57.915883Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-11.53, 32.14)
+[2m2025-11-03T17:15:57.915888Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:58.413601Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:58.413616Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.534860, -0.143639)
+[2m2025-11-03T17:15:58.413619Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:58.413620Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.220
+[2m2025-11-03T17:15:58.413622Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-11.53, 32.14)
+[2m2025-11-03T17:15:58.413628Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:15:59.953206Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:15:59.953221Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.534860, -0.143639)
+[2m2025-11-03T17:15:59.953226Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:15:59.953228Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.220
+[2m2025-11-03T17:15:59.953251Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-11.53, 32.14)
+[2m2025-11-03T17:15:59.953261Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:16:01.010608Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:16:01.010630Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.534860, -0.143639)
+[2m2025-11-03T17:16:01.010635Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:16:01.010638Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.220
+[2m2025-11-03T17:16:01.010649Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-11.53, 32.14)
+[2m2025-11-03T17:16:01.010652Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:16:02.069328Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:16:02.069378Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.534860, -0.143639)
+[2m2025-11-03T17:16:02.069395Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:16:02.069400Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.220
+[2m2025-11-03T17:16:02.069404Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-11.53, 32.14)
+[2m2025-11-03T17:16:02.069410Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:16:03.130369Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:16:03.130418Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.534860, -0.143639)
+[2m2025-11-03T17:16:03.130435Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:16:03.130439Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.220
+[2m2025-11-03T17:16:03.130444Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-11.53, 32.14)
+[2m2025-11-03T17:16:03.130449Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:16:04.183710Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:16:04.183735Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.534860, -0.143639)
+[2m2025-11-03T17:16:04.183741Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:16:04.183751Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.220
+[2m2025-11-03T17:16:04.183754Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-11.53, 32.14)
+[2m2025-11-03T17:16:04.183758Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:16:05.247555Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:16:05.247577Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.534860, -0.143639)
+[2m2025-11-03T17:16:05.247584Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:16:05.247596Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.220
+[2m2025-11-03T17:16:05.247600Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-11.53, 32.14)
+[2m2025-11-03T17:16:05.247604Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:16:06.308969Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:16:06.309020Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.534860, -0.143639)
+[2m2025-11-03T17:16:06.309029Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:16:06.309032Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.220
+[2m2025-11-03T17:16:06.309040Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-11.53, 32.14)
+[2m2025-11-03T17:16:06.309046Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:16:07.368869Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:16:07.368916Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.534860, -0.143639)
+[2m2025-11-03T17:16:07.368924Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:16:07.368927Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.220
+[2m2025-11-03T17:16:07.368934Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-11.53, 32.14)
+[2m2025-11-03T17:16:07.368941Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:16:08.431534Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:16:08.431581Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.534860, -0.143639)
+[2m2025-11-03T17:16:08.431589Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:16:08.431592Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.220
+[2m2025-11-03T17:16:08.431599Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-11.53, 32.14)
+[2m2025-11-03T17:16:08.431605Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:16:09.491246Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:16:09.491297Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.534860, -0.143639)
+[2m2025-11-03T17:16:09.491304Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:16:09.491315Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.220
+[2m2025-11-03T17:16:09.491319Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-11.53, 32.14)
+[2m2025-11-03T17:16:09.491325Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:16:10.553592Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:16:10.553638Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.534860, -0.143639)
+[2m2025-11-03T17:16:10.553655Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:16:10.553659Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.220
+[2m2025-11-03T17:16:10.553664Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-11.53, 32.14)
+[2m2025-11-03T17:16:10.553669Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:16:11.614529Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:16:11.614563Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.534860, -0.143639)
+[2m2025-11-03T17:16:11.614581Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:16:11.614585Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.220
+[2m2025-11-03T17:16:11.614588Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-11.53, 32.14)
+[2m2025-11-03T17:16:11.614594Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:16:12.678089Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:16:12.678120Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.534860, -0.143639)
+[2m2025-11-03T17:16:12.678133Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:16:12.678137Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.220
+[2m2025-11-03T17:16:12.678141Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-11.53, 32.14)
+[2m2025-11-03T17:16:12.678145Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:16:13.738603Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:16:13.738626Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.534860, -0.143639)
+[2m2025-11-03T17:16:13.738632Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:16:13.738636Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.220
+[2m2025-11-03T17:16:13.738640Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-11.53, 32.14)
+[2m2025-11-03T17:16:13.738644Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:16:14.800761Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:16:14.800803Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.534860, -0.143639)
+[2m2025-11-03T17:16:14.800811Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:16:14.800823Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.220
+[2m2025-11-03T17:16:14.800827Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-11.53, 32.14)
+[2m2025-11-03T17:16:14.800833Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:16:15.651647Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:16:15.651658Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.534860, -0.143639)
+[2m2025-11-03T17:16:15.651661Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:16:15.651663Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.220
+[2m2025-11-03T17:16:15.651665Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-11.53, 32.14)
+[2m2025-11-03T17:16:15.651668Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:16:16.151586Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:16:16.151602Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.534860, -0.143639)
+[2m2025-11-03T17:16:16.151606Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:16:16.151608Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.220
+[2m2025-11-03T17:16:16.151622Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-11.53, 32.14)
+[2m2025-11-03T17:16:16.151627Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:16:16.410146Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === ZOOM TRANSITION 10 -> 11 ===
+[2m2025-11-03T17:16:16.410169Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Before: map center (51.536114, -0.142811)
+[2m2025-11-03T17:16:16.410173Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Before: camera_zoom 0.761
+[2m2025-11-03T17:16:16.410208Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Despawned 129 tiles
+[2m2025-11-03T17:16:16.410214Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera offset at zoom 10: (-10.93, 33.60)
+[2m2025-11-03T17:16:16.410217Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera offset at zoom 11: (-21.86, 67.21)
+[2m2025-11-03T17:16:16.410219Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Offset delta: (-10.93, 33.60)
+[2m2025-11-03T17:16:16.651990Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:16:16.652002Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.537137, -0.142134)
+[2m2025-11-03T17:16:16.652006Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:16:16.652008Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 11, Camera zoom: 0.955
+[2m2025-11-03T17:16:16.652015Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-20.88, 69.60)
+[2m2025-11-03T17:16:16.652019Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:16:16.917977Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === ZOOM TRANSITION 11 -> 10 ===
+[2m2025-11-03T17:16:16.917994Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Before: map center (51.535911, -0.142944)
+[2m2025-11-03T17:16:16.917997Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Before: camera_zoom 1.464
+[2m2025-11-03T17:16:16.918001Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Despawned 49 tiles
+[2m2025-11-03T17:16:16.918003Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera offset at zoom 11: (-22.06, 66.73)
+[2m2025-11-03T17:16:16.918005Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera offset at zoom 10: (-11.03, 33.37)
+[2m2025-11-03T17:16:16.918006Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Offset delta: (11.03, -33.37)
+[2m2025-11-03T17:16:17.151564Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:16:17.151583Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.533799, -0.144341)
+[2m2025-11-03T17:16:17.151587Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:16:17.151589Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 10, Camera zoom: 1.044
+[2m2025-11-03T17:16:17.151591Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-12.02, 30.96)
+[2m2025-11-03T17:16:17.151593Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:16:17.476501Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === ZOOM TRANSITION 10 -> 9 ===
+[2m2025-11-03T17:16:17.476518Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Before: map center (51.530885, -0.146268)
+[2m2025-11-03T17:16:17.476523Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Before: camera_zoom 1.496
+[2m2025-11-03T17:16:17.476528Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Despawned 49 tiles
+[2m2025-11-03T17:16:17.476530Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera offset at zoom 10: (-13.45, 27.48)
+[2m2025-11-03T17:16:17.476532Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera offset at zoom 9: (-6.72, 13.74)
+[2m2025-11-03T17:16:17.476534Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Offset delta: (6.72, -13.74)
+[2m2025-11-03T17:16:17.652399Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:16:17.652423Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.530507, -0.146518)
+[2m2025-11-03T17:16:17.652442Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:16:17.652448Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 9, Camera zoom: 1.442
+[2m2025-11-03T17:16:17.652453Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-6.82, 13.52)
+[2m2025-11-03T17:16:17.652456Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:16:18.159977Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:16:18.159994Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.530507, -0.146518)
+[2m2025-11-03T17:16:18.159998Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:16:18.160006Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 9, Camera zoom: 1.442
+[2m2025-11-03T17:16:18.160010Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-6.82, 13.52)
+[2m2025-11-03T17:16:18.160014Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:16:18.670790Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:16:18.670810Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.530507, -0.146518)
+[2m2025-11-03T17:16:18.670814Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:16:18.670816Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 9, Camera zoom: 1.442
+[2m2025-11-03T17:16:18.670820Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-6.82, 13.52)
+[2m2025-11-03T17:16:18.670822Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
+[2m2025-11-03T17:16:19.176534Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m === DEBUG INFO ===
+[2m2025-11-03T17:16:19.176552Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Map center: (51.530507, -0.146518)
+[2m2025-11-03T17:16:19.176557Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Reference: (51.507400, -0.127800)
+[2m2025-11-03T17:16:19.176568Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Zoom level: 9, Camera zoom: 1.442
+[2m2025-11-03T17:16:19.176572Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Camera position: (-6.82, 13.52)
+[2m2025-11-03T17:16:19.176575Z[0m [32m INFO[0m [2mairjedi_bevyui[0m[2m:[0m Aircraft BA123 at (51.507400, -0.127800) -> world pos (0.00, 0.00)
