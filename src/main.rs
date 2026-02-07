@@ -19,9 +19,12 @@ mod airspace;
 mod data_sources;
 mod export;
 mod view3d;
+mod geo;
+mod ui_panels;
+mod toolbar;
+mod tools_window;
 use config::ConfigPlugin;
-use aircraft::AircraftListButton;
-use keyboard::{HelpOverlayState, handle_keyboard_shortcuts, toggle_overlays_keyboard, update_help_overlay};
+use keyboard::{HelpOverlayState, handle_keyboard_shortcuts, toggle_overlays_keyboard, update_help_overlay, sync_panel_manager_to_resources, sync_resources_to_panel_manager};
 use bevy_egui::EguiContexts;
 
 // ADS-B client types
@@ -191,7 +194,7 @@ fn calculate_zoom_to_cursor_center(
 // =============================================================================
 
 /// Send a tile download request for the current map location
-fn request_tiles_at_location(
+pub fn request_tiles_at_location(
     download_events: &mut MessageWriter<DownloadSlippyTilesMessage>,
     latitude: f64,
     longitude: f64,
@@ -234,6 +237,8 @@ fn main() {
         ))
         .init_resource::<DragState>()
         .init_resource::<HelpOverlayState>()
+        .init_resource::<ui_panels::UiPanelManager>()
+        .init_resource::<tools_window::ToolsWindowState>()
         .insert_resource(ZoomState::new())
         // SlippyTilesSettings will be updated by setup_slippy_tiles_from_config after config is loaded
         .insert_resource(SlippyTilesSettings {
@@ -245,7 +250,7 @@ fn main() {
             auto_render: false,            // Disable auto-render, we handle tile display ourselves
             ..default()
         })
-        .add_systems(Startup, (setup_debug_logger, setup_map, setup_ui, setup_aircraft_texture))
+        .add_systems(Startup, (setup_debug_logger, setup_map, setup_aircraft_texture))
         // Setup ADS-B client after map is initialized (needs MapState)
         .add_systems(Startup, setup_adsb_client.after(setup_map))
         .add_systems(Update, check_egui_wants_input.before(handle_pan_drag).before(handle_zoom))
@@ -262,14 +267,17 @@ fn main() {
         .add_systems(Update, update_aircraft_label_text.after(sync_aircraft_from_adsb))
         .add_systems(Update, scale_aircraft_and_labels.after(apply_camera_zoom))
         .add_systems(Update, update_aircraft_labels.after(update_aircraft_positions))
-        .add_systems(Update, handle_clear_cache_button)
-        .add_systems(Update, handle_settings_button)
-        .add_systems(Update, handle_aircraft_list_button)
-        .add_systems(Update, update_connection_status)
+        .add_systems(bevy_egui::EguiPrimaryContextPass, (
+            toolbar::render_toolbar,
+            toolbar::render_map_attribution,
+            tools_window::render_tools_window,
+        ))
         .add_systems(Update, display_tiles_filtered.after(ApplyDeferred))
         .add_systems(Update, animate_tile_fades.after(display_tiles_filtered))
         .add_systems(Update, handle_keyboard_shortcuts)
         .add_systems(Update, toggle_overlays_keyboard)
+        .add_systems(Update, sync_panel_manager_to_resources.after(handle_keyboard_shortcuts))
+        .add_systems(Update, sync_resources_to_panel_manager.after(sync_panel_manager_to_resources))
         .add_systems(Update, update_help_overlay)
         .run();
 }
@@ -303,13 +311,6 @@ struct AircraftLabel {
     aircraft_entity: Entity,
 }
 
-// Component to mark the clear cache button
-#[derive(Component)]
-struct ClearCacheButton;
-
-// Component to mark the settings button
-#[derive(Component)]
-struct SettingsButton;
 
 // Component to track tile fade state for smooth zoom transitions
 #[derive(Component)]
@@ -426,10 +427,6 @@ impl AdsbAircraftData {
             .unwrap_or(ConnectionState::Disconnected)
     }
 }
-
-/// Component to mark the connection status UI text
-#[derive(Component)]
-struct ConnectionStatusText;
 
 /// Setup the ADS-B client in a background thread with its own tokio runtime.
 fn setup_adsb_client(mut commands: Commands, map_state: Res<MapState>, app_config: Res<config::AppConfig>) {
@@ -562,116 +559,6 @@ fn setup_map(
     commands.insert_resource(map_state);
 }
 
-fn setup_ui(mut commands: Commands) {
-    // Map Attribution
-    commands.spawn((
-        Text::new("© OpenStreetMap contributors, © CartoDB"),
-        Node {
-            position_type: PositionType::Absolute,
-            bottom: Val::Px(5.0),
-            right: Val::Px(5.0),
-            padding: UiRect::all(Val::Px(5.0)),
-            ..default()
-        },
-        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.5)),
-    ));
-
-    // Instructions
-    commands.spawn((
-        Text::new("Controls: Drag to pan | Scroll/Two-finger to zoom"),
-        Node {
-            position_type: PositionType::Absolute,
-            top: Val::Px(10.0),
-            left: Val::Px(10.0),
-            padding: UiRect::all(Val::Px(5.0)),
-            ..default()
-        },
-        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.5)),
-    ));
-
-    // Menu button - Clear Cache
-    commands.spawn((
-        Button,
-        Node {
-            position_type: PositionType::Absolute,
-            top: Val::Px(50.0),
-            left: Val::Px(10.0),
-            padding: UiRect::all(Val::Px(10.0)),
-            ..default()
-        },
-        BackgroundColor(Color::srgba(0.2, 0.2, 0.2, 0.9)),
-        ClearCacheButton,
-    )).with_child((
-        Text::new("Clear Cache"),
-        TextFont {
-            font_size: 16.0,
-            ..default()
-        },
-        TextColor(Color::WHITE),
-    ));
-
-    // Settings button
-    commands.spawn((
-        Button,
-        Node {
-            position_type: PositionType::Absolute,
-            top: Val::Px(100.0),
-            left: Val::Px(10.0),
-            padding: UiRect::all(Val::Px(10.0)),
-            ..default()
-        },
-        BackgroundColor(Color::srgba(0.2, 0.2, 0.2, 0.9)),
-        SettingsButton,
-    )).with_child((
-        Text::new("Settings"),
-        TextFont {
-            font_size: 16.0,
-            ..default()
-        },
-        TextColor(Color::WHITE),
-    ));
-
-    // Aircraft List button
-    commands.spawn((
-        Button,
-        Node {
-            position_type: PositionType::Absolute,
-            top: Val::Px(150.0),
-            left: Val::Px(10.0),
-            padding: UiRect::all(Val::Px(10.0)),
-            ..default()
-        },
-        BackgroundColor(Color::srgba(0.2, 0.2, 0.2, 0.9)),
-        AircraftListButton,
-    )).with_child((
-        Text::new("Aircraft (L)"),
-        TextFont {
-            font_size: 16.0,
-            ..default()
-        },
-        TextColor(Color::WHITE),
-    ));
-
-    // Connection status indicator
-    commands.spawn((
-        Text::new("ADS-B: Connecting..."),
-        Node {
-            position_type: PositionType::Absolute,
-            top: Val::Px(10.0),
-            right: Val::Px(10.0),
-            padding: UiRect::all(Val::Px(5.0)),
-            ..default()
-        },
-        TextFont {
-            font_size: 14.0,
-            ..default()
-        },
-        TextColor(Color::srgb(1.0, 0.8, 0.0)), // Yellow for connecting
-        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.7)),
-        ConnectionStatusText,
-    ));
-}
-
 /// Load the aircraft icon texture
 fn setup_aircraft_texture(mut commands: Commands, asset_server: Res<AssetServer>) {
     let handle = asset_server.load("airplane1.png");
@@ -794,39 +681,6 @@ fn update_aircraft_label_text(
             let alt_display = aircraft.altitude.map(|a| format!("{} ft", a)).unwrap_or_default();
             **text = format!("{}\n{}", callsign_display, alt_display);
         }
-    }
-}
-
-/// Update the connection status UI indicator
-fn update_connection_status(
-    adsb_data: Option<Res<AdsbAircraftData>>,
-    mut status_query: Query<(&mut Text, &mut TextColor), With<ConnectionStatusText>>,
-) {
-    let Some(adsb_data) = adsb_data else {
-        return;
-    };
-
-    let connection_state = adsb_data.get_connection_state();
-    let aircraft_count = adsb_data.get_aircraft().len();
-
-    for (mut text, mut color) in status_query.iter_mut() {
-        let (status_text, status_color) = match connection_state {
-            ConnectionState::Connected => {
-                (format!("ADS-B: {} aircraft", aircraft_count), Color::srgb(0.0, 1.0, 0.0))
-            }
-            ConnectionState::Connecting => {
-                ("ADS-B: Connecting...".to_string(), Color::srgb(1.0, 0.8, 0.0))
-            }
-            ConnectionState::Disconnected => {
-                ("ADS-B: Disconnected".to_string(), Color::srgb(1.0, 0.3, 0.3))
-            }
-            ConnectionState::Error(ref msg) => {
-                (format!("ADS-B: Error - {}", msg), Color::srgb(1.0, 0.0, 0.0))
-            }
-        };
-
-        **text = status_text;
-        *color = TextColor(status_color);
     }
 }
 
@@ -1276,151 +1130,7 @@ fn update_aircraft_labels(
     }
 }
 
-fn handle_clear_cache_button(
-    mut interaction_query: Query<
-        (&Interaction, &mut BackgroundColor),
-        (Changed<Interaction>, With<ClearCacheButton>),
-    >,
-    map_state: Res<MapState>,
-    mut download_events: MessageWriter<DownloadSlippyTilesMessage>,
-    mut commands: Commands,
-    tile_query: Query<Entity, With<MapTile>>,
-    mut slippy_tile_download_status: ResMut<SlippyTileDownloadStatus>,
-    ui_state: Res<config::SettingsUiState>,
-) {
-    // Don't process button clicks when settings panel is open
-    if ui_state.open {
-        return;
-    }
-
-    for (interaction, mut background_color) in interaction_query.iter_mut() {
-        match *interaction {
-            Interaction::Pressed => {
-                // Change button color when pressed
-                let c = constants::BUTTON_PRESSED;
-                *background_color = BackgroundColor(Color::srgba(c.0, c.1, c.2, c.3));
-
-                info!("=== CLEAR CACHE BUTTON PRESSED ===");
-                info!("Current zoom level: {}", map_state.zoom_level.to_u8());
-                info!("Current map center: ({}, {})", map_state.latitude, map_state.longitude);
-
-                // Clear the bevy_slippy_tiles download status tracking
-                // This is critical! Without this, the plugin thinks tiles are already downloaded
-                // and won't re-download them even with use_cache: false
-                slippy_tile_download_status.0.clear();
-                info!("Cleared SlippyTileDownloadStatus tracking");
-
-                // Despawn all existing tile entities to refresh the display
-                let mut despawned_count = 0;
-                for entity in tile_query.iter() {
-                    commands.entity(entity).despawn();
-                    despawned_count += 1;
-                }
-                info!("Despawned {} tile entities", despawned_count);
-
-                // Clear the tile cache from disk
-                clear_tile_cache();
-
-                // Request fresh tiles after clearing cache
-                info!("Requesting fresh tiles at zoom level {}", map_state.zoom_level.to_u8());
-                request_tiles_at_location(
-                    &mut download_events,
-                    map_state.latitude,
-                    map_state.longitude,
-                    map_state.zoom_level,
-                    false,  // Force fresh download
-                );
-
-                info!("Tile cache cleared and download request sent");
-            }
-            Interaction::Hovered => {
-                // Highlight on hover
-                let c = constants::BUTTON_HOVERED;
-                *background_color = BackgroundColor(Color::srgba(c.0, c.1, c.2, c.3));
-            }
-            Interaction::None => {
-                // Default color
-                let c = constants::BUTTON_NORMAL;
-                *background_color = BackgroundColor(Color::srgba(c.0, c.1, c.2, c.3));
-            }
-        }
-    }
-}
-
-fn handle_settings_button(
-    mut interaction_query: Query<
-        (&Interaction, &mut BackgroundColor),
-        (Changed<Interaction>, With<SettingsButton>),
-    >,
-    mut ui_state: ResMut<config::SettingsUiState>,
-    app_config: Res<config::AppConfig>,
-    mut contexts: EguiContexts,
-) {
-    // Don't process button clicks when pointer is over egui panel
-    if let Ok(ctx) = contexts.ctx_mut() {
-        if ctx.is_pointer_over_area() {
-            return;
-        }
-    }
-
-    for (interaction, mut background_color) in interaction_query.iter_mut() {
-        match *interaction {
-            Interaction::Pressed => {
-                let c = constants::BUTTON_PRESSED;
-                *background_color = BackgroundColor(Color::srgba(c.0, c.1, c.2, c.3));
-
-                ui_state.open = !ui_state.open;
-                if ui_state.open {
-                    ui_state.populate_from_config(&app_config);
-                }
-            }
-            Interaction::Hovered => {
-                let c = constants::BUTTON_HOVERED;
-                *background_color = BackgroundColor(Color::srgba(c.0, c.1, c.2, c.3));
-            }
-            Interaction::None => {
-                let c = constants::BUTTON_NORMAL;
-                *background_color = BackgroundColor(Color::srgba(c.0, c.1, c.2, c.3));
-            }
-        }
-    }
-}
-
-fn handle_aircraft_list_button(
-    mut interaction_query: Query<
-        (&Interaction, &mut BackgroundColor),
-        (Changed<Interaction>, With<AircraftListButton>),
-    >,
-    mut list_state: ResMut<aircraft::AircraftListState>,
-    mut contexts: EguiContexts,
-) {
-    // Don't process button clicks when pointer is over egui panel
-    if let Ok(ctx) = contexts.ctx_mut() {
-        if ctx.is_pointer_over_area() {
-            return;
-        }
-    }
-
-    for (interaction, mut background_color) in interaction_query.iter_mut() {
-        match *interaction {
-            Interaction::Pressed => {
-                let c = constants::BUTTON_PRESSED;
-                *background_color = BackgroundColor(Color::srgba(c.0, c.1, c.2, c.3));
-                list_state.expanded = !list_state.expanded;
-            }
-            Interaction::Hovered => {
-                let c = constants::BUTTON_HOVERED;
-                *background_color = BackgroundColor(Color::srgba(c.0, c.1, c.2, c.3));
-            }
-            Interaction::None => {
-                let c = constants::BUTTON_NORMAL;
-                *background_color = BackgroundColor(Color::srgba(c.0, c.1, c.2, c.3));
-            }
-        }
-    }
-}
-
-fn clear_tile_cache() {
+pub fn clear_tile_cache() {
     // Get the assets directory path
     let assets_path = std::env::current_dir()
         .map(|path| path.join("assets"))

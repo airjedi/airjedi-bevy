@@ -3,6 +3,7 @@ use bevy_egui::{egui, EguiContexts};
 use bevy_slippy_tiles::{LatitudeLongitudeCoordinates, TileSize, world_coords_to_world_pixel, world_pixel_to_world_coords};
 
 use crate::{MapState, ZoomState};
+use crate::geo::{haversine_distance_nm, calculate_bearing};
 
 /// State for the measurement tool
 #[derive(Resource, Default)]
@@ -43,35 +44,6 @@ impl MeasurementState {
         let end = self.end_point.or(self.cursor_latlon)?;
         Some(calculate_bearing(start.0, start.1, end.0, end.1))
     }
-}
-
-/// Calculate distance between two lat/lon points in nautical miles using Haversine formula
-fn haversine_distance_nm(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
-    const EARTH_RADIUS_NM: f64 = 3440.065;
-
-    let lat1_rad = lat1.to_radians();
-    let lat2_rad = lat2.to_radians();
-    let delta_lat = (lat2 - lat1).to_radians();
-    let delta_lon = (lon2 - lon1).to_radians();
-
-    let a = (delta_lat / 2.0).sin().powi(2)
-        + lat1_rad.cos() * lat2_rad.cos() * (delta_lon / 2.0).sin().powi(2);
-    let c = 2.0 * a.sqrt().asin();
-
-    EARTH_RADIUS_NM * c
-}
-
-/// Calculate initial bearing from point 1 to point 2 in degrees
-fn calculate_bearing(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
-    let lat1_rad = lat1.to_radians();
-    let lat2_rad = lat2.to_radians();
-    let delta_lon = (lon2 - lon1).to_radians();
-
-    let x = delta_lon.sin() * lat2_rad.cos();
-    let y = lat1_rad.cos() * lat2_rad.sin() - lat1_rad.sin() * lat2_rad.cos() * delta_lon.cos();
-
-    let bearing = x.atan2(y).to_degrees();
-    (bearing + 360.0) % 360.0
 }
 
 /// Component for measurement line entity
