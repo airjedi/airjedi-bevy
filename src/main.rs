@@ -199,6 +199,54 @@ fn calculate_zoom_to_cursor_center(
 // Tile Download Helper
 // =============================================================================
 
+/// Compute the tile download radius needed to cover the viewport.
+///
+/// In 2D (orthographic): each tile occupies `256 * camera_zoom` screen pixels.
+/// In 3D (perspective): the tilted camera sees a larger ground footprint, so we
+/// estimate the visible ground extent from the camera distance, pitch, and FOV.
+fn compute_tile_radius(
+    window_width: f32,
+    window_height: f32,
+    camera_zoom: f32,
+    view3d_state: Option<&view3d::View3DState>,
+) -> u8 {
+    // Check if we're in 3D perspective mode
+    if let Some(state) = view3d_state {
+        if state.is_3d_active() {
+            let fov = 60.0_f32.to_radians();
+            let aspect = window_width / window_height;
+            let half_vfov = fov / 2.0;
+            let half_hfov = (aspect * half_vfov.tan()).atan();
+            let pitch_rad = state.camera_pitch.to_radians();
+
+            // Camera height above the map plane
+            let effective_distance = state.camera_distance * 20.0; // PIXEL_SCALE
+            let camera_height = effective_distance * pitch_rad.sin();
+
+            // The far ground edge angle: pitch - half_vfov from horizontal
+            // Ground distance = camera_height / tan(pitch - half_vfov)
+            // Clamp the angle so we don't get infinity when looking near the horizon
+            let far_angle = (pitch_rad - half_vfov).max(0.05);
+            let far_ground_dist = camera_height / far_angle.tan();
+
+            // Horizontal extent at the ground plane center
+            let center_ground_dist = effective_distance * pitch_rad.cos();
+            let half_width = center_ground_dist * half_hfov.tan();
+
+            // Use whichever axis demands more tiles
+            let max_ground_extent = far_ground_dist.max(half_width);
+            let tiles_needed = (max_ground_extent / 256.0).ceil() as u8;
+            return tiles_needed.clamp(3, 12);
+        }
+    }
+
+    // 2D orthographic mode
+    let tile_screen_px = 256.0 * camera_zoom;
+    let half_tiles_x = (window_width / (2.0 * tile_screen_px)).ceil() as u8;
+    let half_tiles_y = (window_height / (2.0 * tile_screen_px)).ceil() as u8;
+    half_tiles_x.max(half_tiles_y).clamp(3, 8)
+}
+
 /// Send a tile download request for the current map location
 pub fn request_tiles_at_location(
     download_events: &mut MessageWriter<DownloadSlippyTilesMessage>,
@@ -261,6 +309,8 @@ fn main() {
         .add_systems(Update, check_egui_wants_input.before(handle_pan_drag).before(handle_zoom))
         .add_systems(Update, handle_pan_drag)
         .add_systems(Update, handle_zoom)
+        .add_systems(Update, handle_window_resize)
+        .add_systems(Update, handle_3d_view_tile_refresh)
         // Apply deferred commands (like despawns) before updating camera/tiles
         // This ensures old tiles are gone before new camera position is applied
         .add_systems(Update, ApplyDeferred.after(handle_zoom))
@@ -384,6 +434,61 @@ pub(crate) fn setup_map(
     );
 
     commands.insert_resource(map_state);
+}
+
+/// Request tiles when the window is resized or maximized so newly exposed areas are filled.
+fn handle_window_resize(
+    mut resize_events: MessageReader<bevy::window::WindowResized>,
+    mut download_events: MessageWriter<DownloadSlippyTilesMessage>,
+    map_state: Res<MapState>,
+    zoom_state: Res<ZoomState>,
+    view3d_state: Res<view3d::View3DState>,
+) {
+    for event in resize_events.read() {
+        let radius = compute_tile_radius(
+            event.width,
+            event.height,
+            zoom_state.camera_zoom,
+            Some(&view3d_state),
+        );
+        download_events.write(DownloadSlippyTilesMessage {
+            tile_size: TileSize::Normal,
+            zoom_level: map_state.zoom_level,
+            coordinates: Coordinates::from_latitude_longitude(map_state.latitude, map_state.longitude),
+            radius: Radius(radius),
+            use_cache: true,
+        });
+    }
+}
+
+/// Re-request tiles when 3D view state changes (entering/exiting 3D, orbit, pitch, distance)
+/// so the larger perspective footprint is covered.
+fn handle_3d_view_tile_refresh(
+    view3d_state: Res<view3d::View3DState>,
+    mut download_events: MessageWriter<DownloadSlippyTilesMessage>,
+    map_state: Res<MapState>,
+    zoom_state: Res<ZoomState>,
+    window_query: Query<&Window>,
+) {
+    if !view3d_state.is_changed() {
+        return;
+    }
+    let Ok(window) = window_query.single() else {
+        return;
+    };
+    let radius = compute_tile_radius(
+        window.width(),
+        window.height(),
+        zoom_state.camera_zoom,
+        Some(&view3d_state),
+    );
+    download_events.write(DownloadSlippyTilesMessage {
+        tile_size: TileSize::Normal,
+        zoom_level: map_state.zoom_level,
+        coordinates: Coordinates::from_latitude_longitude(map_state.latitude, map_state.longitude),
+        radius: Radius(radius),
+        use_cache: true,
+    });
 }
 
 // Aircraft texture setup, sync, label update, and connection status
