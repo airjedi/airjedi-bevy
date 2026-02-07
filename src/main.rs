@@ -32,7 +32,7 @@ use adsb_client::{Client as AdsbClient, ClientConfig, ConnectionConfig, TrackerC
 // =============================================================================
 
 #[allow(dead_code)]  // Some constants defined for future use
-mod constants {
+pub(crate) mod constants {
     // Mercator projection limits
     pub const MERCATOR_LAT_LIMIT: f64 = 85.0511;
 
@@ -276,31 +276,31 @@ fn main() {
 
 // Component for aircraft entities
 #[derive(Component)]
-struct Aircraft {
+pub struct Aircraft {
     /// ICAO 24-bit address (hex string)
-    icao: String,
+    pub icao: String,
     /// Callsign (optional)
-    callsign: Option<String>,
+    pub callsign: Option<String>,
     /// Current latitude in degrees
-    latitude: f64,
+    pub latitude: f64,
     /// Current longitude in degrees
-    longitude: f64,
+    pub longitude: f64,
     /// Altitude in feet
-    altitude: Option<i32>,
+    pub altitude: Option<i32>,
     /// Track/heading in degrees (0-360)
-    heading: Option<f32>,
+    pub heading: Option<f32>,
     /// Ground speed in knots
-    velocity: Option<f64>,
+    pub velocity: Option<f64>,
     /// Vertical rate in feet per minute
-    vertical_rate: Option<i32>,
+    pub vertical_rate: Option<i32>,
     /// Squawk code (transponder code)
-    squawk: Option<String>,
+    pub squawk: Option<String>,
 }
 
 // Component to link aircraft labels to their aircraft
 #[derive(Component)]
-struct AircraftLabel {
-    aircraft_entity: Entity,
+pub struct AircraftLabel {
+    pub aircraft_entity: Entity,
 }
 
 // Component to mark the clear cache button
@@ -321,11 +321,11 @@ struct TileFadeState {
 
 // Resource to track map state
 #[derive(Resource, Clone)]
-struct MapState {
+pub struct MapState {
     // Current map center (where camera is looking)
-    latitude: f64,
-    longitude: f64,
-    zoom_level: ZoomLevel,
+    pub latitude: f64,
+    pub longitude: f64,
+    pub zoom_level: ZoomLevel,
 }
 
 impl Default for MapState {

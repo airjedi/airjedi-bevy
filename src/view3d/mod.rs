@@ -1,51 +1,27 @@
 //! 3D View Mode Module
 //!
-//! RESEARCH/PROTOTYPE - Not fully implemented
-//!
-//! This module documents the approach for implementing a 3D perspective view
-//! of aircraft using Bevy's 3D camera and rendering capabilities.
-//!
-//! ## Current Status: Stub/Documentation Only
-//!
-//! Implementing a true 3D view requires significant architectural changes:
-//! - Switching from 2D sprites to 3D meshes
-//! - Adding terrain data
-//! - Handling coordinate transformations
-//! - Managing two camera modes (2D map vs 3D perspective)
-//!
-//! ## Implementation Approach
-//!
-//! ### Phase 1: Basic 3D Aircraft
-//! 1. Create simple 3D aircraft meshes (cones or low-poly models)
-//! 2. Add a 3D camera that can switch between 2D and 3D modes
-//! 3. Convert lat/lon/alt to 3D world coordinates
-//!
-//! ### Phase 2: Terrain
-//! 1. Integrate terrain elevation data (e.g., SRTM, USGS)
-//! 2. Create terrain mesh from elevation data
-//! 3. Drape map tiles onto terrain as textures
-//!
-//! ### Phase 3: Enhanced Visualization
-//! 1. Add flight path trails as 3D tubes/lines
-//! 2. Implement camera follow modes (chase cam, orbit cam)
-//! 3. Add atmospheric effects (fog, lighting based on time of day)
-//!
-//! ## Coordinate System
-//!
-//! The challenge is converting from geographic coordinates to 3D world space:
-//! - Latitude/Longitude -> X/Z plane position
-//! - Altitude (feet) -> Y axis (scaled appropriately)
-//! - Use a local tangent plane approximation for the visible area
-//!
-//! ## Resources
-//!
-//! - Bevy 3D: https://bevyengine.org/learn/book/3d-rendering/
-//! - Map tile texturing: Load tiles and apply to terrain mesh
-//! - Terrain data: SRTM, Mapbox terrain tiles, or precomputed mesh
-//!
+//! Provides a tilted perspective view showing aircraft at their altitudes
+//! above a flat map plane. Uses Camera2d with perspective projection so that
+//! all existing 2D content (tiles, trails, sprites) renders correctly.
+//! Aircraft altitude is shown by adjusting sprite Z positions.
 
 use bevy::prelude::*;
+use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy_egui::{egui, EguiContexts};
+
+// Constants for 3D view
+const TRANSITION_DURATION: f32 = 0.5;
+const DEFAULT_PITCH: f32 = 25.0;
+const DEFAULT_DISTANCE: f32 = 50.0;
+const MIN_PITCH: f32 = 15.0;
+const MAX_PITCH: f32 = 89.0;
+const MIN_DISTANCE: f32 = 5.0;
+const MAX_DISTANCE: f32 = 200.0;
+const ALTITUDE_EXAGGERATION: f32 = 2.0;
+
+/// Scale factor to convert the distance slider (abstract units) to pixel-space distance.
+/// At default distance 50, the camera is 50*20 = 1000 pixels from the map center.
+const PIXEL_SCALE: f32 = 20.0;
 
 /// View mode for the application
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -55,128 +31,121 @@ pub enum ViewMode {
     Perspective3D,
 }
 
-impl ViewMode {
-    pub fn display_name(&self) -> &'static str {
-        match self {
-            ViewMode::Map2D => "2D Map",
-            ViewMode::Perspective3D => "3D View",
-        }
-    }
+/// Transition state between view modes
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum TransitionState {
+    #[default]
+    Idle,
+    TransitioningTo3D { progress: f32 },
+    TransitioningTo2D { progress: f32 },
 }
 
 /// Resource for 3D view state
 #[derive(Resource)]
 pub struct View3DState {
-    /// Current view mode
     pub mode: ViewMode,
-    /// Camera pitch angle (degrees from horizontal)
+    pub transition: TransitionState,
     pub camera_pitch: f32,
-    /// Camera distance from center
     pub camera_distance: f32,
-    /// Camera orbit angle (degrees)
     pub camera_yaw: f32,
-    /// Vertical exaggeration for altitude
     pub altitude_scale: f32,
-    /// Whether to show terrain (when implemented)
-    pub show_terrain: bool,
-    /// Show 3D view settings panel
     pub show_panel: bool,
+    /// Saved 2D camera position (pixel coords) when entering 3D mode
+    pub saved_2d_center: Vec2,
 }
 
 impl Default for View3DState {
     fn default() -> Self {
         Self {
             mode: ViewMode::Map2D,
-            camera_pitch: 45.0,
-            camera_distance: 1000.0,
+            transition: TransitionState::Idle,
+            camera_pitch: DEFAULT_PITCH,
+            camera_distance: DEFAULT_DISTANCE,
             camera_yaw: 0.0,
-            altitude_scale: 1.0,
-            show_terrain: false,
+            altitude_scale: ALTITUDE_EXAGGERATION,
             show_panel: false,
+            saved_2d_center: Vec2::ZERO,
         }
     }
 }
 
 impl View3DState {
-    /// Convert geographic coordinates to 3D world position
-    ///
-    /// Uses a simplified local tangent plane projection.
-    /// For more accuracy, implement proper ECEF to ENU conversion.
-    pub fn geo_to_3d(
-        &self,
-        latitude: f64,
-        longitude: f64,
-        altitude_feet: i32,
-        reference_lat: f64,
-        reference_lon: f64,
-    ) -> Vec3 {
-        // Approximate meters per degree at reference latitude
-        let lat_rad = reference_lat.to_radians();
-        let meters_per_deg_lat = 111_320.0;
-        let meters_per_deg_lon = 111_320.0 * lat_rad.cos();
-
-        // Convert to local coordinates (meters from reference)
-        let x = (longitude - reference_lon) * meters_per_deg_lon;
-        let z = (latitude - reference_lat) * meters_per_deg_lat;
-
-        // Convert altitude from feet to meters, then scale
-        let y = (altitude_feet as f64 * 0.3048) * self.altitude_scale as f64;
-
-        // Scale down for reasonable world units (1 unit = 1km)
-        Vec3::new(
-            (x / 1000.0) as f32,
-            (y / 1000.0) as f32,
-            (z / 1000.0) as f32,
-        )
+    pub fn is_3d_active(&self) -> bool {
+        matches!(self.mode, ViewMode::Perspective3D)
+            || matches!(self.transition, TransitionState::TransitioningTo3D { .. })
     }
 
-    /// Calculate camera position for 3D view
-    pub fn calculate_camera_position(&self, center: Vec3) -> (Vec3, Vec3) {
+    pub fn is_transitioning(&self) -> bool {
+        !matches!(self.transition, TransitionState::Idle)
+    }
+
+    /// Convert altitude in feet to pixel-space Z offset
+    pub fn altitude_to_z(&self, altitude_feet: i32) -> f32 {
+        // Convert feet to km, then scale to pixel space
+        let alt_km = altitude_feet as f32 * 0.3048 / 1000.0;
+        alt_km * PIXEL_SCALE * self.altitude_scale
+    }
+
+    /// Calculate the 3D camera transform orbiting around a center point in pixel space
+    fn calculate_camera_transform(&self, center: Vec3) -> Transform {
         let pitch_rad = self.camera_pitch.to_radians();
         let yaw_rad = self.camera_yaw.to_radians();
 
-        // Camera offset from center
-        let horizontal_dist = self.camera_distance * pitch_rad.cos();
-        let vertical_dist = self.camera_distance * pitch_rad.sin();
+        let effective_distance = self.camera_distance * PIXEL_SCALE;
+        let horizontal_dist = effective_distance * pitch_rad.cos();
+        let vertical_dist = effective_distance * pitch_rad.sin();
 
+        // Z is "up" (altitude above map plane), orbit in XY plane.
+        // At yaw=0, camera is south of center looking north (so north stays up on screen).
         let camera_pos = Vec3::new(
-            center.x + horizontal_dist * yaw_rad.sin(),
-            center.y + vertical_dist,
-            center.z + horizontal_dist * yaw_rad.cos(),
+            center.x - horizontal_dist * yaw_rad.sin(),
+            center.y - horizontal_dist * yaw_rad.cos(),
+            center.z + vertical_dist,
         );
 
-        // Look at center
-        let look_at = center;
-
-        (camera_pos, look_at)
+        Transform::from_translation(camera_pos).looking_at(center, Vec3::Z)
     }
 }
 
-/// Component for 3D aircraft representation
-#[derive(Component)]
-pub struct Aircraft3D {
-    pub icao: String,
-}
-
-/// Component for terrain mesh
-#[derive(Component)]
-pub struct TerrainMesh;
-
-/// System to toggle 3D view mode
+/// System to toggle 3D view mode with smooth transition
 pub fn toggle_3d_view(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut state: ResMut<View3DState>,
     mut contexts: EguiContexts,
+    camera_query: Query<&Transform, With<Camera2d>>,
 ) {
-    if let Ok(ctx) = contexts.ctx_mut() {
-        if ctx.wants_keyboard_input() {
-            return;
-        }
+    let egui_wants_input = contexts.ctx_mut()
+        .map(|ctx| ctx.wants_keyboard_input())
+        .unwrap_or(false);
+
+    if egui_wants_input {
+        return;
     }
 
-    // 3 key - Toggle 3D view (just shows panel for now)
     if keyboard.just_pressed(KeyCode::Digit3) {
-        state.show_panel = !state.show_panel;
+        // Don't start new transition if one is in progress
+        if state.is_transitioning() {
+            return;
+        }
+
+        match state.mode {
+            ViewMode::Map2D => {
+                // Save current 2D camera center before transitioning
+                if let Ok(cam_transform) = camera_query.single() {
+                    state.saved_2d_center = Vec2::new(
+                        cam_transform.translation.x,
+                        cam_transform.translation.y,
+                    );
+                }
+                state.transition = TransitionState::TransitioningTo3D { progress: 0.0 };
+                state.show_panel = true;
+                info!("Starting transition to 3D view");
+            }
+            ViewMode::Perspective3D => {
+                state.transition = TransitionState::TransitioningTo2D { progress: 0.0 };
+                info!("Starting transition to 2D view");
+            }
+        }
     }
 }
 
@@ -193,47 +162,38 @@ pub fn render_3d_view_panel(
         return;
     }
 
-    egui::Window::new("3D View (Prototype)")
+    egui::Window::new("3D View Settings")
         .collapsible(true)
         .resizable(false)
         .default_width(280.0)
         .show(ctx, |ui| {
             ui.colored_label(
                 egui::Color32::YELLOW,
-                "This feature is in research/prototype stage"
+                "3D View - Experimental"
             );
 
             ui.separator();
 
             ui.horizontal(|ui| {
-                ui.label("View Mode:");
-                if ui.selectable_label(state.mode == ViewMode::Map2D, "2D Map").clicked() {
-                    state.mode = ViewMode::Map2D;
-                }
-                if ui.selectable_label(state.mode == ViewMode::Perspective3D, "3D View").clicked() {
-                    state.mode = ViewMode::Perspective3D;
-                    info!("3D view is not yet implemented");
-                }
+                ui.label("Mode:");
+                let mode_text = match state.mode {
+                    ViewMode::Map2D => "2D Map",
+                    ViewMode::Perspective3D => "3D Perspective",
+                };
+                ui.strong(mode_text);
             });
 
-            if state.mode == ViewMode::Perspective3D {
-                ui.colored_label(
-                    egui::Color32::RED,
-                    "3D rendering not yet implemented"
-                );
-            }
-
             ui.separator();
-            ui.label("Camera Settings (for future use):");
+            ui.heading("Camera Settings");
 
             ui.horizontal(|ui| {
                 ui.label("Pitch:");
-                ui.add(egui::Slider::new(&mut state.camera_pitch, 15.0..=89.0).suffix("°"));
+                ui.add(egui::Slider::new(&mut state.camera_pitch, MIN_PITCH..=MAX_PITCH).suffix("°"));
             });
 
             ui.horizontal(|ui| {
                 ui.label("Distance:");
-                ui.add(egui::Slider::new(&mut state.camera_distance, 100.0..=10000.0));
+                ui.add(egui::Slider::new(&mut state.camera_distance, MIN_DISTANCE..=MAX_DISTANCE));
             });
 
             ui.horizontal(|ui| {
@@ -241,34 +201,219 @@ pub fn render_3d_view_panel(
                 ui.add(egui::Slider::new(&mut state.camera_yaw, 0.0..=360.0).suffix("°"));
             });
 
+            ui.separator();
+            ui.heading("Altitude");
+
             ui.horizontal(|ui| {
-                ui.label("Alt Scale:");
-                ui.add(egui::Slider::new(&mut state.altitude_scale, 0.1..=10.0));
+                ui.label("Exaggeration:");
+                ui.add(egui::Slider::new(&mut state.altitude_scale, 0.5..=50.0).suffix("x"));
             });
 
             ui.separator();
-
-            ui.checkbox(&mut state.show_terrain, "Show Terrain (not implemented)");
-
-            ui.separator();
-
-            // Implementation notes
-            ui.collapsing("Implementation Notes", |ui| {
-                ui.label(
-                    egui::RichText::new(
-                        "Full 3D implementation requires:\n\
-                         - 3D camera switching\n\
-                         - Aircraft mesh generation\n\
-                         - Terrain elevation data\n\
-                         - Map tile texturing\n\
-                         - Coordinate transformation\n\n\
-                         See src/view3d/mod.rs for details."
-                    )
+            ui.label(
+                egui::RichText::new("Press '3' to toggle view mode")
                     .size(11.0)
                     .color(egui::Color32::GRAY)
-                );
-            });
+            );
         });
+}
+
+/// System to animate the view transition
+pub fn animate_view_transition(
+    time: Res<Time>,
+    mut state: ResMut<View3DState>,
+) {
+    let delta = time.delta_secs() / TRANSITION_DURATION;
+
+    match state.transition {
+        TransitionState::TransitioningTo3D { progress } => {
+            let new_progress = (progress + delta).min(1.0);
+            if new_progress >= 1.0 {
+                state.mode = ViewMode::Perspective3D;
+                state.transition = TransitionState::Idle;
+                info!("Transition to 3D complete");
+            } else {
+                state.transition = TransitionState::TransitioningTo3D { progress: new_progress };
+            }
+        }
+        TransitionState::TransitioningTo2D { progress } => {
+            let new_progress = (progress + delta).min(1.0);
+            if new_progress >= 1.0 {
+                state.mode = ViewMode::Map2D;
+                state.transition = TransitionState::Idle;
+                info!("Transition to 2D complete");
+            } else {
+                state.transition = TransitionState::TransitioningTo2D { progress: new_progress };
+            }
+        }
+        TransitionState::Idle => {}
+    }
+}
+
+/// System to update Camera2d for 3D perspective view.
+/// Works entirely in pixel-coordinate space so tiles, trails, and aircraft all align.
+pub fn update_3d_camera(
+    state: Res<View3DState>,
+    mut camera_query: Query<(&mut Transform, &mut Projection), With<Camera2d>>,
+) {
+    // Only run when transitioning or in 3D mode
+    if matches!(state.mode, ViewMode::Map2D) && !state.is_transitioning() {
+        return;
+    }
+
+    let Ok((mut transform, mut projection)) = camera_query.single_mut() else {
+        return;
+    };
+
+    // Get transition progress (0 = 2D, 1 = 3D)
+    let t = match state.transition {
+        TransitionState::Idle => {
+            match state.mode {
+                ViewMode::Map2D => 0.0,
+                ViewMode::Perspective3D => 1.0,
+            }
+        }
+        TransitionState::TransitioningTo3D { progress } => smooth_step(progress),
+        TransitionState::TransitioningTo2D { progress } => smooth_step(1.0 - progress),
+    };
+
+    if t < 0.001 {
+        // Pure 2D mode - restore orthographic projection and reset rotation
+        *projection = Projection::Orthographic(OrthographicProjection::default_2d());
+        transform.rotation = Quat::IDENTITY;
+        return;
+    }
+
+    // Use the saved 2D center as the orbit target (in pixel space)
+    let center = Vec3::new(state.saved_2d_center.x, state.saved_2d_center.y, 0.0);
+    let target_transform = state.calculate_camera_transform(center);
+
+    if t > 0.999 {
+        // Pure 3D mode
+        *transform = target_transform;
+        *projection = Projection::Perspective(PerspectiveProjection {
+            fov: 60.0_f32.to_radians(),
+            ..default()
+        });
+    } else {
+        // Interpolating between 2D and 3D
+        transform.translation = transform.translation.lerp(target_transform.translation, t);
+        transform.rotation = transform.rotation.slerp(target_transform.rotation, t);
+
+        // Switch projection type at halfway point
+        if t > 0.5 {
+            *projection = Projection::Perspective(PerspectiveProjection {
+                fov: 60.0_f32.to_radians(),
+                ..default()
+            });
+        }
+    }
+}
+
+/// Smooth step function for easing transitions
+fn smooth_step(t: f32) -> f32 {
+    t * t * (3.0 - 2.0 * t)
+}
+
+const ORBIT_SENSITIVITY: f32 = 0.3;
+const PITCH_SCROLL_SENSITIVITY: f32 = 2.0;
+const DISTANCE_SCROLL_SENSITIVITY: f32 = 5.0;
+
+/// System to handle 3D camera controls (orbit, pitch, distance)
+pub fn handle_3d_camera_controls(
+    mouse_button: Res<ButtonInput<MouseButton>>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut mouse_motion: MessageReader<MouseMotion>,
+    mut scroll_events: MessageReader<MouseWheel>,
+    mut state: ResMut<View3DState>,
+    mut contexts: EguiContexts,
+) {
+    // Only active in 3D mode
+    if !matches!(state.mode, ViewMode::Perspective3D) {
+        // Clear events to avoid accumulation
+        mouse_motion.clear();
+        scroll_events.clear();
+        return;
+    }
+
+    // Don't process if transitioning
+    if state.is_transitioning() {
+        mouse_motion.clear();
+        scroll_events.clear();
+        return;
+    }
+
+    // Check if egui wants input
+    let egui_wants_input = contexts.ctx_mut()
+        .map(|ctx| ctx.wants_pointer_input() || ctx.wants_keyboard_input())
+        .unwrap_or(false);
+
+    if egui_wants_input {
+        mouse_motion.clear();
+        scroll_events.clear();
+        return;
+    }
+
+    // Left drag = orbit (yaw)
+    if mouse_button.pressed(MouseButton::Left) {
+        for event in mouse_motion.read() {
+            state.camera_yaw += event.delta.x * ORBIT_SENSITIVITY;
+            if state.camera_yaw < 0.0 {
+                state.camera_yaw += 360.0;
+            } else if state.camera_yaw >= 360.0 {
+                state.camera_yaw -= 360.0;
+            }
+        }
+    } else {
+        mouse_motion.clear();
+    }
+
+    // Scroll = distance, Shift+Scroll = pitch
+    for event in scroll_events.read() {
+        let scroll_y = match event.unit {
+            bevy::input::mouse::MouseScrollUnit::Line => event.y,
+            bevy::input::mouse::MouseScrollUnit::Pixel => event.y * 0.01,
+        };
+
+        if keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight) {
+            state.camera_pitch = (state.camera_pitch + scroll_y * PITCH_SCROLL_SENSITIVITY)
+                .clamp(MIN_PITCH, MAX_PITCH);
+        } else {
+            state.camera_distance = (state.camera_distance - scroll_y * DISTANCE_SCROLL_SENSITIVITY)
+                .clamp(MIN_DISTANCE, MAX_DISTANCE);
+        }
+    }
+}
+
+/// System to adjust aircraft sprite Z positions based on altitude in 3D mode.
+/// In 2D mode, aircraft Z is the fixed layer constant. In 3D mode, Z represents altitude
+/// so aircraft appear at different heights above the map when viewed from a tilted camera.
+pub fn update_aircraft_altitude_z(
+    state: Res<View3DState>,
+    mut aircraft_query: Query<(&crate::Aircraft, &mut Transform), Without<crate::AircraftLabel>>,
+    mut label_query: Query<(&crate::AircraftLabel, &mut Visibility)>,
+) {
+    if state.is_3d_active() {
+        for (aircraft, mut transform) in aircraft_query.iter_mut() {
+            let alt = aircraft.altitude.unwrap_or(0);
+            transform.translation.z = state.altitude_to_z(alt);
+        }
+        // Hide labels in 3D mode (they don't position well in perspective)
+        for (_label, mut vis) in label_query.iter_mut() {
+            *vis = Visibility::Hidden;
+        }
+    } else if !state.is_transitioning() {
+        // Restore aircraft to fixed Z layer in 2D mode
+        for (_aircraft, mut transform) in aircraft_query.iter_mut() {
+            transform.translation.z = crate::constants::AIRCRAFT_Z_LAYER;
+        }
+        // Restore label visibility
+        for (_label, mut vis) in label_query.iter_mut() {
+            if *vis == Visibility::Hidden {
+                *vis = Visibility::Inherited;
+            }
+        }
+    }
 }
 
 /// Plugin for 3D view functionality
@@ -277,7 +422,13 @@ pub struct View3DPlugin;
 impl Plugin for View3DPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<View3DState>()
-            .add_systems(Update, toggle_3d_view)
+            .add_systems(Update, (
+                toggle_3d_view,
+                animate_view_transition,
+                handle_3d_camera_controls,
+                update_3d_camera.after(animate_view_transition),
+            ))
+            .add_systems(Update, update_aircraft_altitude_z)
             .add_systems(bevy_egui::EguiPrimaryContextPass, render_3d_view_panel);
     }
 }
