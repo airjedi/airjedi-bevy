@@ -3,12 +3,15 @@ use bevy_slippy_tiles::*;
 use std::fs;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
 
 mod config;
 mod data;
+mod geo;
+mod units;
+mod map;
 mod aviation;
 mod aircraft;
+mod adsb;
 mod keyboard;
 mod weather;
 mod bookmarks;
@@ -19,20 +22,24 @@ mod airspace;
 mod data_sources;
 mod export;
 mod view3d;
+
+// Re-export core types so crate::Aircraft, crate::MapState, crate::ZoomState
+// continue to resolve throughout the codebase.
+pub(crate) use aircraft::components::{Aircraft, AircraftLabel};
+pub(crate) use map::{MapState, ZoomState};
 use config::ConfigPlugin;
 use aircraft::AircraftListButton;
 use keyboard::{HelpOverlayState, handle_keyboard_shortcuts, toggle_overlays_keyboard, update_help_overlay};
 use bevy_egui::EguiContexts;
 
 // ADS-B client types
-use adsb_client::{Client as AdsbClient, ClientConfig, ConnectionConfig, TrackerConfig, ConnectionState};
 
 // =============================================================================
 // Constants - All magic numbers centralized here
 // =============================================================================
 
 #[allow(dead_code)]  // Some constants defined for future use
-mod constants {
+pub(crate) mod constants {
     // Mercator projection limits
     pub const MERCATOR_LAT_LIMIT: f64 = 85.0511;
 
@@ -231,6 +238,7 @@ fn main() {
             data_sources::DataSourcesPlugin,
             export::ExportPlugin,
             view3d::View3DPlugin,
+            adsb::AdsbPlugin,
         ))
         .init_resource::<DragState>()
         .init_resource::<HelpOverlayState>()
@@ -245,9 +253,7 @@ fn main() {
             auto_render: false,            // Disable auto-render, we handle tile display ourselves
             ..default()
         })
-        .add_systems(Startup, (setup_debug_logger, setup_map, setup_ui, setup_aircraft_texture))
-        // Setup ADS-B client after map is initialized (needs MapState)
-        .add_systems(Startup, setup_adsb_client.after(setup_map))
+        .add_systems(Startup, (setup_debug_logger, setup_map, setup_ui))
         .add_systems(Update, check_egui_wants_input.before(handle_pan_drag).before(handle_zoom))
         .add_systems(Update, handle_pan_drag)
         .add_systems(Update, handle_zoom)
@@ -255,52 +261,20 @@ fn main() {
         // This ensures old tiles are gone before new camera position is applied
         .add_systems(Update, ApplyDeferred.after(handle_zoom))
         .add_systems(Update, apply_camera_zoom.after(ApplyDeferred))
-        .add_systems(Update, follow_aircraft.after(sync_aircraft_from_adsb))
+        .add_systems(Update, follow_aircraft.after(adsb::sync_aircraft_from_adsb))
         .add_systems(Update, update_camera_position.after(handle_pan_drag).after(apply_camera_zoom).after(follow_aircraft))
-        .add_systems(Update, sync_aircraft_from_adsb)
-        .add_systems(Update, update_aircraft_positions.after(update_camera_position).after(sync_aircraft_from_adsb))
-        .add_systems(Update, update_aircraft_label_text.after(sync_aircraft_from_adsb))
+        .add_systems(Update, update_aircraft_positions.after(update_camera_position).after(adsb::sync_aircraft_from_adsb))
         .add_systems(Update, scale_aircraft_and_labels.after(apply_camera_zoom))
         .add_systems(Update, update_aircraft_labels.after(update_aircraft_positions))
         .add_systems(Update, handle_clear_cache_button)
         .add_systems(Update, handle_settings_button)
         .add_systems(Update, handle_aircraft_list_button)
-        .add_systems(Update, update_connection_status)
         .add_systems(Update, display_tiles_filtered.after(ApplyDeferred))
         .add_systems(Update, animate_tile_fades.after(display_tiles_filtered))
         .add_systems(Update, handle_keyboard_shortcuts)
         .add_systems(Update, toggle_overlays_keyboard)
         .add_systems(Update, update_help_overlay)
         .run();
-}
-
-// Component for aircraft entities
-#[derive(Component)]
-struct Aircraft {
-    /// ICAO 24-bit address (hex string)
-    icao: String,
-    /// Callsign (optional)
-    callsign: Option<String>,
-    /// Current latitude in degrees
-    latitude: f64,
-    /// Current longitude in degrees
-    longitude: f64,
-    /// Altitude in feet
-    altitude: Option<i32>,
-    /// Track/heading in degrees (0-360)
-    heading: Option<f32>,
-    /// Ground speed in knots
-    velocity: Option<f64>,
-    /// Vertical rate in feet per minute
-    vertical_rate: Option<i32>,
-    /// Squawk code (transponder code)
-    squawk: Option<String>,
-}
-
-// Component to link aircraft labels to their aircraft
-#[derive(Component)]
-struct AircraftLabel {
-    aircraft_entity: Entity,
 }
 
 // Component to mark the clear cache button
@@ -319,63 +293,12 @@ struct TileFadeState {
     despawn_delay: Option<f32>,
 }
 
-// Resource to track map state
-#[derive(Resource, Clone)]
-struct MapState {
-    // Current map center (where camera is looking)
-    latitude: f64,
-    longitude: f64,
-    zoom_level: ZoomLevel,
-}
-
-impl Default for MapState {
-    fn default() -> Self {
-        Self {
-            latitude: constants::DEFAULT_LATITUDE,
-            longitude: constants::DEFAULT_LONGITUDE,
-            zoom_level: ZoomLevel::L10,
-        }
-    }
-}
-
 // Resource to track pan/drag state
 #[derive(Resource, Default)]
 struct DragState {
     is_dragging: bool,
     last_position: Option<Vec2>,
     last_tile_request_coords: Option<(f64, f64)>,
-}
-
-// Resource to hold the aircraft icon texture handle
-#[derive(Resource)]
-struct AircraftTexture {
-    handle: Handle<Image>,
-}
-
-// Resource to track zoom scroll accumulation for smooth trackpad zooming
-#[derive(Resource)]
-struct ZoomState {
-    // Continuous camera zoom level (1.0 = normal, 2.0 = 2x zoomed in, 0.5 = 2x zoomed out)
-    camera_zoom: f32,
-    // Minimum and maximum zoom levels
-    min_zoom: f32,
-    max_zoom: f32,
-}
-
-impl ZoomState {
-    fn new() -> Self {
-        Self {
-            camera_zoom: 1.0,
-            min_zoom: constants::MIN_CAMERA_ZOOM,
-            max_zoom: constants::MAX_CAMERA_ZOOM,
-        }
-    }
-}
-
-impl Default for ZoomState {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 // Resource to hold debug log file handle
@@ -393,107 +316,7 @@ impl ZoomDebugLogger {
     }
 }
 
-// =============================================================================
-// ADS-B Client Integration
-// =============================================================================
-
-/// Shared state for aircraft data from the ADS-B client.
-/// This is updated by the background tokio thread and read by Bevy systems.
-#[derive(Resource, Clone)]
-struct AdsbAircraftData {
-    /// Aircraft data keyed by ICAO address
-    aircraft: Arc<Mutex<Vec<adsb_client::Aircraft>>>,
-    /// Current connection state
-    connection_state: Arc<Mutex<ConnectionState>>,
-}
-
-impl AdsbAircraftData {
-    fn new() -> Self {
-        Self {
-            aircraft: Arc::new(Mutex::new(Vec::new())),
-            connection_state: Arc::new(Mutex::new(ConnectionState::Disconnected)),
-        }
-    }
-
-    fn get_aircraft(&self) -> Vec<adsb_client::Aircraft> {
-        self.aircraft.lock().map(|a| a.clone()).unwrap_or_default()
-    }
-
-    fn get_connection_state(&self) -> ConnectionState {
-        self.connection_state
-            .lock()
-            .map(|s| s.clone())
-            .unwrap_or(ConnectionState::Disconnected)
-    }
-}
-
-/// Component to mark the connection status UI text
-#[derive(Component)]
-struct ConnectionStatusText;
-
-/// Setup the ADS-B client in a background thread with its own tokio runtime.
-fn setup_adsb_client(mut commands: Commands, map_state: Res<MapState>, app_config: Res<config::AppConfig>) {
-    let adsb_data = AdsbAircraftData::new();
-    let aircraft_data = Arc::clone(&adsb_data.aircraft);
-    let connection_state = Arc::clone(&adsb_data.connection_state);
-
-    // Get the center coordinates from map state
-    let center_lat = map_state.latitude;
-    let center_lon = map_state.longitude;
-
-    // Get endpoint URL from config
-    let endpoint_url = app_config.feed.endpoint_url.clone();
-
-    // Spawn a background thread with its own tokio runtime
-    std::thread::spawn(move || {
-        // Create a new tokio runtime for this thread
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("Failed to create tokio runtime for ADS-B client");
-
-        rt.block_on(async move {
-            info!("Starting ADS-B client, connecting to {}", endpoint_url);
-
-            let mut client = AdsbClient::spawn(ClientConfig {
-                connection: ConnectionConfig {
-                    address: endpoint_url.clone(),
-                    ..Default::default()
-                },
-                tracker: TrackerConfig {
-                    center: Some((center_lat, center_lon)),
-                    max_distance_miles: constants::ADSB_MAX_DISTANCE_MILES,
-                    aircraft_timeout_secs: constants::ADSB_AIRCRAFT_TIMEOUT_SECS,
-                    ..Default::default()
-                },
-                ..Default::default()
-            });
-
-            // Processing loop
-            loop {
-                // Process next event from the connection
-                if !client.process_next().await {
-                    warn!("ADS-B client connection closed, restarting...");
-                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                    continue;
-                }
-
-                // Update shared connection state
-                if let Ok(mut state) = connection_state.lock() {
-                    *state = client.connection_state();
-                }
-
-                // Update shared aircraft data
-                if let Ok(mut data) = aircraft_data.lock() {
-                    *data = client.get_aircraft();
-                }
-            }
-        });
-    });
-
-    commands.insert_resource(adsb_data);
-    info!("ADS-B client background thread started");
-}
+// ADS-B integration is in src/adsb/ module
 
 fn setup_debug_logger(mut commands: Commands) {
     use std::fs::OpenOptions;
@@ -529,7 +352,7 @@ fn setup_debug_logger(mut commands: Commands) {
     }
 }
 
-fn setup_map(
+pub(crate) fn setup_map(
     mut commands: Commands,
     mut download_events: MessageWriter<DownloadSlippyTilesMessage>,
     mut tile_settings: ResMut<SlippyTilesSettings>,
@@ -668,167 +491,12 @@ fn setup_ui(mut commands: Commands) {
         },
         TextColor(Color::srgb(1.0, 0.8, 0.0)), // Yellow for connecting
         BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.7)),
-        ConnectionStatusText,
+        adsb::ConnectionStatusText,
     ));
 }
 
-/// Load the aircraft icon texture
-fn setup_aircraft_texture(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let handle = asset_server.load("airplane1.png");
-    commands.insert_resource(AircraftTexture { handle });
-}
-
-/// Sync aircraft entities from the shared ADS-B data.
-/// This system runs every frame and updates Bevy entities to match the ADS-B client state.
-fn sync_aircraft_from_adsb(
-    mut commands: Commands,
-    aircraft_texture: Option<Res<AircraftTexture>>,
-    adsb_data: Option<Res<AdsbAircraftData>>,
-    mut aircraft_query: Query<(Entity, &mut Aircraft, &mut Transform)>,
-    label_query: Query<(Entity, &AircraftLabel)>,
-) {
-    let Some(adsb_data) = adsb_data else {
-        return; // ADS-B client not yet initialized
-    };
-    let Some(aircraft_texture) = aircraft_texture else {
-        return; // Aircraft texture not yet loaded
-    };
-
-    let adsb_aircraft = adsb_data.get_aircraft();
-
-    // Build a map of existing aircraft entities by ICAO
-    let mut existing_aircraft: HashMap<String, Entity> = aircraft_query
-        .iter()
-        .map(|(entity, aircraft, _)| (aircraft.icao.clone(), entity))
-        .collect();
-
-    // Update or spawn aircraft
-    for adsb_ac in &adsb_aircraft {
-        // Skip aircraft without position data
-        let (Some(lat), Some(lon)) = (adsb_ac.latitude, adsb_ac.longitude) else {
-            continue;
-        };
-
-        if let Some(&entity) = existing_aircraft.get(&adsb_ac.icao) {
-            // Update existing aircraft
-            if let Ok((_, mut aircraft, _)) = aircraft_query.get_mut(entity) {
-                aircraft.latitude = lat;
-                aircraft.longitude = lon;
-                aircraft.altitude = adsb_ac.altitude;
-                aircraft.heading = adsb_ac.track.map(|t| t as f32);
-                aircraft.velocity = adsb_ac.velocity;
-                aircraft.vertical_rate = adsb_ac.vertical_rate;
-                aircraft.callsign = adsb_ac.callsign.clone();
-                // Note: squawk is not available in current adsb_client, set to None
-                aircraft.squawk = None;
-            }
-            existing_aircraft.remove(&adsb_ac.icao);
-        } else {
-            // Spawn new aircraft with sprite icon
-            let aircraft_entity = commands.spawn((
-                Sprite {
-                    image: aircraft_texture.handle.clone(),
-                    // Scale sprite to desired size (64px source scaled to marker radius)
-                    custom_size: Some(Vec2::splat(constants::AIRCRAFT_MARKER_RADIUS * 4.0)),
-                    ..default()
-                },
-                Transform::from_xyz(0.0, 0.0, constants::AIRCRAFT_Z_LAYER),
-                Aircraft {
-                    icao: adsb_ac.icao.clone(),
-                    callsign: adsb_ac.callsign.clone(),
-                    latitude: lat,
-                    longitude: lon,
-                    altitude: adsb_ac.altitude,
-                    heading: adsb_ac.track.map(|t| t as f32),
-                    velocity: adsb_ac.velocity,
-                    vertical_rate: adsb_ac.vertical_rate,
-                    // Note: squawk is not available in current adsb_client, set to None
-                    squawk: None,
-                },
-                aircraft::TrailHistory::default(),
-            )).id();
-
-            // Spawn label for this aircraft
-            let callsign_display = adsb_ac.callsign.as_deref().unwrap_or(&adsb_ac.icao);
-            let alt_display = adsb_ac.altitude.map(|a| format!("{} ft", a)).unwrap_or_default();
-            let label_text = format!("{}\n{}", callsign_display, alt_display);
-
-            commands.spawn((
-                Text2d::new(label_text),
-                TextFont {
-                    font_size: constants::BASE_FONT_SIZE,
-                    ..default()
-                },
-                TextColor(Color::WHITE),
-                Transform::from_xyz(0.0, 0.0, constants::LABEL_Z_LAYER),
-                AircraftLabel {
-                    aircraft_entity,
-                },
-            ));
-        }
-    }
-
-    // Remove aircraft that are no longer in the ADS-B data
-    for (icao, entity) in existing_aircraft {
-        // Find and despawn the label first
-        for (label_entity, label) in label_query.iter() {
-            if label.aircraft_entity == entity {
-                commands.entity(label_entity).despawn();
-                break;
-            }
-        }
-        // Despawn the aircraft
-        commands.entity(entity).despawn();
-        info!("Removed aircraft {} from display", icao);
-    }
-}
-
-/// Update aircraft labels with current data
-fn update_aircraft_label_text(
-    aircraft_query: Query<&Aircraft>,
-    mut label_query: Query<(&AircraftLabel, &mut Text2d)>,
-) {
-    for (label, mut text) in label_query.iter_mut() {
-        if let Ok(aircraft) = aircraft_query.get(label.aircraft_entity) {
-            let callsign_display = aircraft.callsign.as_deref().unwrap_or(&aircraft.icao);
-            let alt_display = aircraft.altitude.map(|a| format!("{} ft", a)).unwrap_or_default();
-            **text = format!("{}\n{}", callsign_display, alt_display);
-        }
-    }
-}
-
-/// Update the connection status UI indicator
-fn update_connection_status(
-    adsb_data: Option<Res<AdsbAircraftData>>,
-    mut status_query: Query<(&mut Text, &mut TextColor), With<ConnectionStatusText>>,
-) {
-    let Some(adsb_data) = adsb_data else {
-        return;
-    };
-
-    let connection_state = adsb_data.get_connection_state();
-    let aircraft_count = adsb_data.get_aircraft().len();
-
-    for (mut text, mut color) in status_query.iter_mut() {
-        let (status_text, status_color) = match connection_state {
-            ConnectionState::Connected => {
-                (format!("ADS-B: {} aircraft", aircraft_count), Color::srgb(0.0, 1.0, 0.0))
-            }
-            ConnectionState::Connecting => {
-                ("ADS-B: Connecting...".to_string(), Color::srgb(1.0, 0.8, 0.0))
-            }
-            ConnectionState::Disconnected => {
-                ("ADS-B: Disconnected".to_string(), Color::srgb(1.0, 0.3, 0.3))
-            }
-            ConnectionState::Error(ref msg) => {
-                (format!("ADS-B: Error - {}", msg), Color::srgb(1.0, 0.0, 0.0))
-            }
-        };
-
-        **text = status_text;
-        *color = TextColor(status_color);
-    }
-}
+// Aircraft texture setup, sync, label update, and connection status
+// are now in the adsb module.
 
 fn check_egui_wants_input(
     mut contexts: EguiContexts,
@@ -1215,35 +883,13 @@ fn update_aircraft_positions(
 ) {
     // Position aircraft RELATIVE to SlippyTilesSettings.reference
     // This matches how bevy_slippy_tiles positions tiles
-
-    // Reference point from SlippyTilesSettings (single source of truth)
-    let reference_ll = LatitudeLongitudeCoordinates {
-        latitude: tile_settings.reference_latitude,
-        longitude: tile_settings.reference_longitude,
-    };
-    let reference_pixel = world_coords_to_world_pixel(
-        &reference_ll,
-        TileSize::Normal,
-        map_state.zoom_level
-    );
+    let converter = geo::CoordinateConverter::new(&tile_settings, map_state.zoom_level);
 
     for (aircraft, mut transform) in aircraft_query.iter_mut() {
-        let aircraft_ll = LatitudeLongitudeCoordinates {
-            latitude: aircraft.latitude,
-            longitude: aircraft.longitude,
-        };
-        let aircraft_pixel = world_coords_to_world_pixel(
-            &aircraft_ll,
-            TileSize::Normal,
-            map_state.zoom_level
-        );
+        let pos = converter.latlon_to_world(aircraft.latitude, aircraft.longitude);
 
-        // Position at offset from reference
-        let offset_x = aircraft_pixel.0 - reference_pixel.0;
-        let offset_y = aircraft_pixel.1 - reference_pixel.1;
-
-        transform.translation.x = offset_x as f32;
-        transform.translation.y = offset_y as f32;
+        transform.translation.x = pos.x;
+        transform.translation.y = pos.y;
         // Apply rotation based on heading (track angle), defaulting to north-facing if no heading data
         // Heading is clockwise from north, Bevy rotation is counter-clockwise, so negate heading
         if let Some(heading) = aircraft.heading {

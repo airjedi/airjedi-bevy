@@ -2,8 +2,9 @@ use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
 use std::time::Instant;
 
-use super::{AircraftListState, TrailHistory};
+use super::{AircraftListState, TrailHistory, SessionClock, format_altitude};
 use crate::{MapState, ZoomState};
+use crate::geo::haversine_distance_nm;
 
 /// State for the aircraft detail panel
 #[derive(Resource, Default)]
@@ -35,22 +36,6 @@ pub struct DetailDisplayData {
     pub track_duration_secs: Option<u64>,
 }
 
-/// Calculate distance between two lat/lon points in nautical miles
-fn haversine_distance_nm(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
-    let r = 3440.065; // Earth radius in nautical miles
-
-    let lat1_rad = lat1.to_radians();
-    let lat2_rad = lat2.to_radians();
-    let delta_lat = (lat2 - lat1).to_radians();
-    let delta_lon = (lon2 - lon1).to_radians();
-
-    let a = (delta_lat / 2.0).sin().powi(2)
-        + lat1_rad.cos() * lat2_rad.cos() * (delta_lon / 2.0).sin().powi(2);
-    let c = 2.0 * a.sqrt().asin();
-
-    r * c
-}
-
 /// System to render the aircraft detail panel
 pub fn render_detail_panel(
     mut contexts: EguiContexts,
@@ -58,6 +43,7 @@ pub fn render_detail_panel(
     mut detail_state: ResMut<DetailPanelState>,
     mut follow_state: ResMut<CameraFollowState>,
     map_state: Res<MapState>,
+    clock: Res<SessionClock>,
     aircraft_query: Query<(&crate::Aircraft, &TrailHistory)>,
 ) {
     // Only show panel if an aircraft is selected and panel is open
@@ -92,7 +78,7 @@ pub fn render_detail_panel(
     );
 
     let track_duration = detail_state.track_start.map(|start| start.elapsed().as_secs());
-    let oldest_point_age = trail.points.front().map(|p| p.timestamp.elapsed().as_secs());
+    let oldest_point_age = trail.points.front().map(|p| clock.age_secs(p.timestamp) as u64);
 
     // Define colors
     let panel_bg = egui::Color32::from_rgba_unmultiplied(25, 30, 35, 240);
@@ -159,16 +145,7 @@ pub fn render_detail_panel(
                     ui.end_row();
 
                     ui.label(egui::RichText::new("Altitude").color(label_color).size(10.0));
-                    let alt_text = aircraft
-                        .altitude
-                        .map(|a| {
-                            if a >= 18000 {
-                                format!("FL{:03}", a / 100)
-                            } else {
-                                format!("{} ft", a)
-                            }
-                        })
-                        .unwrap_or_else(|| "---".to_string());
+                    let alt_text = format_altitude(aircraft.altitude);
                     ui.label(
                         egui::RichText::new(alt_text)
                             .color(value_color)

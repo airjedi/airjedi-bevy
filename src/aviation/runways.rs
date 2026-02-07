@@ -3,6 +3,7 @@ use bevy_slippy_tiles::*;
 
 use super::{AviationData, LoadingState};
 use crate::MapState;
+use crate::geo::CoordinateConverter;
 
 /// Component marking a runway entity
 #[derive(Component)]
@@ -46,15 +47,7 @@ pub fn draw_runways(
         return;
     }
 
-    let reference_ll = LatitudeLongitudeCoordinates {
-        latitude: tile_settings.reference_latitude,
-        longitude: tile_settings.reference_longitude,
-    };
-    let reference_pixel = world_coords_to_world_pixel(
-        &reference_ll,
-        TileSize::Normal,
-        map_state.zoom_level,
-    );
+    let converter = CoordinateConverter::new(&tile_settings, map_state.zoom_level);
 
     for runway in &aviation_data.runways {
         if !runway.has_valid_coords() || runway.is_closed() {
@@ -66,36 +59,8 @@ pub fn draw_runways(
         let he_lat = runway.he_latitude_deg.unwrap();
         let he_lon = runway.he_longitude_deg.unwrap();
 
-        // Convert LE end to screen coordinates
-        let le_ll = LatitudeLongitudeCoordinates {
-            latitude: le_lat,
-            longitude: le_lon,
-        };
-        let le_pixel = world_coords_to_world_pixel(
-            &le_ll,
-            TileSize::Normal,
-            map_state.zoom_level,
-        );
-
-        // Convert HE end to screen coordinates
-        let he_ll = LatitudeLongitudeCoordinates {
-            latitude: he_lat,
-            longitude: he_lon,
-        };
-        let he_pixel = world_coords_to_world_pixel(
-            &he_ll,
-            TileSize::Normal,
-            map_state.zoom_level,
-        );
-
-        let start = Vec2::new(
-            (le_pixel.0 - reference_pixel.0) as f32,
-            (le_pixel.1 - reference_pixel.1) as f32,
-        );
-        let end = Vec2::new(
-            (he_pixel.0 - reference_pixel.0) as f32,
-            (he_pixel.1 - reference_pixel.1) as f32,
-        );
+        let start = converter.latlon_to_world(le_lat, le_lon);
+        let end = converter.latlon_to_world(he_lat, he_lon);
 
         gizmos.line_2d(start, end, RUNWAY_COLOR);
     }

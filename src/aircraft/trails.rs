@@ -1,14 +1,43 @@
 use bevy::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::time::Instant;
 
+/// Resource providing a session-relative clock for serializable timestamps.
+/// Trail points store seconds since this clock's epoch (session start).
+#[derive(Resource)]
+pub struct SessionClock {
+    epoch: Instant,
+}
+
+impl Default for SessionClock {
+    fn default() -> Self {
+        Self {
+            epoch: Instant::now(),
+        }
+    }
+}
+
+impl SessionClock {
+    /// Current time in seconds since session start.
+    pub fn now_secs(&self) -> f64 {
+        self.epoch.elapsed().as_secs_f64()
+    }
+
+    /// Age of a timestamp (seconds elapsed since that timestamp).
+    pub fn age_secs(&self, timestamp_secs: f64) -> f64 {
+        self.now_secs() - timestamp_secs
+    }
+}
+
 /// A single point in the trail history
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TrailPoint {
     pub lat: f64,
     pub lon: f64,
     pub altitude: Option<i32>,
-    pub timestamp: Instant,
+    /// Seconds since session start (serializable replacement for Instant)
+    pub timestamp: f64,
 }
 
 /// Component storing trail history for an aircraft
@@ -39,18 +68,18 @@ impl Default for TrailConfig {
 
 impl TrailHistory {
     /// Add a new point to the trail
-    pub fn add_point(&mut self, lat: f64, lon: f64, altitude: Option<i32>) {
+    pub fn add_point(&mut self, lat: f64, lon: f64, altitude: Option<i32>, clock: &SessionClock) {
         self.points.push_back(TrailPoint {
             lat,
             lon,
             altitude,
-            timestamp: Instant::now(),
+            timestamp: clock.now_secs(),
         });
     }
 
     /// Remove points older than max_age
-    pub fn prune(&mut self, max_age_seconds: u64) {
-        let cutoff = Instant::now() - std::time::Duration::from_secs(max_age_seconds);
+    pub fn prune(&mut self, max_age_seconds: u64, clock: &SessionClock) {
+        let cutoff = clock.now_secs() - max_age_seconds as f64;
         while let Some(front) = self.points.front() {
             if front.timestamp < cutoff {
                 self.points.pop_front();
@@ -87,9 +116,9 @@ pub fn altitude_color(altitude: Option<i32>) -> Color {
     }
 }
 
-/// Calculate opacity based on age
-pub fn age_opacity(timestamp: Instant, solid_secs: u64, fade_secs: u64) -> f32 {
-    let age = timestamp.elapsed().as_secs_f32();
+/// Calculate opacity based on age (seconds since the point was recorded).
+pub fn age_opacity(age_secs: f64, solid_secs: u64, fade_secs: u64) -> f32 {
+    let age = age_secs as f32;
     let solid = solid_secs as f32;
     let fade = fade_secs as f32;
 
@@ -122,6 +151,7 @@ impl Default for TrailRecordTimer {
 pub fn record_trail_points(
     mut timer: ResMut<TrailRecordTimer>,
     config: Res<TrailConfig>,
+    clock: Res<SessionClock>,
     mut query: Query<(&crate::Aircraft, &mut TrailHistory)>,
 ) {
     if !config.enabled {
@@ -135,6 +165,6 @@ pub fn record_trail_points(
     timer.last_record = now;
 
     for (aircraft, mut trail) in query.iter_mut() {
-        trail.add_point(aircraft.latitude, aircraft.longitude, aircraft.altitude);
+        trail.add_point(aircraft.latitude, aircraft.longitude, aircraft.altitude, &clock);
     }
 }

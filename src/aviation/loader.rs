@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use crate::data::{cache_path, is_cache_fresh, download_file_blocking, DataFile};
 use super::types::{Airport, Runway, Navaid};
@@ -24,6 +25,17 @@ pub enum LoadingState {
     Ready,
     Failed,
 }
+
+/// Internal result type from the background loading thread.
+struct LoadedData {
+    airports: Vec<Airport>,
+    runways: Vec<Runway>,
+    navaids: Vec<Navaid>,
+}
+
+/// Resource holding the shared handle to the background loading thread result.
+#[derive(Resource)]
+pub struct AviationLoadHandle(Arc<Mutex<Option<Result<LoadedData, String>>>>);
 
 impl AviationData {
     /// Build runway index after loading
@@ -58,11 +70,10 @@ fn load_airports() -> Result<Vec<Airport>, String> {
             Ok(airport) => airports.push(airport),
             Err(e) => {
                 // Log but continue - some rows may have parsing issues
-                warn!("Skipping airport row: {}", e);
+                eprintln!("Skipping airport row: {}", e);
             }
         }
     }
-    info!("Loaded {} airports", airports.len());
     Ok(airports)
 }
 
@@ -77,11 +88,10 @@ fn load_runways() -> Result<Vec<Runway>, String> {
         match result {
             Ok(runway) => runways.push(runway),
             Err(e) => {
-                warn!("Skipping runway row: {}", e);
+                eprintln!("Skipping runway row: {}", e);
             }
         }
     }
-    info!("Loaded {} runways", runways.len());
     Ok(runways)
 }
 
@@ -96,48 +106,100 @@ fn load_navaids() -> Result<Vec<Navaid>, String> {
         match result {
             Ok(navaid) => navaids.push(navaid),
             Err(e) => {
-                warn!("Skipping navaid row: {}", e);
+                eprintln!("Skipping navaid row: {}", e);
             }
         }
     }
-    info!("Loaded {} navaids", navaids.len());
     Ok(navaids)
 }
 
-/// System to initialize aviation data loading
-pub fn start_aviation_data_loading(mut aviation_data: ResMut<AviationData>) {
+/// Startup system: spawns a background thread to download and parse aviation data.
+pub fn start_aviation_data_loading(
+    mut commands: Commands,
+    mut aviation_data: ResMut<AviationData>,
+) {
     if aviation_data.loading_state != LoadingState::NotStarted {
         return;
     }
 
     aviation_data.loading_state = LoadingState::Downloading;
+    info!("Starting aviation data loading in background thread...");
 
-    // Check cache freshness and download if needed
-    let files = [DataFile::Airports, DataFile::Runways, DataFile::Navaids];
+    let result_handle: Arc<Mutex<Option<Result<LoadedData, String>>>> =
+        Arc::new(Mutex::new(None));
+    let handle = result_handle.clone();
 
-    for file in &files {
-        if !is_cache_fresh(file.filename()) {
-            if let Err(e) = download_file_blocking(file) {
-                error!("Failed to download {}: {}", file.filename(), e);
-                aviation_data.loading_state = LoadingState::Failed;
-                return;
+    std::thread::spawn(move || {
+        // Download phase
+        let files = [DataFile::Airports, DataFile::Runways, DataFile::Navaids];
+        for file in &files {
+            if !is_cache_fresh(file.filename()) {
+                if let Err(e) = download_file_blocking(file) {
+                    let mut lock = handle.lock().unwrap();
+                    *lock = Some(Err(format!("Failed to download {}: {}", file.filename(), e)));
+                    return;
+                }
             }
         }
+
+        // Parse phase
+        let result = match (load_airports(), load_runways(), load_navaids()) {
+            (Ok(airports), Ok(runways), Ok(navaids)) => Ok(LoadedData {
+                airports,
+                runways,
+                navaids,
+            }),
+            (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => Err(e),
+        };
+
+        let mut lock = handle.lock().unwrap();
+        *lock = Some(result);
+    });
+
+    commands.insert_resource(AviationLoadHandle(result_handle));
+}
+
+/// Update system: polls the background thread and moves data into the ECS
+/// resource when loading is complete.
+pub fn poll_aviation_data_loading(
+    mut aviation_data: ResMut<AviationData>,
+    load_handle: Option<Res<AviationLoadHandle>>,
+) {
+    // Only poll while we're in the loading states
+    if !matches!(
+        aviation_data.loading_state,
+        LoadingState::Downloading | LoadingState::Parsing
+    ) {
+        return;
     }
 
-    aviation_data.loading_state = LoadingState::Parsing;
+    let Some(handle) = load_handle else {
+        return;
+    };
 
-    // Load data from cache
-    match (load_airports(), load_runways(), load_navaids()) {
-        (Ok(airports), Ok(runways), Ok(navaids)) => {
-            aviation_data.airports = airports;
-            aviation_data.runways = runways;
-            aviation_data.navaids = navaids;
+    let mut lock = handle.0.lock().unwrap();
+    let Some(result) = lock.take() else {
+        // Still loading
+        return;
+    };
+
+    match result {
+        Ok(data) => {
+            let airport_count = data.airports.len();
+            let runway_count = data.runways.len();
+            let navaid_count = data.navaids.len();
+
+            aviation_data.airports = data.airports;
+            aviation_data.runways = data.runways;
+            aviation_data.navaids = data.navaids;
             aviation_data.build_runway_index();
             aviation_data.loading_state = LoadingState::Ready;
-            info!("Aviation data ready");
+            info!(
+                "Aviation data ready: {} airports, {} runways, {} navaids",
+                airport_count, runway_count, navaid_count
+            );
         }
-        (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => {
+        Err(e) => {
             error!("Failed to load aviation data: {}", e);
             aviation_data.loading_state = LoadingState::Failed;
         }

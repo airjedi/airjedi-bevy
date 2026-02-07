@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy_egui::EguiPrimaryContextPass;
 
 use super::{
+    SessionClock,
     TrailConfig, TrailRecordTimer, draw_trails, prune_trails, record_trail_points,
     AircraftListState, AircraftDisplayList,
     render_aircraft_list_panel, toggle_aircraft_list, update_aircraft_display_list,
@@ -19,6 +20,7 @@ pub struct AircraftPlugin;
 impl Plugin for AircraftPlugin {
     fn build(&self, app: &mut App) {
         app
+            .init_resource::<SessionClock>()
             .init_resource::<TrailConfig>()
             .init_resource::<TrailRecordTimer>()
             .init_resource::<AircraftListState>()

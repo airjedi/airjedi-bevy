@@ -3,6 +3,7 @@ use bevy_slippy_tiles::*;
 
 use super::{Airport, AirportFilter, AviationData, LoadingState};
 use crate::MapState;
+use crate::geo::CoordinateConverter;
 
 /// Component marking an airport entity
 #[derive(Component)]
@@ -62,15 +63,7 @@ pub fn spawn_airports(
 
     info!("Spawning airport markers...");
 
-    let reference_ll = LatitudeLongitudeCoordinates {
-        latitude: tile_settings.reference_latitude,
-        longitude: tile_settings.reference_longitude,
-    };
-    let reference_pixel = world_coords_to_world_pixel(
-        &reference_ll,
-        TileSize::Normal,
-        map_state.zoom_level,
-    );
+    let converter = CoordinateConverter::new(&tile_settings, map_state.zoom_level);
 
     let mut count = 0;
     for airport in &aviation_data.airports {
@@ -78,18 +71,9 @@ pub fn spawn_airports(
             continue;
         }
 
-        let airport_ll = LatitudeLongitudeCoordinates {
-            latitude: airport.latitude_deg,
-            longitude: airport.longitude_deg,
-        };
-        let airport_pixel = world_coords_to_world_pixel(
-            &airport_ll,
-            TileSize::Normal,
-            map_state.zoom_level,
-        );
-
-        let x = (airport_pixel.0 - reference_pixel.0) as f32;
-        let y = (airport_pixel.1 - reference_pixel.1) as f32;
+        let pos = converter.latlon_to_world(airport.latitude_deg, airport.longitude_deg);
+        let x = pos.x;
+        let y = pos.y;
 
         // Create airport marker (small square)
         let mesh = meshes.add(Rectangle::new(6.0, 6.0));
@@ -122,15 +106,7 @@ pub fn update_airport_positions(
         return;
     }
 
-    let reference_ll = LatitudeLongitudeCoordinates {
-        latitude: tile_settings.reference_latitude,
-        longitude: tile_settings.reference_longitude,
-    };
-    let reference_pixel = world_coords_to_world_pixel(
-        &reference_ll,
-        TileSize::Normal,
-        map_state.zoom_level,
-    );
+    let converter = CoordinateConverter::new(&tile_settings, map_state.zoom_level);
 
     // Build a lookup map for airports
     let airport_map: std::collections::HashMap<i64, &Airport> = aviation_data
@@ -141,18 +117,9 @@ pub fn update_airport_positions(
 
     for (marker, mut transform) in airport_query.iter_mut() {
         if let Some(airport) = airport_map.get(&marker.airport_id) {
-            let airport_ll = LatitudeLongitudeCoordinates {
-                latitude: airport.latitude_deg,
-                longitude: airport.longitude_deg,
-            };
-            let airport_pixel = world_coords_to_world_pixel(
-                &airport_ll,
-                TileSize::Normal,
-                map_state.zoom_level,
-            );
-
-            transform.translation.x = (airport_pixel.0 - reference_pixel.0) as f32;
-            transform.translation.y = (airport_pixel.1 - reference_pixel.1) as f32;
+            let pos = converter.latlon_to_world(airport.latitude_deg, airport.longitude_deg);
+            transform.translation.x = pos.x;
+            transform.translation.y = pos.y;
         }
     }
 }

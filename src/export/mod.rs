@@ -10,6 +10,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
 use crate::recording::RecordedFrame;
+use crate::geo::FEET_TO_METERS;
 
 /// Export format options
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -118,7 +119,7 @@ pub fn export_to_kml(
 
         for (lon, lat, alt, _ts) in positions {
             // KML uses meters for altitude, convert from feet
-            let alt_meters = (*alt as f64) * 0.3048;
+            let alt_meters = (*alt as f64) * FEET_TO_METERS;
             writeln!(file, "        {},{},{}", lon, lat, alt_meters)
                 .map_err(|e| format!("Write error: {}", e))?;
         }

@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy_slippy_tiles::*;
 
 use crate::{Aircraft, MapState};
+use crate::geo::CoordinateConverter;
 
 /// Emergency squawk codes
 pub const SQUAWK_HIJACK: &str = "7500";      // Aircraft hijacking
@@ -106,15 +107,7 @@ pub fn draw_emergency_rings(
     let pulse = (alert_state.pulse_timer.sin() + 1.0) / 2.0;
     let alpha = 0.3 + pulse * 0.7;
 
-    let reference_ll = LatitudeLongitudeCoordinates {
-        latitude: tile_settings.reference_latitude,
-        longitude: tile_settings.reference_longitude,
-    };
-    let reference_pixel = world_coords_to_world_pixel(
-        &reference_ll,
-        TileSize::Normal,
-        map_state.zoom_level,
-    );
+    let converter = CoordinateConverter::new(&tile_settings, map_state.zoom_level);
 
     for emergency in &alert_state.active_emergencies {
         // Find the aircraft
@@ -122,20 +115,7 @@ pub fn draw_emergency_rings(
             continue;
         };
 
-        let aircraft_ll = LatitudeLongitudeCoordinates {
-            latitude: aircraft.latitude,
-            longitude: aircraft.longitude,
-        };
-        let aircraft_pixel = world_coords_to_world_pixel(
-            &aircraft_ll,
-            TileSize::Normal,
-            map_state.zoom_level,
-        );
-
-        let pos = Vec2::new(
-            (aircraft_pixel.0 - reference_pixel.0) as f32,
-            (aircraft_pixel.1 - reference_pixel.1) as f32,
-        );
+        let pos = converter.latlon_to_world(aircraft.latitude, aircraft.longitude);
 
         // Get base color for this emergency type
         let base_color = emergency.emergency_type.color();
