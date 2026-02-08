@@ -12,15 +12,14 @@ use bevy_egui::{egui, EguiContexts};
 // Constants for 3D view
 const TRANSITION_DURATION: f32 = 0.5;
 const DEFAULT_PITCH: f32 = 25.0;
-const DEFAULT_DISTANCE: f32 = 50.0;
+const DEFAULT_CAMERA_ALTITUDE: f32 = 10000.0;
 const MIN_PITCH: f32 = 15.0;
 const MAX_PITCH: f32 = 89.0;
-const MIN_DISTANCE: f32 = 5.0;
-const MAX_DISTANCE: f32 = 200.0;
+const MIN_CAMERA_ALTITUDE: f32 = 1000.0;
+const MAX_CAMERA_ALTITUDE: f32 = 60000.0;
 const ALTITUDE_EXAGGERATION: f32 = 2.0;
 
-/// Scale factor to convert the distance slider (abstract units) to pixel-space distance.
-/// At default distance 50, the camera is 50*20 = 1000 pixels from the map center.
+/// Scale factor to convert altitude/distance values to pixel-space.
 const PIXEL_SCALE: f32 = 20.0;
 
 /// View mode for the application
@@ -46,7 +45,7 @@ pub struct View3DState {
     pub mode: ViewMode,
     pub transition: TransitionState,
     pub camera_pitch: f32,
-    pub camera_distance: f32,
+    pub camera_altitude: f32,
     pub camera_yaw: f32,
     pub altitude_scale: f32,
     pub show_panel: bool,
@@ -60,7 +59,7 @@ impl Default for View3DState {
             mode: ViewMode::Map2D,
             transition: TransitionState::Idle,
             camera_pitch: DEFAULT_PITCH,
-            camera_distance: DEFAULT_DISTANCE,
+            camera_altitude: DEFAULT_CAMERA_ALTITUDE,
             camera_yaw: 0.0,
             altitude_scale: ALTITUDE_EXAGGERATION,
             show_panel: false,
@@ -86,12 +85,18 @@ impl View3DState {
         alt_km * PIXEL_SCALE * self.altitude_scale
     }
 
+    /// Convert camera altitude in feet to pixel-space distance
+    pub fn altitude_to_distance(&self) -> f32 {
+        let alt_km = self.camera_altitude * 0.3048 / 1000.0;
+        alt_km * PIXEL_SCALE * self.altitude_scale
+    }
+
     /// Calculate the 3D camera transform orbiting around a center point in pixel space
     fn calculate_camera_transform(&self, center: Vec3) -> Transform {
         let pitch_rad = self.camera_pitch.to_radians();
         let yaw_rad = self.camera_yaw.to_radians();
 
-        let effective_distance = self.camera_distance * PIXEL_SCALE;
+        let effective_distance = self.altitude_to_distance();
         let horizontal_dist = effective_distance * pitch_rad.cos();
         let vertical_dist = effective_distance * pitch_rad.sin();
 
@@ -192,8 +197,8 @@ pub fn render_3d_view_panel(
             });
 
             ui.horizontal(|ui| {
-                ui.label("Distance:");
-                ui.add(egui::Slider::new(&mut state.camera_distance, MIN_DISTANCE..=MAX_DISTANCE));
+                ui.label("Altitude:");
+                ui.add(egui::Slider::new(&mut state.camera_altitude, MIN_CAMERA_ALTITUDE..=MAX_CAMERA_ALTITUDE).suffix(" ft"));
             });
 
             ui.horizontal(|ui| {
@@ -317,7 +322,7 @@ fn smooth_step(t: f32) -> f32 {
 
 const ORBIT_SENSITIVITY: f32 = 0.3;
 const PITCH_SCROLL_SENSITIVITY: f32 = 2.0;
-const DISTANCE_SCROLL_SENSITIVITY: f32 = 5.0;
+const ALTITUDE_SCROLL_SENSITIVITY: f32 = 1000.0;
 
 /// System to handle 3D camera controls (orbit, pitch, distance)
 pub fn handle_3d_camera_controls(
@@ -368,7 +373,7 @@ pub fn handle_3d_camera_controls(
         mouse_motion.clear();
     }
 
-    // Scroll = distance, Shift+Scroll = pitch
+    // Scroll = altitude, Shift+Scroll = pitch
     for event in scroll_events.read() {
         let scroll_y = match event.unit {
             bevy::input::mouse::MouseScrollUnit::Line => event.y,
@@ -379,8 +384,8 @@ pub fn handle_3d_camera_controls(
             state.camera_pitch = (state.camera_pitch + scroll_y * PITCH_SCROLL_SENSITIVITY)
                 .clamp(MIN_PITCH, MAX_PITCH);
         } else {
-            state.camera_distance = (state.camera_distance - scroll_y * DISTANCE_SCROLL_SENSITIVITY)
-                .clamp(MIN_DISTANCE, MAX_DISTANCE);
+            state.camera_altitude = (state.camera_altitude - scroll_y * ALTITUDE_SCROLL_SENSITIVITY)
+                .clamp(MIN_CAMERA_ALTITUDE, MAX_CAMERA_ALTITUDE);
         }
     }
 }

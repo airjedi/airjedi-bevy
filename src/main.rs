@@ -78,6 +78,9 @@ pub(crate) mod constants {
     pub const AIRCRAFT_Z_LAYER: f32 = 10.0;
     pub const LABEL_Z_LAYER: f32 = 11.0;
 
+    // 3D model scale: model is ~4 units across, target is 32 world units (AIRCRAFT_MARKER_RADIUS * 4)
+    pub const AIRCRAFT_MODEL_SCALE: f32 = 8.0;
+
     // UI colors
     pub const BUTTON_NORMAL: (f32, f32, f32, f32) = (0.2, 0.2, 0.2, 0.9);
     pub const BUTTON_HOVERED: (f32, f32, f32, f32) = (0.3, 0.3, 0.3, 0.9);
@@ -220,7 +223,7 @@ fn compute_tile_radius(
             let pitch_rad = state.camera_pitch.to_radians();
 
             // Camera height above the map plane
-            let effective_distance = state.camera_distance * 20.0; // PIXEL_SCALE
+            let effective_distance = state.altitude_to_distance();
             let camera_height = effective_distance * pitch_rad.sin();
 
             // The far ground edge angle: pitch - half_vfov from horizontal
@@ -317,6 +320,10 @@ fn main() {
         .add_systems(Update, apply_camera_zoom.after(ApplyDeferred))
         .add_systems(Update, follow_aircraft.after(adsb::sync_aircraft_from_adsb))
         .add_systems(Update, update_camera_position.after(handle_pan_drag).after(apply_camera_zoom).after(follow_aircraft))
+        .add_systems(Update, sync_aircraft_camera
+            .after(update_camera_position)
+            .after(apply_camera_zoom)
+            .after(view3d::update_3d_camera))
         .add_systems(Update, update_aircraft_positions.after(update_camera_position).after(adsb::sync_aircraft_from_adsb))
         .add_systems(Update, scale_aircraft_and_labels.after(apply_camera_zoom))
         .add_systems(Update, update_aircraft_labels.after(update_aircraft_positions))
@@ -409,8 +416,35 @@ pub(crate) fn setup_map(
     mut tile_settings: ResMut<SlippyTilesSettings>,
     app_config: Res<config::AppConfig>,
 ) {
-    // Set up camera
+    // Set up 2D camera for map tiles and labels
     commands.spawn(Camera2d);
+
+    // Set up 3D camera for aircraft models (renders on top of 2D, with transparent clear)
+    commands.spawn((
+        Camera3d::default(),
+        Camera {
+            order: 1,
+            clear_color: ClearColorConfig::None,
+            ..default()
+        },
+        Projection::Orthographic(OrthographicProjection::default_2d()),
+        Transform::default(),
+    ));
+
+    // Lighting for 3D aircraft models
+    commands.insert_resource(GlobalAmbientLight {
+        color: Color::WHITE,
+        brightness: 300.0,
+        affects_lightmapped_meshes: true,
+    });
+    commands.spawn((
+        DirectionalLight {
+            illuminance: 5000.0,
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -1.0, 0.3, 0.0)),
+    ));
 
     // Update SlippyTilesSettings from config
     tile_settings.endpoint = app_config.map.basemap_style.endpoint_url().to_string();
@@ -840,6 +874,19 @@ fn apply_camera_zoom(
     }
 }
 
+/// Sync Camera3d transform and projection to match Camera2d each frame.
+/// This ensures 3D aircraft models are rendered with the same view as the 2D map.
+fn sync_aircraft_camera(
+    camera_2d: Query<(&Transform, &Projection), With<Camera2d>>,
+    mut camera_3d: Query<(&mut Transform, &mut Projection), (With<Camera3d>, Without<Camera2d>)>,
+) {
+    let (Ok((t2, p2)), Ok((mut t3, mut p3))) = (camera_2d.single(), camera_3d.single_mut()) else {
+        return;
+    };
+    *t3 = *t2;
+    *p3 = p2.clone();
+}
+
 // Keep aircraft and labels at constant screen size despite zoom changes
 fn scale_aircraft_and_labels(
     zoom_state: Res<ZoomState>,
@@ -858,16 +905,17 @@ fn scale_aircraft_and_labels(
     // - So: screen_size = world_size * camera_zoom
     // - For constant screen size: world_size = constant / camera_zoom
     // - Therefore: transform.scale = 1 / camera_zoom (which equals ortho.scale)
-    let scale = 1.0 / zoom_state.camera_zoom;
+    let scale = constants::AIRCRAFT_MODEL_SCALE / zoom_state.camera_zoom;
 
-    // Scale aircraft markers to maintain constant screen size
+    // Scale 3D aircraft models to maintain constant screen size
     for mut transform in aircraft_query.iter_mut() {
         transform.scale = Vec3::splat(scale);
     }
 
-    // Scale label transforms to maintain constant screen size
+    // Scale label transforms to maintain constant screen size (labels are 2D, use 1/zoom)
+    let label_scale = 1.0 / zoom_state.camera_zoom;
     for (mut transform, mut text_font) in label_query.iter_mut() {
-        transform.scale = Vec3::splat(scale);
+        transform.scale = Vec3::splat(label_scale);
         text_font.font_size = constants::BASE_FONT_SIZE;
     }
 }
@@ -886,13 +934,17 @@ fn update_aircraft_positions(
 
         transform.translation.x = pos.x;
         transform.translation.y = pos.y;
-        // Apply rotation based on heading (track angle), defaulting to north-facing if no heading data
-        // Heading is clockwise from north, Bevy rotation is counter-clockwise, so negate heading
+        // Apply rotation for 3D model orientation:
+        // GLB model has nose along +Z, wings along X, height along Y.
+        // First rotate 180° around Z to flip the model right-side up (top faces camera).
+        // Then rotate -90° around X to tilt nose from +Z to +Y (north on screen).
+        // Finally heading rotation around Z orients the aircraft to its track angle.
+        let base_rot = Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)
+            * Quat::from_rotation_z(std::f32::consts::PI);
         if let Some(heading) = aircraft.heading {
-            transform.rotation = Quat::from_rotation_z((-heading).to_radians());
+            transform.rotation = Quat::from_rotation_z((-heading).to_radians()) * base_rot;
         } else {
-            // Default to north-facing (no rotation needed)
-            transform.rotation = Quat::IDENTITY;
+            transform.rotation = base_rot;
         }
     }
 }

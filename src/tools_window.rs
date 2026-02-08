@@ -371,8 +371,8 @@ fn render_view3d_tab(ui: &mut egui::Ui, state: &mut View3DState) {
         ui.add(egui::Slider::new(&mut state.camera_pitch, 15.0..=89.0).suffix("\u{00B0}"));
     });
     ui.horizontal(|ui| {
-        ui.label("Distance:");
-        ui.add(egui::Slider::new(&mut state.camera_distance, 100.0..=10000.0));
+        ui.label("Altitude:");
+        ui.add(egui::Slider::new(&mut state.camera_altitude, 1000.0..=60000.0).suffix(" ft"));
     });
     ui.horizontal(|ui| {
         ui.label("Yaw:");
