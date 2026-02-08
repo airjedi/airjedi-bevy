@@ -5,23 +5,23 @@ use crate::{constants, Aircraft, AircraftLabel};
 use crate::aircraft::TrailHistory;
 use super::connection::{AdsbAircraftData, ConnectionStatusText};
 
-/// Resource to hold the aircraft icon texture handle
+/// Resource to hold the aircraft 3D model handle
 #[derive(Resource)]
-pub struct AircraftTexture {
-    pub handle: Handle<Image>,
+pub struct AircraftModel {
+    pub handle: Handle<Scene>,
 }
 
-/// Load the aircraft icon texture
-pub fn setup_aircraft_texture(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let handle = asset_server.load("airplane1.png");
-    commands.insert_resource(AircraftTexture { handle });
+/// Load the aircraft 3D model
+pub fn setup_aircraft_model(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let handle = asset_server.load("airplane.glb#Scene0");
+    commands.insert_resource(AircraftModel { handle });
 }
 
 /// Sync aircraft entities from the shared ADS-B data.
 /// This system runs every frame and updates Bevy entities to match the ADS-B client state.
 pub fn sync_aircraft_from_adsb(
     mut commands: Commands,
-    aircraft_texture: Option<Res<AircraftTexture>>,
+    aircraft_model: Option<Res<AircraftModel>>,
     adsb_data: Option<Res<AdsbAircraftData>>,
     mut aircraft_query: Query<(Entity, &mut Aircraft, &mut Transform)>,
     label_query: Query<(Entity, &AircraftLabel)>,
@@ -29,8 +29,8 @@ pub fn sync_aircraft_from_adsb(
     let Some(adsb_data) = adsb_data else {
         return; // ADS-B client not yet initialized
     };
-    let Some(aircraft_texture) = aircraft_texture else {
-        return; // Aircraft texture not yet loaded
+    let Some(aircraft_model) = aircraft_model else {
+        return; // Aircraft model not yet loaded
     };
 
     let adsb_aircraft = adsb_data.get_aircraft();
@@ -62,14 +62,10 @@ pub fn sync_aircraft_from_adsb(
             }
             existing_aircraft.remove(&adsb_ac.icao);
         } else {
-            // Spawn new aircraft with sprite icon
+            // Spawn new aircraft with 3D model
             let aircraft_entity = commands
                 .spawn((
-                    Sprite {
-                        image: aircraft_texture.handle.clone(),
-                        custom_size: Some(Vec2::splat(constants::AIRCRAFT_MARKER_RADIUS * 4.0)),
-                        ..default()
-                    },
+                    SceneRoot(aircraft_model.handle.clone()),
                     Transform::from_xyz(0.0, 0.0, constants::AIRCRAFT_Z_LAYER),
                     Aircraft {
                         icao: adsb_ac.icao.clone(),
