@@ -6,6 +6,7 @@ use adsb_client::{
 };
 
 use crate::{constants, config, MapState};
+use crate::debug_panel::DebugPanelState;
 
 /// Shared state for aircraft data from the ADS-B client.
 /// Updated by the background tokio thread and read by Bevy systems.
@@ -109,6 +110,8 @@ pub fn setup_adsb_client(
 pub fn update_connection_status(
     adsb_data: Option<Res<AdsbAircraftData>>,
     mut status_query: Query<(&mut Text, &mut TextColor), With<ConnectionStatusText>>,
+    mut debug: Option<ResMut<DebugPanelState>>,
+    mut prev_state: Local<String>,
 ) {
     let Some(adsb_data) = adsb_data else {
         return;
@@ -116,6 +119,15 @@ pub fn update_connection_status(
 
     let connection_state = adsb_data.get_connection_state();
     let aircraft_count = adsb_data.get_aircraft().len();
+
+    // Log connection state transitions
+    let state_label = format!("{:?}", connection_state);
+    if *prev_state != state_label {
+        if let Some(ref mut dbg) = debug {
+            dbg.push_log(format!("Connection: {}", state_label));
+        }
+        *prev_state = state_label;
+    }
 
     for (mut text, mut color) in status_query.iter_mut() {
         let (status_text, status_color) = match connection_state {

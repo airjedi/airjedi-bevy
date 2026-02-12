@@ -3,6 +3,7 @@ use std::collections::HashMap;
 
 use crate::{constants, Aircraft, AircraftLabel};
 use crate::aircraft::TrailHistory;
+use crate::debug_panel::DebugPanelState;
 use super::connection::{AdsbAircraftData, ConnectionStatusText};
 
 /// Resource to hold the aircraft 3D model handle
@@ -25,6 +26,7 @@ pub fn sync_aircraft_from_adsb(
     adsb_data: Option<Res<AdsbAircraftData>>,
     mut aircraft_query: Query<(Entity, &mut Aircraft, &mut Transform)>,
     label_query: Query<(Entity, &AircraftLabel)>,
+    mut debug: Option<ResMut<DebugPanelState>>,
 ) {
     let Some(adsb_data) = adsb_data else {
         return; // ADS-B client not yet initialized
@@ -43,8 +45,15 @@ pub fn sync_aircraft_from_adsb(
 
     // Update or spawn aircraft
     for adsb_ac in &adsb_aircraft {
+        if let Some(ref mut dbg) = debug {
+            dbg.messages_processed += 1;
+        }
+
         // Skip aircraft without position data
         let (Some(lat), Some(lon)) = (adsb_ac.latitude, adsb_ac.longitude) else {
+            if let Some(ref mut dbg) = debug {
+                dbg.positions_rejected += 1;
+            }
             continue;
         };
 
@@ -62,6 +71,11 @@ pub fn sync_aircraft_from_adsb(
             }
             existing_aircraft.remove(&adsb_ac.icao);
         } else {
+            // Log new aircraft
+            if let Some(ref mut dbg) = debug {
+                let callsign = adsb_ac.callsign.as_deref().unwrap_or("?");
+                dbg.push_log(format!("New aircraft: {} ({})", adsb_ac.icao, callsign));
+            }
             // Spawn new aircraft with 3D model
             let aircraft_entity = commands
                 .spawn((
@@ -106,6 +120,11 @@ pub fn sync_aircraft_from_adsb(
     }
 
     // Remove aircraft that are no longer in the ADS-B data
+    for (icao, _entity) in &existing_aircraft {
+        if let Some(ref mut dbg) = debug {
+            dbg.push_log(format!("Removed aircraft: {}", icao));
+        }
+    }
     for (icao, entity) in existing_aircraft {
         // Find and despawn the label first
         for (label_entity, label) in label_query.iter() {

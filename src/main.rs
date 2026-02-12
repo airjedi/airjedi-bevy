@@ -25,6 +25,7 @@ mod view3d;
 mod ui_panels;
 mod toolbar;
 mod tools_window;
+mod debug_panel;
 
 // Re-export core types so crate::Aircraft, crate::MapState, crate::ZoomState
 // continue to resolve throughout the codebase.
@@ -297,6 +298,7 @@ fn main() {
         .init_resource::<HelpOverlayState>()
         .init_resource::<ui_panels::UiPanelManager>()
         .init_resource::<tools_window::ToolsWindowState>()
+        .init_resource::<debug_panel::DebugPanelState>()
         .insert_resource(ZoomState::new())
         // SlippyTilesSettings will be updated by setup_slippy_tiles_from_config after config is loaded
         .insert_resource(SlippyTilesSettings {
@@ -331,6 +333,7 @@ fn main() {
             toolbar::render_toolbar,
             toolbar::render_map_attribution,
             tools_window::render_tools_window,
+            debug_panel::render_debug_panel,
         ))
         .add_systems(Update, display_tiles_filtered.after(ApplyDeferred))
         .add_systems(Update, animate_tile_fades.after(display_tiles_filtered))
@@ -339,6 +342,7 @@ fn main() {
         .add_systems(Update, sync_panel_manager_to_resources.after(handle_keyboard_shortcuts))
         .add_systems(Update, sync_resources_to_panel_manager.after(sync_panel_manager_to_resources))
         .add_systems(Update, update_help_overlay)
+        .add_systems(Update, debug_panel::update_debug_metrics)
         .run();
 }
 
@@ -892,10 +896,10 @@ fn scale_aircraft_and_labels(
     zoom_state: Res<ZoomState>,
     mut aircraft_query: Query<&mut Transform, (With<Aircraft>, Without<AircraftLabel>)>,
     mut label_query: Query<(&mut Transform, &mut TextFont), With<AircraftLabel>>,
+    new_aircraft: Query<(), Added<Aircraft>>,
 ) {
-    // ONLY update scales when zoom actually changes
-    // This prevents triggering Bevy's change detection every frame
-    if !zoom_state.is_changed() {
+    // Update scales when zoom changes or new aircraft are spawned
+    if !zoom_state.is_changed() && new_aircraft.is_empty() {
         return;
     }
 
