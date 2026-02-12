@@ -103,6 +103,11 @@ pub fn handle_keyboard_shortcuts(
         panels.toggle_panel(PanelId::Help);
     }
 
+    // ` (backtick) - Toggle debug panel
+    if keyboard.just_pressed(KeyCode::Backquote) {
+        panels.toggle_panel(PanelId::Debug);
+    }
+
     // Ctrl+R - Toggle recording
     if ctrl && keyboard.just_pressed(KeyCode::KeyR) {
         panels.toggle_panel(PanelId::Recording);
@@ -213,6 +218,7 @@ pub fn sync_panel_manager_to_resources(
     mut datasource_mgr: ResMut<crate::data_sources::DataSourceManager>,
     mut view3d_state: ResMut<crate::view3d::View3DState>,
     mut measurement_state: ResMut<crate::tools::MeasurementState>,
+    mut debug_state: ResMut<crate::debug_panel::DebugPanelState>,
     app_config: Res<AppConfig>,
 ) {
     if !panels.is_changed() {
@@ -237,6 +243,7 @@ pub fn sync_panel_manager_to_resources(
     datasource_mgr.show_panel = panels.is_open(PanelId::DataSources);
     view3d_state.show_panel = panels.is_open(PanelId::View3D);
     measurement_state.active = panels.is_open(PanelId::Measurement);
+    debug_state.open = panels.is_open(PanelId::Debug);
 }
 
 /// Sync per-module resource changes back to UiPanelManager.
@@ -258,6 +265,7 @@ pub fn sync_resources_to_panel_manager(
     datasource_mgr: Res<crate::data_sources::DataSourceManager>,
     view3d_state: Res<crate::view3d::View3DState>,
     measurement_state: Res<crate::tools::MeasurementState>,
+    debug_state: Res<crate::debug_panel::DebugPanelState>,
 ) {
     // Only run when any resource actually changed
     let any_changed = settings_ui.is_changed()
@@ -271,7 +279,8 @@ pub fn sync_resources_to_panel_manager(
         || airspace_state.is_changed()
         || datasource_mgr.is_changed()
         || view3d_state.is_changed()
-        || measurement_state.is_changed();
+        || measurement_state.is_changed()
+        || debug_state.is_changed();
 
     if !any_changed {
         return;
@@ -289,6 +298,7 @@ pub fn sync_resources_to_panel_manager(
     sync_one(&mut panels, PanelId::DataSources, datasource_mgr.show_panel);
     sync_one(&mut panels, PanelId::View3D, view3d_state.show_panel);
     sync_one(&mut panels, PanelId::Measurement, measurement_state.active);
+    sync_one(&mut panels, PanelId::Debug, debug_state.open);
 }
 
 fn sync_one(panels: &mut UiPanelManager, id: PanelId, resource_open: bool) {
@@ -335,6 +345,7 @@ F     Follow selected aircraft
 C     Center on selected
 +/-   Zoom in / out
 H     Toggle this help
+`     Toggle debug panel
 R     Reset view
 A     Toggle airports
 T     Toggle trails

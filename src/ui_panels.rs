@@ -21,6 +21,7 @@ pub enum PanelId {
     Airspace,
     DataSources,
     View3D,
+    Debug,
     Help,
 }
 
@@ -40,6 +41,7 @@ impl PanelId {
             PanelId::Airspace => "Shift+A",
             PanelId::DataSources => "Shift+D",
             PanelId::View3D => "3",
+            PanelId::Debug => "`",
             PanelId::Help => "H",
         }
     }
@@ -59,6 +61,7 @@ impl PanelId {
             PanelId::Airspace => "Airspace",
             PanelId::DataSources => "Data Sources",
             PanelId::View3D => "3D View",
+            PanelId::Debug => "Debug",
             PanelId::Help => "Help",
         }
     }
@@ -78,6 +81,7 @@ impl PanelId {
             PanelId::Airspace => "\u{1F5FA}",     // map
             PanelId::DataSources => "\u{1F5C4}",  // file cabinet
             PanelId::View3D => "\u{1F4E6}",       // package / cube
+            PanelId::Debug => "#",
             PanelId::Help => "?",
         }
     }

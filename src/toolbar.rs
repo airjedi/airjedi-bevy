@@ -71,6 +71,7 @@ pub fn render_toolbar(
                 ui.separator();
                 ui.add_space(4.0);
 
+                toolbar_button(ui, &mut panels, PanelId::Debug, "#", "Debug (`)");
                 toolbar_button(ui, &mut panels, PanelId::Help, "?", "Help (H)");
 
                 // -- Clear Cache button (action, not a panel toggle) --
