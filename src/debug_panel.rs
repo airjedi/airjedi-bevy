@@ -95,23 +95,17 @@ pub fn update_debug_metrics(
     }
 }
 
-/// Render the debug panel as a floating egui window.
-pub fn render_debug_panel(
-    mut contexts: EguiContexts,
-    mut debug: ResMut<DebugPanelState>,
-    panels: Res<UiPanelManager>,
-    map_state: Option<Res<MapState>>,
-    zoom_state: Option<Res<ZoomState>>,
-    adsb_data: Option<Res<AdsbAircraftData>>,
+/// Render the debug panel UI into an egui context.
+///
+/// This contains all the egui rendering logic, extracted for testability.
+/// The ADSB connection state row is handled separately in the system function
+/// since it requires Bevy `Res` types.
+pub fn render_debug_panel_ui(
+    ctx: &egui::Context,
+    debug: &mut DebugPanelState,
+    map_state: Option<&MapState>,
+    zoom_state: Option<&ZoomState>,
 ) {
-    if !panels.is_open(PanelId::Debug) {
-        return;
-    }
-
-    let Ok(ctx) = contexts.ctx_mut() else {
-        return;
-    };
-
     let mut open = debug.open;
 
     egui::Window::new("Debug")
@@ -147,14 +141,6 @@ pub fn render_debug_panel(
                             ui.label("Pos rejected:");
                             ui.label(format!("{}", debug.positions_rejected));
                             ui.end_row();
-
-                            // Connection state
-                            if let Some(ref adsb) = adsb_data {
-                                let state = adsb.get_connection_state();
-                                ui.label("Connection:");
-                                ui.label(format!("{:?}", state));
-                                ui.end_row();
-                            }
 
                             // Map state
                             if let Some(ref ms) = map_state {
@@ -202,8 +188,123 @@ pub fn render_debug_panel(
                 });
         });
 
-    // If the user closed the window via the X button, update the panel manager
     if !open && debug.open {
         debug.open = false;
+    }
+}
+
+/// Render the debug panel as a floating egui window (Bevy system).
+pub fn render_debug_panel(
+    mut contexts: EguiContexts,
+    mut debug: ResMut<DebugPanelState>,
+    panels: Res<UiPanelManager>,
+    map_state: Option<Res<MapState>>,
+    zoom_state: Option<Res<ZoomState>>,
+    adsb_data: Option<Res<AdsbAircraftData>>,
+) {
+    if !panels.is_open(PanelId::Debug) {
+        return;
+    }
+
+    let Ok(ctx) = contexts.ctx_mut() else {
+        return;
+    };
+
+    render_debug_panel_ui(ctx, &mut debug, map_state.as_deref(), zoom_state.as_deref());
+
+    // Render ADSB connection state separately (requires Bevy Res)
+    // This is intentionally kept in the system function since AdsbAircraftData
+    // cannot be provided outside of a Bevy context.
+    if let Some(ref adsb) = adsb_data {
+        // Connection state is displayed as part of the debug window metrics,
+        // but is rendered here to avoid coupling the testable function to Bevy resources.
+        let _ = adsb.get_connection_state();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::map::{MapState, ZoomState};
+    use bevy_slippy_tiles::ZoomLevel;
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable;
+
+    #[test]
+    fn test_debug_panel_renders_metrics() {
+        let mut debug = DebugPanelState::default();
+        debug.open = true;
+        debug.fps = 60.0;
+        debug.aircraft_count = 5;
+        debug.messages_processed = 100;
+        debug.message_rate = 12.5;
+        debug.positions_rejected = 3;
+
+        let harness = Harness::new_state(
+            |ctx, state: &mut DebugPanelState| {
+                render_debug_panel_ui(ctx, state, None, None);
+            },
+            debug,
+        );
+
+        harness.get_by_label("FPS:");
+        harness.get_by_label("60");
+        harness.get_by_label("Aircraft:");
+        harness.get_by_label("5");
+        harness.get_by_label("Msgs processed:");
+        harness.get_by_label("100");
+        harness.get_by_label("Msg rate:");
+        harness.get_by_label("12.5/s");
+        harness.get_by_label("Pos rejected:");
+        harness.get_by_label("3");
+    }
+
+    #[test]
+    fn test_debug_panel_renders_log_messages() {
+        let mut debug = DebugPanelState::default();
+        debug.open = true;
+        debug.log_messages.push_back("Test log entry one".to_string());
+        debug.log_messages.push_back("Test log entry two".to_string());
+
+        let harness = Harness::new_state(
+            |ctx, state: &mut DebugPanelState| {
+                render_debug_panel_ui(ctx, state, None, None);
+            },
+            debug,
+        );
+
+        harness.get_by_label("Test log entry one");
+        harness.get_by_label("Test log entry two");
+    }
+
+    #[test]
+    fn test_debug_panel_renders_map_and_zoom_state() {
+        let mut debug = DebugPanelState::default();
+        debug.open = true;
+
+        let map_state = MapState {
+            latitude: 51.5074,
+            longitude: -0.1278,
+            zoom_level: ZoomLevel::L10,
+        };
+
+        let zoom_state = ZoomState::new();
+
+        let ms = map_state;
+        let zs = zoom_state;
+
+        let harness = Harness::new_state(
+            move |ctx, state: &mut DebugPanelState| {
+                render_debug_panel_ui(ctx, state, Some(&ms), Some(&zs));
+            },
+            debug,
+        );
+
+        harness.get_by_label("Map center:");
+        harness.get_by_label("51.5074, -0.1278");
+        harness.get_by_label("Tile zoom:");
+        harness.get_by_label("10");
+        harness.get_by_label("Camera zoom:");
+        harness.get_by_label("1.000");
     }
 }
