@@ -1,6 +1,5 @@
 use bevy::{prelude::*, input::mouse::MouseWheel, ecs::schedule::ApplyDeferred};
 use bevy_slippy_tiles::*;
-use std::fs;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 
@@ -26,6 +25,7 @@ mod ui_panels;
 mod toolbar;
 mod tools_window;
 mod debug_panel;
+mod tile_cache;
 
 // Re-export core types so crate::Aircraft, crate::MapState, crate::ZoomState
 // continue to resolve throughout the codebase.
@@ -303,7 +303,7 @@ fn main() {
         // SlippyTilesSettings will be updated by setup_slippy_tiles_from_config after config is loaded
         .insert_resource(SlippyTilesSettings {
             endpoint: config::BasemapStyle::default().endpoint_url().to_string(),
-            tiles_directory: std::path::PathBuf::from(""),  // Root assets directory
+            tiles_directory: std::path::PathBuf::from("tiles/"),  // Symlinked to centralized cache
             reference_latitude: constants::DEFAULT_LATITUDE,   // Wichita, KS (matches MapState default)
             reference_longitude: constants::DEFAULT_LONGITUDE,  // Wichita, KS (matches MapState default)
             z_layer: 0.0,                  // Render tiles at z=0 (behind aircraft at z=10)
@@ -449,6 +449,10 @@ pub(crate) fn setup_map(
         },
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -1.0, 0.3, 0.0)),
     ));
+
+    // Set up centralized tile cache (creates cache dir + symlink into assets/)
+    tile_cache::setup_tile_cache();
+    tile_cache::clear_legacy_tiles();
 
     // Update SlippyTilesSettings from config
     tile_settings.endpoint = app_config.map.basemap_style.endpoint_url().to_string();
@@ -975,41 +979,7 @@ fn update_aircraft_labels(
 }
 
 pub fn clear_tile_cache() {
-    // Get the assets directory path
-    let assets_path = std::env::current_dir()
-        .map(|path| path.join("assets"))
-        .unwrap_or_else(|_| std::path::PathBuf::from("assets"));
-
-    if !assets_path.exists() {
-        warn!("Assets directory not found at {:?}", assets_path);
-        return;
-    }
-
-    // Count tiles deleted
-    let mut deleted_count = 0;
-
-    // Read the assets directory
-    if let Ok(entries) = fs::read_dir(&assets_path) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-
-            // Check if it's a tile file (ends with .tile.png)
-            if path.is_file() {
-                if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
-                    if filename.ends_with(".tile.png") {
-                        // Delete the tile file
-                        if let Err(e) = fs::remove_file(&path) {
-                            warn!("Failed to delete tile {:?}: {}", path, e);
-                        } else {
-                            deleted_count += 1;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    info!("Cleared {} tile(s) from cache", deleted_count);
+    tile_cache::clear_tile_cache();
 }
 
 // Custom tile display system that filters tiles by current zoom level
