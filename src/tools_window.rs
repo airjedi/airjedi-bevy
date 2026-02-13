@@ -154,7 +154,7 @@ pub fn render_tools_window(
         });
 }
 
-fn render_coverage_tab(ui: &mut egui::Ui, coverage: &mut CoverageState) {
+pub(crate) fn render_coverage_tab(ui: &mut egui::Ui, coverage: &mut CoverageState) {
     let stats = coverage.get_stats();
 
     ui.horizontal(|ui| {
@@ -345,7 +345,7 @@ fn render_export_tab(ui: &mut egui::Ui, export_state: &mut ExportState) {
     }
 }
 
-fn render_view3d_tab(ui: &mut egui::Ui, state: &mut View3DState) {
+pub(crate) fn render_view3d_tab(ui: &mut egui::Ui, state: &mut View3DState) {
     ui.colored_label(egui::Color32::YELLOW, "This feature is in research/prototype stage");
     ui.separator();
 
@@ -383,4 +383,73 @@ fn render_view3d_tab(ui: &mut egui::Ui, state: &mut View3DState) {
         ui.add(egui::Slider::new(&mut state.altitude_scale, 0.1..=10.0));
     });
 
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use egui_kittest::{Harness, kittest::Queryable};
+    use crate::coverage::CoverageState;
+    use crate::view3d::{View3DState, ViewMode};
+
+    #[test]
+    fn test_coverage_tab_shows_inactive() {
+        let harness = Harness::new_ui_state(
+            |ui, state: &mut CoverageState| {
+                render_coverage_tab(ui, state);
+            },
+            CoverageState::default(),
+        );
+
+        harness.get_by_label("INACTIVE");
+    }
+
+    #[test]
+    fn test_coverage_tab_shows_enable_button() {
+        let harness = Harness::new_ui_state(
+            |ui, state: &mut CoverageState| {
+                render_coverage_tab(ui, state);
+            },
+            CoverageState::default(),
+        );
+
+        harness.get_by_label("Enable");
+    }
+
+    #[test]
+    fn test_view3d_tab_shows_pitch_label() {
+        let harness = Harness::new_ui_state(
+            |ui, state: &mut View3DState| {
+                render_view3d_tab(ui, state);
+            },
+            View3DState::default(),
+        );
+
+        harness.get_by_label("Pitch:");
+    }
+
+    #[test]
+    fn test_view3d_tab_shows_altitude_label() {
+        let harness = Harness::new_ui_state(
+            |ui, state: &mut View3DState| {
+                render_view3d_tab(ui, state);
+            },
+            View3DState::default(),
+        );
+
+        harness.get_by_label("Altitude:");
+    }
+
+    #[test]
+    fn test_view3d_tab_shows_mode_selectable_labels() {
+        let harness = Harness::new_ui_state(
+            |ui, state: &mut View3DState| {
+                render_view3d_tab(ui, state);
+            },
+            View3DState::default(),
+        );
+
+        harness.get_by_label("2D Map");
+        harness.get_by_label("3D View");
+    }
 }
