@@ -351,6 +351,8 @@ fn main() {
 #[derive(Component)]
 struct TileFadeState {
     alpha: f32,
+    /// The zoom level this tile was spawned for
+    tile_zoom: u8,
     /// If Some, this tile is from an old zoom level and will despawn after the timer expires
     despawn_delay: Option<f32>,
 }
@@ -838,19 +840,19 @@ fn handle_zoom(
                 0.5_f32 // Zooming out: scale down
             };
 
-            // Scale and reposition old tiles to match new coordinate system, then mark for despawn
+            // Scale and reposition old tiles to match new coordinate system
+            // Old tiles are kept visible until new tiles at the current zoom arrive
             let mut marked = 0;
-            for (mut fade_state, mut transform) in tile_query.iter_mut() {
+            for (_fade_state, mut transform) in tile_query.iter_mut() {
                 // Scale the tile position to match the new zoom level's coordinate system
                 transform.translation.x *= scale_factor;
                 transform.translation.y *= scale_factor;
                 // Also scale the tile itself so it visually matches
                 transform.scale *= scale_factor;
 
-                fade_state.despawn_delay = Some(constants::OLD_TILE_DESPAWN_DELAY);
                 marked += 1;
             }
-            log_info!("  Scaled {} tiles by {} and marked for delayed despawn", marked, scale_factor);
+            log_info!("  Scaled {} tiles by {} (kept visible until new tiles arrive)", marked, scale_factor);
 
             request_tiles_at_location(
                 &mut download_events,
@@ -982,27 +984,31 @@ pub fn clear_tile_cache() {
     tile_cache::clear_tile_cache();
 }
 
-// Custom tile display system that filters tiles by current zoom level
-// This prevents stale tiles from wrong zoom levels from being displayed
+// Custom tile display system that filters tiles by current zoom level.
+// When new tiles arrive at the current zoom, old tiles from previous zoom levels
+// are marked for delayed despawn so the screen is never blank.
 fn display_tiles_filtered(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     tile_settings: Res<SlippyTilesSettings>,
     map_state: Res<MapState>,
     mut tile_events: MessageReader<SlippyTileDownloadedMessage>,
+    mut tile_query: Query<(Entity, &mut TileFadeState), With<MapTile>>,
     logger: Option<Res<ZoomDebugLogger>>,
 ) {
+    let current_zoom = map_state.zoom_level.to_u8();
+    let mut spawned_new_tiles = false;
+
     for event in tile_events.read() {
         info!("Received tile download event: zoom={}, path={:?}", event.zoom_level.to_u8(), event.path);
 
-        // CRITICAL: Only display tiles that match the current zoom level
-        // This prevents stale async downloads from wrong zoom levels from appearing
+        // Only display tiles that match the current zoom level
         if event.zoom_level != map_state.zoom_level {
-            info!("TILE IGNORED: tile zoom {} != current zoom {}", event.zoom_level.to_u8(), map_state.zoom_level.to_u8());
+            info!("TILE IGNORED: tile zoom {} != current zoom {}", event.zoom_level.to_u8(), current_zoom);
             if let Some(ref log) = logger {
                 log.log("=== TILE IGNORED (wrong zoom) ===");
                 log.log(&format!("  tile zoom_level: {} (current map zoom: {})",
-                    event.zoom_level.to_u8(), map_state.zoom_level.to_u8()));
+                    event.zoom_level.to_u8(), current_zoom));
             }
             continue;
         }
@@ -1061,16 +1067,37 @@ fn display_tiles_filtered(
             MapTile,
             TileFadeState {
                 alpha: 1.0,
+                tile_zoom: current_zoom,
                 despawn_delay: None, // Not scheduled for despawn
             },
         ));
 
+        spawned_new_tiles = true;
+
         if let Some(ref log) = logger {
             log.log("=== TILE DISPLAYED ===");
             log.log(&format!("  tile zoom_level: {} (current map zoom: {})",
-                event.zoom_level.to_u8(), map_state.zoom_level.to_u8()));
+                event.zoom_level.to_u8(), current_zoom));
             log.log(&format!("  tile coords: ({:.6}, {:.6})", current_coords.latitude, current_coords.longitude));
             log.log(&format!("  tile transform: ({:.2}, {:.2})", transform_x, transform_y));
+        }
+    }
+
+    // When new tiles at the current zoom have been spawned, mark old-zoom tiles for despawn.
+    // This ensures old tiles stay visible until replacements actually arrive.
+    if spawned_new_tiles {
+        let mut marked = 0;
+        for (_entity, mut fade_state) in tile_query.iter_mut() {
+            if fade_state.tile_zoom != current_zoom && fade_state.despawn_delay.is_none() {
+                fade_state.despawn_delay = Some(constants::OLD_TILE_DESPAWN_DELAY);
+                marked += 1;
+            }
+        }
+        if marked > 0 {
+            info!("Marked {} old-zoom tiles for despawn (new zoom {} tiles arrived)", marked, current_zoom);
+            if let Some(ref log) = logger {
+                log.log(&format!("Marked {} old-zoom tiles for despawn", marked));
+            }
         }
     }
 }
