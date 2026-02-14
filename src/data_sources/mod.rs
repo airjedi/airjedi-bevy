@@ -351,7 +351,7 @@ pub struct DataSourcesPlugin;
 impl Plugin for DataSourcesPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<DataSourceManager>()
-            .add_systems(Update, toggle_data_sources_panel)
-            .add_systems(bevy_egui::EguiPrimaryContextPass, render_data_sources_panel);
+            .add_systems(Update, toggle_data_sources_panel);
+        // Data sources panel is rendered via the consolidated Tools window (tools_window.rs)
     }
 }

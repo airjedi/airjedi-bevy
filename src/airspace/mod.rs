@@ -381,7 +381,7 @@ impl Plugin for AirspacePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<AirspaceData>()
             .init_resource::<AirspaceDisplayState>()
-            .add_systems(Update, toggle_airspace_display)
-            .add_systems(bevy_egui::EguiPrimaryContextPass, render_airspace_panel);
+            .add_systems(Update, toggle_airspace_display);
+        // Airspace panel is rendered via the consolidated Tools window (tools_window.rs)
     }
 }

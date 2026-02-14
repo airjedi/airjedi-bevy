@@ -442,7 +442,7 @@ pub struct ExportPlugin;
 impl Plugin for ExportPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ExportState>()
-            .add_systems(Update, toggle_export_panel)
-            .add_systems(bevy_egui::EguiPrimaryContextPass, render_export_panel);
+            .add_systems(Update, toggle_export_panel);
+        // Export panel is rendered via the consolidated Tools window (tools_window.rs)
     }
 }

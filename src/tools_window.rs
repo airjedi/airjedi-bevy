@@ -12,7 +12,6 @@ use crate::airspace::{AirspaceDisplayState, AirspaceData};
 use crate::data_sources::DataSourceManager;
 use crate::export::{ExportState, ExportFormat};
 use crate::view3d::{View3DState, ViewMode};
-use crate::ui_panels::{UiPanelManager, PanelId};
 
 /// Which tab is currently active in the tools window.
 #[derive(Resource, Default, PartialEq, Eq, Clone, Copy)]
@@ -33,6 +32,10 @@ pub struct ToolsWindowState {
 }
 
 /// System to render the consolidated tools window.
+///
+/// The tools window is controlled by `ToolsWindowState.open` and always shows
+/// ALL tabs when open. Toolbar buttons and keyboard shortcuts open the window
+/// and switch to the relevant tab.
 pub fn render_tools_window(
     mut contexts: EguiContexts,
     mut tools_state: ResMut<ToolsWindowState>,
@@ -42,46 +45,9 @@ pub fn render_tools_window(
     mut datasource_mgr: ResMut<DataSourceManager>,
     mut export_state: ResMut<ExportState>,
     mut view3d_state: ResMut<View3DState>,
-    panels: Res<UiPanelManager>,
 ) {
-    // The tools window opens when any of its constituent panels are toggled open
-    let any_tool_open = panels.is_open(PanelId::Coverage)
-        || panels.is_open(PanelId::Airspace)
-        || panels.is_open(PanelId::DataSources)
-        || panels.is_open(PanelId::Export)
-        || panels.is_open(PanelId::View3D);
-
-    if !any_tool_open {
-        tools_state.open = false;
+    if !tools_state.open {
         return;
-    }
-    tools_state.open = true;
-
-    // Auto-select the tab that was most recently toggled on
-    if panels.is_open(PanelId::Coverage) && tools_state.active_tab != ToolsTab::Coverage {
-        if coverage.is_changed() {
-            tools_state.active_tab = ToolsTab::Coverage;
-        }
-    }
-    if panels.is_open(PanelId::Airspace) && tools_state.active_tab != ToolsTab::Airspace {
-        if airspace_display.is_changed() {
-            tools_state.active_tab = ToolsTab::Airspace;
-        }
-    }
-    if panels.is_open(PanelId::DataSources) && tools_state.active_tab != ToolsTab::DataSources {
-        if datasource_mgr.is_changed() {
-            tools_state.active_tab = ToolsTab::DataSources;
-        }
-    }
-    if panels.is_open(PanelId::Export) && tools_state.active_tab != ToolsTab::Export {
-        if export_state.is_changed() {
-            tools_state.active_tab = ToolsTab::Export;
-        }
-    }
-    if panels.is_open(PanelId::View3D) && tools_state.active_tab != ToolsTab::View3D {
-        if view3d_state.is_changed() {
-            tools_state.active_tab = ToolsTab::View3D;
-        }
     }
 
     let Ok(ctx) = contexts.ctx_mut() else {
@@ -96,44 +62,31 @@ pub fn render_tools_window(
         .stroke(egui::Stroke::new(1.0, border_color))
         .inner_margin(egui::Margin::same(8));
 
+    let mut window_open = true;
     egui::Window::new("Tools")
+        .open(&mut window_open)
         .collapsible(true)
         .resizable(true)
         .default_width(320.0)
         .default_height(350.0)
         .frame(window_frame)
         .show(ctx, |ui| {
-            // Tab bar
+            // Tab bar - always show all tabs
             ui.horizontal(|ui| {
-                if panels.is_open(PanelId::Coverage) {
-                    let selected = tools_state.active_tab == ToolsTab::Coverage;
-                    if ui.selectable_label(selected, "Coverage").clicked() {
-                        tools_state.active_tab = ToolsTab::Coverage;
-                    }
+                if ui.selectable_label(tools_state.active_tab == ToolsTab::Coverage, "Coverage").clicked() {
+                    tools_state.active_tab = ToolsTab::Coverage;
                 }
-                if panels.is_open(PanelId::Airspace) {
-                    let selected = tools_state.active_tab == ToolsTab::Airspace;
-                    if ui.selectable_label(selected, "Airspace").clicked() {
-                        tools_state.active_tab = ToolsTab::Airspace;
-                    }
+                if ui.selectable_label(tools_state.active_tab == ToolsTab::Airspace, "Airspace").clicked() {
+                    tools_state.active_tab = ToolsTab::Airspace;
                 }
-                if panels.is_open(PanelId::DataSources) {
-                    let selected = tools_state.active_tab == ToolsTab::DataSources;
-                    if ui.selectable_label(selected, "Sources").clicked() {
-                        tools_state.active_tab = ToolsTab::DataSources;
-                    }
+                if ui.selectable_label(tools_state.active_tab == ToolsTab::DataSources, "Sources").clicked() {
+                    tools_state.active_tab = ToolsTab::DataSources;
                 }
-                if panels.is_open(PanelId::Export) {
-                    let selected = tools_state.active_tab == ToolsTab::Export;
-                    if ui.selectable_label(selected, "Export").clicked() {
-                        tools_state.active_tab = ToolsTab::Export;
-                    }
+                if ui.selectable_label(tools_state.active_tab == ToolsTab::Export, "Export").clicked() {
+                    tools_state.active_tab = ToolsTab::Export;
                 }
-                if panels.is_open(PanelId::View3D) {
-                    let selected = tools_state.active_tab == ToolsTab::View3D;
-                    if ui.selectable_label(selected, "3D View").clicked() {
-                        tools_state.active_tab = ToolsTab::View3D;
-                    }
+                if ui.selectable_label(tools_state.active_tab == ToolsTab::View3D, "3D View").clicked() {
+                    tools_state.active_tab = ToolsTab::View3D;
                 }
             });
 
@@ -152,6 +105,11 @@ pub fn render_tools_window(
                     }
                 });
         });
+
+    // Handle close via egui's window X button
+    if !window_open {
+        tools_state.open = false;
+    }
 }
 
 pub(crate) fn render_coverage_tab(ui: &mut egui::Ui, coverage: &mut CoverageState) {
