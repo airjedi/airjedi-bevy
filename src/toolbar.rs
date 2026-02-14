@@ -33,8 +33,8 @@ pub fn render_toolbar(
         return;
     };
 
-    let panel_bg = to_egui_color32_alpha(theme.mantle(), 245);
-    let border_color = to_egui_color32(theme.surface1());
+    let panel_bg = to_egui_color32_alpha(theme.bg_secondary(), 245);
+    let border_color = to_egui_color32(theme.bg_contrast());
 
     let toolbar_frame = egui::Frame::default()
         .fill(panel_bg)
@@ -47,9 +47,9 @@ pub fn render_toolbar(
         .frame(toolbar_frame)
         .show(ctx, |ui| {
             ui.vertical_centered(|ui| {
-                let active_color = to_egui_color32(theme.blue());
-                let inactive_color = to_egui_color32(theme.subtext0());
-                let active_bg = to_egui_color32_alpha(theme.blue(), 30);
+                let active_color = to_egui_color32(theme.accent_primary());
+                let inactive_color = to_egui_color32(theme.text_dim());
+                let active_bg = to_egui_color32_alpha(theme.accent_primary(), 30);
 
                 // -- Connection status indicator at top --
                 render_connection_indicator(ui, &adsb_data, &theme);
@@ -84,7 +84,7 @@ pub fn render_toolbar(
 
                 // -- Clear Cache button (action, not a panel toggle) --
                 ui.add_space(4.0);
-                let icon_dim = to_egui_color32(theme.subtext0());
+                let icon_dim = to_egui_color32(theme.text_dim());
                 let clear_btn = ui.add(
                     egui::Button::new(
                         egui::RichText::new("\u{2716}")
@@ -194,7 +194,7 @@ fn render_connection_indicator(
     theme: &AppTheme,
 ) {
     let Some(adsb_data) = adsb_data else {
-        ui.label(egui::RichText::new("\u{25CF}").size(12.0).color(to_egui_color32(theme.overlay0())))
+        ui.label(egui::RichText::new("\u{25CF}").size(12.0).color(to_egui_color32(theme.bg_overlay())))
             .on_hover_text("ADS-B: No client");
         return;
     };
@@ -205,19 +205,19 @@ fn render_connection_indicator(
     use adsb_client::ConnectionState;
     let (color, tooltip) = match connection_state {
         ConnectionState::Connected => (
-            to_egui_color32(theme.green()),
+            to_egui_color32(theme.text_success()),
             format!("ADS-B: {} aircraft", aircraft_count),
         ),
         ConnectionState::Connecting => (
-            to_egui_color32(theme.yellow()),
+            to_egui_color32(theme.text_warn()),
             "ADS-B: Connecting...".to_string(),
         ),
         ConnectionState::Disconnected => (
-            to_egui_color32(theme.red()),
+            to_egui_color32(theme.text_error()),
             "ADS-B: Disconnected".to_string(),
         ),
         ConnectionState::Error(ref msg) => (
-            to_egui_color32(theme.red()),
+            to_egui_color32(theme.text_error()),
             format!("ADS-B: Error - {}", msg),
         ),
     };
@@ -240,13 +240,13 @@ pub fn render_map_attribution(
         .interactable(false)
         .show(ctx, |ui| {
             let bg = egui::Frame::default()
-                .fill(to_egui_color32_alpha(theme.crust(), 128))
+                .fill(to_egui_color32_alpha(theme.bg_triage(), 128))
                 .inner_margin(egui::Margin::same(4));
             bg.show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("\u{00A9} OpenStreetMap contributors, \u{00A9} CartoDB")
                         .size(11.0)
-                        .color(to_egui_color32(theme.subtext0())),
+                        .color(to_egui_color32(theme.text_dim())),
                 );
             });
         });

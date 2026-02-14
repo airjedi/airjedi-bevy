@@ -15,7 +15,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"
 chrono = { version = "0.4", features = ["serde"] }
 bevy_egui = "0.39"
 catppuccin = "2.6"
-catppuccin-egui = { version = "5.7", default-features = false, features = ["egui33"] }
+egui-aesthetix = { git = "https://github.com/thebashpotato/egui-aesthetix", features = ["carl", "nord", "standard", "tokyo_night"] }
 toml = "0.8"
 dirs = "6.0"
 csv = "1.3"

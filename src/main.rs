@@ -289,7 +289,6 @@ fn main() {
             view3d::View3DPlugin,
             adsb::AdsbPlugin,
         ))
-        .init_resource::<theme::AppTheme>()
         .init_resource::<DragState>()
         .init_resource::<HelpOverlayState>()
         .init_resource::<ui_panels::UiPanelManager>()

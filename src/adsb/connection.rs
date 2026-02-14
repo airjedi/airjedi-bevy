@@ -134,19 +134,19 @@ pub fn update_connection_status(
         let (status_text, status_color) = match connection_state {
             ConnectionState::Connected => (
                 format!("ADS-B: {} aircraft", aircraft_count),
-                theme.green(),
+                theme.text_success(),
             ),
             ConnectionState::Connecting => (
                 "ADS-B: Connecting...".to_string(),
-                theme.yellow(),
+                theme.text_warn(),
             ),
             ConnectionState::Disconnected => (
                 "ADS-B: Disconnected".to_string(),
-                theme.red(),
+                theme.text_error(),
             ),
             ConnectionState::Error(ref msg) => (
                 format!("ADS-B: Error - {}", msg),
-                theme.red(),
+                theme.text_error(),
             ),
         };
 

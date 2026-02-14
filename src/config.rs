@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
-use crate::theme::{self, AppTheme};
+use crate::theme::{AppTheme, ThemeRegistry};
 
 const CONFIG_FILE: &str = "config.toml";
 
@@ -61,6 +61,8 @@ pub struct AppConfig {
     pub trails: TrailsConfig,
     #[serde(default)]
     pub bookmarks: BookmarksConfig,
+    #[serde(default)]
+    pub appearance: AppearanceConfig,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -131,6 +133,19 @@ pub struct BookmarksConfig {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct AppearanceConfig {
+    pub theme: String,
+}
+
+impl Default for AppearanceConfig {
+    fn default() -> Self {
+        Self {
+            theme: "Nord Dark".to_string(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct FeedConfig {
     pub endpoint_url: String,
     pub refresh_interval_ms: u64,
@@ -162,6 +177,7 @@ impl Default for AppConfig {
             overlays: OverlayConfig::default(),
             trails: TrailsConfig::default(),
             bookmarks: BookmarksConfig::default(),
+            appearance: AppearanceConfig::default(),
         }
     }
 }
@@ -322,6 +338,7 @@ impl SettingsUiState {
                 max_age_seconds: trails_max_age,
             },
             bookmarks: BookmarksConfig::default(),
+            appearance: AppearanceConfig::default(),
         })
     }
 }
@@ -331,6 +348,7 @@ pub fn render_settings_panel(
     mut ui_state: ResMut<SettingsUiState>,
     mut app_config: ResMut<AppConfig>,
     mut app_theme: ResMut<AppTheme>,
+    theme_registry: Res<ThemeRegistry>,
 ) {
     if !ui_state.open {
         return;
@@ -349,16 +367,16 @@ pub fn render_settings_panel(
 
             // Theme section
             ui.collapsing("Theme", |ui| {
-                let current_flavor = app_theme.flavor();
-                let current_name = theme::flavor_display_name(current_flavor);
-                egui::ComboBox::from_id_salt("theme_flavor")
-                    .selected_text(current_name)
+                let current_name = app_theme.name().to_string();
+                egui::ComboBox::from_id_salt("theme_selector")
+                    .selected_text(&current_name)
                     .show_ui(ui, |ui| {
-                        for &flavor in theme::ALL_FLAVORS {
-                            let name = theme::flavor_display_name(flavor);
-                            let selected = current_flavor == flavor;
+                        for name in theme_registry.names() {
+                            let selected = current_name == name;
                             if ui.selectable_label(selected, name).clicked() {
-                                app_theme.set_flavor(flavor);
+                                if let Some(new_theme) = theme_registry.get(name) {
+                                    *app_theme = new_theme;
+                                }
                             }
                         }
                     });
@@ -442,7 +460,9 @@ pub fn render_settings_panel(
 
                 if ui.button("Save").clicked() {
                     match ui_state.validate_and_build() {
-                        Ok(new_config) => {
+                        Ok(mut new_config) => {
+                            new_config.bookmarks = app_config.bookmarks.clone();
+                            new_config.appearance.theme = app_theme.name().to_string();
                             save_config(&new_config);
                             *app_config = new_config;
                             ui_state.open = false;
@@ -540,9 +560,16 @@ impl Plugin for ConfigPlugin {
             style: config.map.basemap_style,
         };
 
+        let registry = ThemeRegistry::new();
+        let initial_theme = registry
+            .get(&config.appearance.theme)
+            .unwrap_or_else(|| registry.get("Nord Dark").unwrap());
+
         app.add_plugins(EguiPlugin::default())
             .insert_resource(config)
             .insert_resource(initial_basemap)
+            .insert_resource(registry)
+            .insert_resource(initial_theme)
             .init_resource::<SettingsUiState>()
             .add_systems(Update, (toggle_settings_panel, sync_config_to_render_states, apply_basemap_changes))
             .add_systems(EguiPrimaryContextPass, render_settings_panel);

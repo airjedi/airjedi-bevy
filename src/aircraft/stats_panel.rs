@@ -99,15 +99,15 @@ pub fn render_stats_panel(
     let connection_status = "See status bar".to_string();
 
     // Define colors from theme
-    let panel_bg = to_egui_color32_alpha(theme.mantle(), 230);
-    let border_color = to_egui_color32(theme.surface1());
-    let header_color = to_egui_color32(theme.blue());
-    let label_color = to_egui_color32(theme.subtext0());
-    let value_color = to_egui_color32(theme.text());
-    let alt_low_color = to_egui_color32(theme.teal());
-    let alt_med_color = to_egui_color32(theme.yellow());
-    let alt_high_color = to_egui_color32(theme.peach());
-    let alt_ultra_color = to_egui_color32(theme.mauve());
+    let panel_bg = to_egui_color32_alpha(theme.bg_secondary(), 230);
+    let border_color = to_egui_color32(theme.bg_contrast());
+    let header_color = to_egui_color32(theme.accent_primary());
+    let label_color = to_egui_color32(theme.text_dim());
+    let value_color = to_egui_color32(theme.text_primary());
+    let alt_low_color = to_egui_color32(theme.altitude_low());
+    let alt_med_color = to_egui_color32(theme.text_warn());
+    let alt_high_color = to_egui_color32(theme.altitude_high());
+    let alt_ultra_color = to_egui_color32(theme.accent_secondary());
 
     let panel_frame = egui::Frame::default()
         .fill(panel_bg)
@@ -203,7 +203,7 @@ pub fn render_stats_panel(
                     // Unknown
                     if altitude_stats.unknown > 0 {
                         ui.label(egui::RichText::new("Unknown")
-                            .color(to_egui_color32(theme.overlay0()))
+                            .color(to_egui_color32(theme.bg_overlay()))
                             .size(9.0));
                         ui.label(egui::RichText::new(format!("{}", altitude_stats.unknown))
                             .color(value_color)

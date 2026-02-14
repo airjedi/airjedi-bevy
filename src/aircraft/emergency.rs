@@ -171,7 +171,7 @@ pub fn update_emergency_banner(
             align_items: AlignItems::Center,
             ..default()
         },
-        BackgroundColor(theme.red().with_alpha(0.9)),
+        BackgroundColor(theme.text_error().with_alpha(0.9)),
         EmergencyBanner,
     )).with_children(|parent| {
         parent.spawn((

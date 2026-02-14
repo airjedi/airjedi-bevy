@@ -377,8 +377,8 @@ Shift+V  Coverage stats
 Ctrl+R  Record/Stop recording
 ";
 
-    let bg_color = theme.mantle().with_alpha(0.95);
-    let text_color = theme.text();
+    let bg_color = theme.bg_secondary().with_alpha(0.95);
+    let text_color = theme.text_primary();
 
     commands.spawn((
         Node {
