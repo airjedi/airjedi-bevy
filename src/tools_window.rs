@@ -12,6 +12,7 @@ use crate::airspace::{AirspaceDisplayState, AirspaceData};
 use crate::data_sources::DataSourceManager;
 use crate::export::{ExportState, ExportFormat};
 use crate::view3d::{View3DState, ViewMode};
+use crate::theme::{AppTheme, to_egui_color32, to_egui_color32_alpha};
 
 /// Which tab is currently active in the tools window.
 #[derive(Resource, Default, PartialEq, Eq, Clone, Copy)]
@@ -45,6 +46,7 @@ pub fn render_tools_window(
     mut datasource_mgr: ResMut<DataSourceManager>,
     mut export_state: ResMut<ExportState>,
     mut view3d_state: ResMut<View3DState>,
+    theme: Res<AppTheme>,
 ) {
     if !tools_state.open {
         return;
@@ -54,8 +56,8 @@ pub fn render_tools_window(
         return;
     };
 
-    let panel_bg = egui::Color32::from_rgba_unmultiplied(25, 30, 35, 240);
-    let border_color = egui::Color32::from_rgb(60, 80, 100);
+    let panel_bg = to_egui_color32_alpha(theme.mantle(), 240);
+    let border_color = to_egui_color32(theme.surface1());
 
     let window_frame = egui::Frame::default()
         .fill(panel_bg)

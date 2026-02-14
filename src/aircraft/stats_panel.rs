@@ -3,6 +3,7 @@ use bevy_egui::{egui, EguiContexts};
 use std::time::Instant;
 
 use crate::Aircraft;
+use crate::theme::{AppTheme, to_egui_color32, to_egui_color32_alpha};
 
 /// State for the statistics panel
 #[derive(Resource)]
@@ -79,6 +80,7 @@ pub fn render_stats_panel(
     mut contexts: EguiContexts,
     mut stats_state: ResMut<StatsPanelState>,
     aircraft_query: Query<&Aircraft>,
+    theme: Res<AppTheme>,
 ) {
     if !stats_state.expanded {
         return;
@@ -96,16 +98,16 @@ pub fn render_stats_panel(
     // Connection status is shown elsewhere in UI already
     let connection_status = "See status bar".to_string();
 
-    // Define colors
-    let panel_bg = egui::Color32::from_rgba_unmultiplied(25, 30, 35, 230);
-    let border_color = egui::Color32::from_rgb(60, 80, 100);
-    let header_color = egui::Color32::from_rgb(100, 200, 255);
-    let label_color = egui::Color32::from_rgb(150, 150, 150);
-    let value_color = egui::Color32::from_rgb(220, 220, 220);
-    let alt_low_color = egui::Color32::from_rgb(100, 200, 200);    // Cyan
-    let alt_med_color = egui::Color32::from_rgb(200, 200, 100);    // Yellow
-    let alt_high_color = egui::Color32::from_rgb(255, 150, 50);    // Orange
-    let alt_ultra_color = egui::Color32::from_rgb(200, 100, 255);  // Purple
+    // Define colors from theme
+    let panel_bg = to_egui_color32_alpha(theme.mantle(), 230);
+    let border_color = to_egui_color32(theme.surface1());
+    let header_color = to_egui_color32(theme.blue());
+    let label_color = to_egui_color32(theme.subtext0());
+    let value_color = to_egui_color32(theme.text());
+    let alt_low_color = to_egui_color32(theme.teal());
+    let alt_med_color = to_egui_color32(theme.yellow());
+    let alt_high_color = to_egui_color32(theme.peach());
+    let alt_ultra_color = to_egui_color32(theme.mauve());
 
     let panel_frame = egui::Frame::default()
         .fill(panel_bg)
@@ -201,7 +203,7 @@ pub fn render_stats_panel(
                     // Unknown
                     if altitude_stats.unknown > 0 {
                         ui.label(egui::RichText::new("Unknown")
-                            .color(egui::Color32::from_rgb(100, 100, 100))
+                            .color(to_egui_color32(theme.overlay0()))
                             .size(9.0));
                         ui.label(egui::RichText::new(format!("{}", altitude_stats.unknown))
                             .color(value_color)

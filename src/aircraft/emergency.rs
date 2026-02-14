@@ -141,6 +141,7 @@ pub fn update_emergency_banner(
     mut commands: Commands,
     alert_state: Res<EmergencyAlertState>,
     existing_banner: Query<Entity, With<EmergencyBanner>>,
+    theme: Res<crate::theme::AppTheme>,
 ) {
     let has_emergencies = !alert_state.active_emergencies.is_empty();
 
@@ -170,7 +171,7 @@ pub fn update_emergency_banner(
             align_items: AlignItems::Center,
             ..default()
         },
-        BackgroundColor(Color::srgba(0.8, 0.0, 0.0, 0.9)),
+        BackgroundColor(theme.red().with_alpha(0.9)),
         EmergencyBanner,
     )).with_children(|parent| {
         parent.spawn((

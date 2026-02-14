@@ -6,6 +6,8 @@ use crate::aircraft::TrailHistory;
 use crate::debug_panel::DebugPanelState;
 use super::connection::{AdsbAircraftData, ConnectionStatusText};
 
+use crate::theme::AppTheme;
+
 /// Resource to hold the aircraft 3D model handle
 #[derive(Resource)]
 pub struct AircraftModel {
@@ -27,6 +29,7 @@ pub fn sync_aircraft_from_adsb(
     mut aircraft_query: Query<(Entity, &mut Aircraft, &mut Transform)>,
     label_query: Query<(Entity, &AircraftLabel)>,
     mut debug: Option<ResMut<DebugPanelState>>,
+    theme: Res<AppTheme>,
 ) {
     let Some(adsb_data) = adsb_data else {
         return; // ADS-B client not yet initialized
@@ -110,7 +113,7 @@ pub fn sync_aircraft_from_adsb(
                     font_size: constants::BASE_FONT_SIZE,
                     ..default()
                 },
-                TextColor(Color::WHITE),
+                TextColor(theme.text()),
                 Transform::from_xyz(0.0, 0.0, constants::LABEL_Z_LAYER),
                 AircraftLabel {
                     aircraft_entity,

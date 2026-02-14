@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
+use crate::theme::{self, AppTheme};
+
 const CONFIG_FILE: &str = "config.toml";
 
 /// Available basemap styles for the map display
@@ -328,6 +330,7 @@ pub fn render_settings_panel(
     mut contexts: EguiContexts,
     mut ui_state: ResMut<SettingsUiState>,
     mut app_config: ResMut<AppConfig>,
+    mut app_theme: ResMut<AppTheme>,
 ) {
     if !ui_state.open {
         return;
@@ -343,6 +346,25 @@ pub fn render_settings_panel(
         .show(ctx, |ui| {
             ui.heading("Settings");
             ui.separator();
+
+            // Theme section
+            ui.collapsing("Theme", |ui| {
+                let current_flavor = app_theme.flavor();
+                let current_name = theme::flavor_display_name(current_flavor);
+                egui::ComboBox::from_id_salt("theme_flavor")
+                    .selected_text(current_name)
+                    .show_ui(ui, |ui| {
+                        for &flavor in theme::ALL_FLAVORS {
+                            let name = theme::flavor_display_name(flavor);
+                            let selected = current_flavor == flavor;
+                            if ui.selectable_label(selected, name).clicked() {
+                                app_theme.set_flavor(flavor);
+                            }
+                        }
+                    });
+            });
+
+            ui.add_space(12.0);
 
             // Feed section
             ui.collapsing("Feed", |ui| {

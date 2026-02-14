@@ -331,6 +331,7 @@ pub fn update_help_overlay(
     mut commands: Commands,
     help_state: Res<HelpOverlayState>,
     existing_overlay: Query<Entity, With<HelpOverlay>>,
+    theme: Res<crate::theme::AppTheme>,
 ) {
     // Remove existing overlay if not visible
     if !help_state.visible {
@@ -376,6 +377,9 @@ Shift+V  Coverage stats
 Ctrl+R  Record/Stop recording
 ";
 
+    let bg_color = theme.mantle().with_alpha(0.95);
+    let text_color = theme.text();
+
     commands.spawn((
         Node {
             position_type: PositionType::Absolute,
@@ -391,7 +395,7 @@ Ctrl+R  Record/Stop recording
             flex_direction: FlexDirection::Column,
             ..default()
         },
-        BackgroundColor(Color::srgba(0.1, 0.1, 0.15, 0.95)),
+        BackgroundColor(bg_color),
         HelpOverlay,
     )).with_children(|parent| {
         parent.spawn((
@@ -400,7 +404,7 @@ Ctrl+R  Record/Stop recording
                 font_size: 14.0,
                 ..default()
             },
-            TextColor(Color::srgb(0.9, 0.9, 0.9)),
+            TextColor(text_color),
         ));
     });
 }

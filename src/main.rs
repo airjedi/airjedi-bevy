@@ -26,6 +26,7 @@ mod toolbar;
 mod tools_window;
 mod debug_panel;
 mod tile_cache;
+pub(crate) mod theme;
 
 // Re-export core types so crate::Aircraft, crate::MapState, crate::ZoomState
 // continue to resolve throughout the codebase.
@@ -81,12 +82,6 @@ pub(crate) mod constants {
 
     // 3D model scale: model is ~4 units across, target is 32 world units (AIRCRAFT_MARKER_RADIUS * 4)
     pub const AIRCRAFT_MODEL_SCALE: f32 = 8.0;
-
-    // UI colors
-    pub const BUTTON_NORMAL: (f32, f32, f32, f32) = (0.2, 0.2, 0.2, 0.9);
-    pub const BUTTON_HOVERED: (f32, f32, f32, f32) = (0.3, 0.3, 0.3, 0.9);
-    pub const BUTTON_PRESSED: (f32, f32, f32, f32) = (0.4, 0.4, 0.4, 0.9);
-    pub const OVERLAY_BG: (f32, f32, f32, f32) = (0.0, 0.0, 0.0, 0.5);
 
     // Default map center (Wichita, KS)
     pub const DEFAULT_LATITUDE: f64 = 37.6872;
@@ -294,6 +289,7 @@ fn main() {
             view3d::View3DPlugin,
             adsb::AdsbPlugin,
         ))
+        .init_resource::<theme::AppTheme>()
         .init_resource::<DragState>()
         .init_resource::<HelpOverlayState>()
         .init_resource::<ui_panels::UiPanelManager>()
@@ -330,6 +326,7 @@ fn main() {
         .add_systems(Update, scale_aircraft_and_labels.after(apply_camera_zoom))
         .add_systems(Update, update_aircraft_labels.after(update_aircraft_positions))
         .add_systems(bevy_egui::EguiPrimaryContextPass, (
+            theme::apply_egui_theme,
             toolbar::render_toolbar,
             toolbar::render_map_attribution,
             tools_window::render_tools_window,
