@@ -11,6 +11,7 @@ use crate::coverage::CoverageState;
 use crate::airspace::{AirspaceDisplayState, AirspaceData};
 use crate::data_sources::DataSourceManager;
 use crate::export::{ExportState, ExportFormat};
+use crate::recording::{RecordingState, PlaybackState};
 use crate::view3d::{View3DState, ViewMode};
 use crate::theme::{AppTheme, to_egui_color32, to_egui_color32_alpha};
 
@@ -22,6 +23,7 @@ pub enum ToolsTab {
     Airspace,
     DataSources,
     Export,
+    Recording,
     View3D,
 }
 
@@ -45,6 +47,8 @@ pub fn render_tools_window(
     mut airspace_data: ResMut<AirspaceData>,
     mut datasource_mgr: ResMut<DataSourceManager>,
     mut export_state: ResMut<ExportState>,
+    mut recording: ResMut<RecordingState>,
+    mut playback: ResMut<PlaybackState>,
     mut view3d_state: ResMut<View3DState>,
     theme: Res<AppTheme>,
 ) {
@@ -87,6 +91,9 @@ pub fn render_tools_window(
                 if ui.selectable_label(tools_state.active_tab == ToolsTab::Export, "Export").clicked() {
                     tools_state.active_tab = ToolsTab::Export;
                 }
+                if ui.selectable_label(tools_state.active_tab == ToolsTab::Recording, "Recording").clicked() {
+                    tools_state.active_tab = ToolsTab::Recording;
+                }
                 if ui.selectable_label(tools_state.active_tab == ToolsTab::View3D, "3D View").clicked() {
                     tools_state.active_tab = ToolsTab::View3D;
                 }
@@ -103,6 +110,7 @@ pub fn render_tools_window(
                         ToolsTab::Airspace => render_airspace_tab(ui, &mut airspace_display, &mut airspace_data),
                         ToolsTab::DataSources => render_data_sources_tab(ui, &mut datasource_mgr),
                         ToolsTab::Export => render_export_tab(ui, &mut export_state),
+                        ToolsTab::Recording => render_recording_tab(ui, &mut recording, &mut playback),
                         ToolsTab::View3D => render_view3d_tab(ui, &mut view3d_state),
                     }
                 });
@@ -343,6 +351,110 @@ pub(crate) fn render_view3d_tab(ui: &mut egui::Ui, state: &mut View3DState) {
         ui.add(egui::Slider::new(&mut state.altitude_scale, 0.1..=10.0));
     });
 
+}
+
+fn render_recording_tab(
+    ui: &mut egui::Ui,
+    recording: &mut RecordingState,
+    playback: &mut PlaybackState,
+) {
+    // Record / Stop controls
+    ui.horizontal(|ui| {
+        if recording.is_recording {
+            if ui.button("Stop Recording").clicked() {
+                recording.stop();
+            }
+            ui.label(
+                egui::RichText::new(format!("{} frames | {}s", recording.frame_count, recording.duration_secs()))
+                    .color(egui::Color32::LIGHT_RED),
+            );
+        } else {
+            if ui.button("Record").clicked() {
+                if let Err(e) = recording.start() {
+                    error!("Failed to start recording: {}", e);
+                }
+            }
+        }
+    });
+
+    if let Some(ref path) = recording.file_path {
+        if !recording.is_recording {
+            ui.label(
+                egui::RichText::new(format!("Last: {}", path.file_name().unwrap_or_default().to_string_lossy()))
+                    .size(10.0)
+                    .color(egui::Color32::GRAY),
+            );
+        }
+    }
+
+    ui.separator();
+
+    // Playback controls
+    ui.label("Playback");
+
+    if playback.is_playing {
+        ui.horizontal(|ui| {
+            if playback.is_paused {
+                if ui.button("Resume").clicked() {
+                    playback.resume();
+                }
+            } else {
+                if ui.button("Pause").clicked() {
+                    playback.pause();
+                }
+            }
+            if ui.button("Stop").clicked() {
+                playback.stop();
+            }
+        });
+
+        // Speed controls
+        ui.horizontal(|ui| {
+            ui.label("Speed:");
+            for speed in [0.5, 1.0, 2.0, 4.0] {
+                let label = format!("{}x", speed);
+                if ui.selectable_label((playback.speed - speed).abs() < 0.01, &label).clicked() {
+                    playback.speed = speed;
+                }
+            }
+        });
+
+        // Progress bar
+        if playback.total_duration_ms > 0 {
+            let progress = playback.current_time_ms as f32 / playback.total_duration_ms as f32;
+            ui.add(egui::ProgressBar::new(progress).show_percentage());
+
+            let current_secs = playback.current_time_ms / 1000;
+            let total_secs = playback.total_duration_ms / 1000;
+            ui.label(format!("{}:{:02} / {}:{:02}",
+                current_secs / 60, current_secs % 60,
+                total_secs / 60, total_secs % 60
+            ));
+        }
+    } else {
+        if ui.button("Load Recording...").clicked() {
+            // List available recordings
+            if let Ok(cwd) = std::env::current_dir() {
+                let tmp_dir = cwd.join("tmp");
+                if tmp_dir.exists() {
+                    if let Ok(entries) = std::fs::read_dir(&tmp_dir) {
+                        let recordings: Vec<_> = entries
+                            .filter_map(|e| e.ok())
+                            .filter(|e| {
+                                e.path().extension().map(|ext| ext == "ndjson").unwrap_or(false)
+                            })
+                            .collect();
+
+                        if let Some(latest) = recordings.last() {
+                            if let Err(e) = playback.load(&latest.path()) {
+                                error!("Failed to load recording: {}", e);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]

@@ -4,6 +4,7 @@ use bevy_slippy_tiles::ZoomLevel;
 
 use crate::config::{AppConfig, AircraftBookmark, LocationBookmark, save_config};
 use crate::aircraft::AircraftListState;
+use crate::theme::{AppTheme, to_egui_color32, to_egui_color32_alpha};
 use crate::{MapState, ZoomState, Aircraft};
 
 pub struct BookmarksPlugin;
@@ -43,6 +44,7 @@ pub fn render_bookmarks_panel(
     mut zoom_state: ResMut<ZoomState>,
     list_state: Res<AircraftListState>,
     aircraft_query: Query<&Aircraft>,
+    theme: Res<AppTheme>,
 ) {
     if !panel_state.open {
         return;
@@ -52,36 +54,24 @@ pub fn render_bookmarks_panel(
         return;
     };
 
-    let panel_bg = egui::Color32::from_rgba_unmultiplied(25, 30, 35, 240);
-    let border_color = egui::Color32::from_rgb(60, 80, 100);
-    let highlight_color = egui::Color32::from_rgb(100, 200, 255);
-    let bookmark_color = egui::Color32::from_rgb(255, 200, 100);
+    let panel_bg = to_egui_color32_alpha(theme.bg_secondary(), 240);
+    let border_color = to_egui_color32(theme.bg_contrast());
+    let bookmark_color = to_egui_color32(theme.accent_secondary());
 
     let panel_frame = egui::Frame::default()
         .fill(panel_bg)
         .stroke(egui::Stroke::new(1.0, border_color))
-        .inner_margin(egui::Margin::same(12));
+        .inner_margin(egui::Margin::same(8));
 
+    let mut window_open = true;
     egui::Window::new("Bookmarks")
-        .collapsible(false)
+        .open(&mut window_open)
+        .collapsible(true)
         .resizable(true)
         .default_width(280.0)
         .min_width(250.0)
         .frame(panel_frame)
-        .anchor(egui::Align2::LEFT_TOP, egui::vec2(10.0, 150.0))
         .show(ctx, |ui| {
-            // Header with close button
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Bookmarks").color(highlight_color).size(14.0).strong());
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button(egui::RichText::new("X").size(12.0)).clicked() {
-                        panel_state.open = false;
-                    }
-                });
-            });
-
-            ui.separator();
-
             // Tab bar
             ui.horizontal(|ui| {
                 if ui.selectable_label(panel_state.selected_tab == 0, "Locations").clicked() {
@@ -106,6 +96,10 @@ pub fn render_bookmarks_panel(
                 _ => {}
             }
         });
+
+    if !window_open {
+        panel_state.open = false;
+    }
 }
 
 fn render_location_bookmarks(

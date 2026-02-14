@@ -101,7 +101,6 @@ pub fn render_stats_panel(
     // Define colors from theme
     let panel_bg = to_egui_color32_alpha(theme.bg_secondary(), 230);
     let border_color = to_egui_color32(theme.bg_contrast());
-    let header_color = to_egui_color32(theme.accent_primary());
     let label_color = to_egui_color32(theme.text_dim());
     let value_color = to_egui_color32(theme.text_primary());
     let alt_low_color = to_egui_color32(theme.altitude_low());
@@ -112,31 +111,15 @@ pub fn render_stats_panel(
     let panel_frame = egui::Frame::default()
         .fill(panel_bg)
         .stroke(egui::Stroke::new(1.0, border_color))
-        .inner_margin(egui::Margin::same(10));
+        .inner_margin(egui::Margin::same(8));
 
+    let mut window_open = true;
     egui::Window::new("Statistics")
+        .open(&mut window_open)
         .collapsible(true)
         .resizable(false)
         .frame(panel_frame)
-        .anchor(egui::Align2::LEFT_BOTTOM, egui::vec2(10.0, -10.0))
         .show(ctx, |ui| {
-            // Header with close button
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Flight Statistics")
-                    .color(header_color)
-                    .size(14.0)
-                    .strong());
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button(egui::RichText::new("X").size(10.0)).clicked() {
-                        stats_state.expanded = false;
-                    }
-                });
-            });
-
-            ui.add_space(6.0);
-            ui.separator();
-            ui.add_space(6.0);
-
             // Total aircraft
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("Total Aircraft:")
@@ -238,4 +221,8 @@ pub fn render_stats_panel(
                     .monospace());
             });
         });
+
+    if !window_open {
+        stats_state.expanded = false;
+    }
 }

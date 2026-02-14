@@ -8,6 +8,7 @@ use bevy_egui::{egui, EguiContexts};
 use std::collections::VecDeque;
 
 use crate::adsb::AdsbAircraftData;
+use crate::theme::{AppTheme, to_egui_color32, to_egui_color32_alpha};
 use crate::ui_panels::{PanelId, UiPanelManager};
 use crate::{Aircraft, MapState, ZoomState};
 
@@ -105,14 +106,22 @@ pub fn render_debug_panel_ui(
     debug: &mut DebugPanelState,
     map_state: Option<&MapState>,
     zoom_state: Option<&ZoomState>,
+    panel_bg: egui::Color32,
+    border_color: egui::Color32,
 ) {
     let mut open = debug.open;
+
+    let window_frame = egui::Frame::default()
+        .fill(panel_bg)
+        .stroke(egui::Stroke::new(1.0, border_color))
+        .inner_margin(egui::Margin::same(8));
 
     egui::Window::new("Debug")
         .open(&mut open)
         .default_size([380.0, 420.0])
         .resizable(true)
         .collapsible(true)
+        .frame(window_frame)
         .show(ctx, |ui| {
             // -- Metrics section --
             egui::CollapsingHeader::new("Metrics")
@@ -201,6 +210,7 @@ pub fn render_debug_panel(
     map_state: Option<Res<MapState>>,
     zoom_state: Option<Res<ZoomState>>,
     adsb_data: Option<Res<AdsbAircraftData>>,
+    theme: Res<AppTheme>,
 ) {
     if !panels.is_open(PanelId::Debug) {
         return;
@@ -212,7 +222,10 @@ pub fn render_debug_panel(
         return;
     };
 
-    render_debug_panel_ui(ctx, &mut debug, map_state.as_deref(), zoom_state.as_deref());
+    let panel_bg = to_egui_color32_alpha(theme.bg_secondary(), 240);
+    let border_color = to_egui_color32(theme.bg_contrast());
+
+    render_debug_panel_ui(ctx, &mut debug, map_state.as_deref(), zoom_state.as_deref(), panel_bg, border_color);
 
     // If the egui X button closed the window, close it in UiPanelManager too.
     // This is handled here instead of via sync_resources_to_panel_manager because
@@ -252,7 +265,14 @@ mod tests {
 
         let harness = Harness::new_state(
             |ctx, state: &mut DebugPanelState| {
-                render_debug_panel_ui(ctx, state, None, None);
+                render_debug_panel_ui(
+                    ctx,
+                    state,
+                    None,
+                    None,
+                    egui::Color32::from_rgba_unmultiplied(30, 30, 46, 240),
+                    egui::Color32::from_rgb(69, 71, 90),
+                );
             },
             debug,
         );
@@ -278,7 +298,14 @@ mod tests {
 
         let harness = Harness::new_state(
             |ctx, state: &mut DebugPanelState| {
-                render_debug_panel_ui(ctx, state, None, None);
+                render_debug_panel_ui(
+                    ctx,
+                    state,
+                    None,
+                    None,
+                    egui::Color32::from_rgba_unmultiplied(30, 30, 46, 240),
+                    egui::Color32::from_rgb(69, 71, 90),
+                );
             },
             debug,
         );
@@ -305,7 +332,14 @@ mod tests {
 
         let harness = Harness::new_state(
             move |ctx, state: &mut DebugPanelState| {
-                render_debug_panel_ui(ctx, state, Some(&ms), Some(&zs));
+                render_debug_panel_ui(
+                    ctx,
+                    state,
+                    Some(&ms),
+                    Some(&zs),
+                    egui::Color32::from_rgba_unmultiplied(30, 30, 46, 240),
+                    egui::Color32::from_rgb(69, 71, 90),
+                );
             },
             debug,
         );

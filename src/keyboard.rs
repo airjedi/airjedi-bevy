@@ -108,9 +108,9 @@ pub fn handle_keyboard_shortcuts(
         panels.toggle_panel(PanelId::Debug);
     }
 
-    // Ctrl+R - Toggle recording
+    // Ctrl+R - Toggle recording tab in tools window
     if ctrl && keyboard.just_pressed(KeyCode::KeyR) {
-        panels.toggle_panel(PanelId::Recording);
+        toggle_tools_tab(&mut tools_state, ToolsTab::Recording);
     }
 
     // Escape - Deselect aircraft, cancel follow, close panels (cascading)

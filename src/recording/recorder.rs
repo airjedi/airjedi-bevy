@@ -221,137 +221,33 @@ pub fn toggle_recording(
     }
 }
 
-/// System to render recording UI
-pub fn render_recording_ui(
+/// System to render the recording indicator overlay (blinking REC in top-right).
+///
+/// The recording controls panel has been moved into the Tools window.
+pub fn render_recording_indicator(
     mut contexts: EguiContexts,
-    mut recording: ResMut<RecordingState>,
-    mut playback: ResMut<super::PlaybackState>,
+    recording: Res<RecordingState>,
 ) {
+    if !recording.is_recording {
+        return;
+    }
+
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
     };
 
-    // Recording indicator (top right corner)
-    if recording.is_recording {
-        egui::Area::new(egui::Id::new("recording_indicator"))
-            .fixed_pos(egui::pos2(ctx.available_rect().width() - 150.0, 10.0))
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    // Blinking red circle
-                    let time = ui.input(|i| i.time);
-                    let alpha = if (time * 2.0) as i32 % 2 == 0 { 255 } else { 100 };
-                    ui.label(
-                        egui::RichText::new("REC")
-                            .color(egui::Color32::from_rgba_unmultiplied(255, 0, 0, alpha as u8))
-                            .strong()
-                    );
-                    ui.label(format!("{}s", recording.duration_secs()));
-                });
-            });
-    }
-
-    // Recording controls panel
-    egui::Window::new("Recording")
-        .collapsible(true)
-        .resizable(false)
-        .default_width(200.0)
-        .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-10.0, 50.0))
+    egui::Area::new(egui::Id::new("recording_indicator"))
+        .fixed_pos(egui::pos2(ctx.available_rect().width() - 150.0, 10.0))
         .show(ctx, |ui| {
             ui.horizontal(|ui| {
-                if recording.is_recording {
-                    if ui.button("Stop").clicked() {
-                        recording.stop();
-                    }
-                    ui.label(
-                        egui::RichText::new(format!("{} frames", recording.frame_count))
-                            .color(egui::Color32::GRAY)
-                    );
-                } else {
-                    if ui.button("Record").clicked() {
-                        if let Err(e) = recording.start() {
-                            error!("Failed to start recording: {}", e);
-                        }
-                    }
-                }
+                let time = ui.input(|i| i.time);
+                let alpha = if (time * 2.0) as i32 % 2 == 0 { 255 } else { 100 };
+                ui.label(
+                    egui::RichText::new("REC")
+                        .color(egui::Color32::from_rgba_unmultiplied(255, 0, 0, alpha as u8))
+                        .strong()
+                );
+                ui.label(format!("{}s", recording.duration_secs()));
             });
-
-            if let Some(ref path) = recording.file_path {
-                if !recording.is_recording {
-                    ui.label(
-                        egui::RichText::new(format!("Last: {}", path.file_name().unwrap_or_default().to_string_lossy()))
-                            .size(10.0)
-                            .color(egui::Color32::GRAY)
-                    );
-                }
-            }
-
-            ui.separator();
-
-            // Playback controls
-            ui.label("Playback");
-
-            if playback.is_playing {
-                ui.horizontal(|ui| {
-                    if playback.is_paused {
-                        if ui.button("Resume").clicked() {
-                            playback.resume();
-                        }
-                    } else {
-                        if ui.button("Pause").clicked() {
-                            playback.pause();
-                        }
-                    }
-                    if ui.button("Stop").clicked() {
-                        playback.stop();
-                    }
-                });
-
-                // Speed controls
-                ui.horizontal(|ui| {
-                    ui.label("Speed:");
-                    for speed in [0.5, 1.0, 2.0, 4.0] {
-                        let label = format!("{}x", speed);
-                        if ui.selectable_label((playback.speed - speed).abs() < 0.01, &label).clicked() {
-                            playback.speed = speed;
-                        }
-                    }
-                });
-
-                // Progress bar
-                if playback.total_duration_ms > 0 {
-                    let progress = playback.current_time_ms as f32 / playback.total_duration_ms as f32;
-                    ui.add(egui::ProgressBar::new(progress).show_percentage());
-
-                    let current_secs = playback.current_time_ms / 1000;
-                    let total_secs = playback.total_duration_ms / 1000;
-                    ui.label(format!("{}:{:02} / {}:{:02}",
-                        current_secs / 60, current_secs % 60,
-                        total_secs / 60, total_secs % 60
-                    ));
-                }
-            } else {
-                if ui.button("Load Recording...").clicked() {
-                    // List available recordings
-                    if let Ok(cwd) = std::env::current_dir() {
-                        let tmp_dir = cwd.join("tmp");
-                        if tmp_dir.exists() {
-                            if let Ok(entries) = std::fs::read_dir(&tmp_dir) {
-                                let recordings: Vec<_> = entries
-                                    .filter_map(|e| e.ok())
-                                    .filter(|e| {
-                                        e.path().extension().map(|ext| ext == "ndjson").unwrap_or(false)
-                                    })
-                                    .collect();
-
-                                if let Some(latest) = recordings.last() {
-                                    if let Err(e) = playback.load(&latest.path()) {
-                                        error!("Failed to load recording: {}", e);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         });
 }
