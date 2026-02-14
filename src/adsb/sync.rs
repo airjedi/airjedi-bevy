@@ -113,7 +113,7 @@ pub fn sync_aircraft_from_adsb(
                     font_size: constants::BASE_FONT_SIZE,
                     ..default()
                 },
-                TextColor(theme.text()),
+                TextColor(theme.text_primary()),
                 Transform::from_xyz(0.0, 0.0, constants::LABEL_Z_LAYER),
                 AircraftLabel {
                     aircraft_entity,

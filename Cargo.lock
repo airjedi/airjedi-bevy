@@ -133,10 +133,10 @@ dependencies = [
  "bevy_egui",
  "bevy_slippy_tiles",
  "catppuccin",
- "catppuccin-egui",
  "chrono",
  "csv",
  "dirs",
+ "egui-aesthetix",
  "egui_kittest",
  "reqwest",
  "serde",
@@ -1872,15 +1872,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "catppuccin-egui"
-version = "5.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "119005543bcd5cc74f76323d40801bb29baf1b062e84f86eb42fb0b2a3fe61e9"
-dependencies = [
- "egui",
-]
-
-[[package]]
 name = "cc"
 version = "1.2.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2421,6 +2412,14 @@ dependencies = [
  "profiling",
  "smallvec",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "egui-aesthetix"
+version = "0.2.4"
+source = "git+https://github.com/thebashpotato/egui-aesthetix#bad574ce6023af82659bf6cf643970295ed89984"
+dependencies = [
+ "egui",
 ]
 
 [[package]]

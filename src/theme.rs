@@ -1,90 +1,18 @@
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
 use catppuccin::FlavorName;
+use egui_aesthetix::Aesthetix;
 
-/// Convert a catppuccin color to a bevy Color via its RGB values.
-fn cat_to_bevy(c: &catppuccin::Color) -> Color {
-    Color::srgb(
-        c.rgb.r as f32 / 255.0,
-        c.rgb.g as f32 / 255.0,
-        c.rgb.b as f32 / 255.0,
+// ── Conversion helpers ──────────────────────────────────────────────
+
+/// Convert an `egui::Color32` to a `bevy::color::Color`.
+fn color32_to_bevy(c: egui::Color32) -> Color {
+    Color::srgba(
+        c.r() as f32 / 255.0,
+        c.g() as f32 / 255.0,
+        c.b() as f32 / 255.0,
+        c.a() as f32 / 255.0,
     )
-}
-
-/// Central theme resource for the application.
-///
-/// Wraps a catppuccin flavor and provides accessor methods returning
-/// `bevy::color::Color` and `egui::Color32` values from the active palette.
-#[derive(Resource)]
-pub struct AppTheme {
-    active_flavor: FlavorName,
-}
-
-impl Default for AppTheme {
-    fn default() -> Self {
-        Self {
-            active_flavor: FlavorName::Mocha,
-        }
-    }
-}
-
-impl AppTheme {
-    pub fn flavor(&self) -> FlavorName {
-        self.active_flavor
-    }
-
-    pub fn set_flavor(&mut self, flavor: FlavorName) {
-        self.active_flavor = flavor;
-    }
-
-    fn colors(&self) -> &catppuccin::FlavorColors {
-        &catppuccin::PALETTE.get_flavor(self.active_flavor).colors
-    }
-
-    // -- Background / surface colors --
-
-    pub fn base(&self) -> Color { cat_to_bevy(&self.colors().base) }
-    pub fn mantle(&self) -> Color { cat_to_bevy(&self.colors().mantle) }
-    pub fn crust(&self) -> Color { cat_to_bevy(&self.colors().crust) }
-    pub fn surface0(&self) -> Color { cat_to_bevy(&self.colors().surface0) }
-    pub fn surface1(&self) -> Color { cat_to_bevy(&self.colors().surface1) }
-    pub fn surface2(&self) -> Color { cat_to_bevy(&self.colors().surface2) }
-
-    // -- Text colors --
-
-    pub fn text(&self) -> Color { cat_to_bevy(&self.colors().text) }
-    pub fn subtext0(&self) -> Color { cat_to_bevy(&self.colors().subtext0) }
-    pub fn subtext1(&self) -> Color { cat_to_bevy(&self.colors().subtext1) }
-
-    // -- Overlay colors --
-
-    pub fn overlay0(&self) -> Color { cat_to_bevy(&self.colors().overlay0) }
-    pub fn overlay1(&self) -> Color { cat_to_bevy(&self.colors().overlay1) }
-    pub fn overlay2(&self) -> Color { cat_to_bevy(&self.colors().overlay2) }
-
-    // -- Accent colors --
-
-    pub fn blue(&self) -> Color { cat_to_bevy(&self.colors().blue) }
-    pub fn green(&self) -> Color { cat_to_bevy(&self.colors().green) }
-    pub fn red(&self) -> Color { cat_to_bevy(&self.colors().red) }
-    pub fn yellow(&self) -> Color { cat_to_bevy(&self.colors().yellow) }
-    pub fn peach(&self) -> Color { cat_to_bevy(&self.colors().peach) }
-    pub fn mauve(&self) -> Color { cat_to_bevy(&self.colors().mauve) }
-    pub fn teal(&self) -> Color { cat_to_bevy(&self.colors().teal) }
-    pub fn sky(&self) -> Color { cat_to_bevy(&self.colors().sky) }
-    pub fn lavender(&self) -> Color { cat_to_bevy(&self.colors().lavender) }
-    pub fn rosewater(&self) -> Color { cat_to_bevy(&self.colors().rosewater) }
-
-    // -- egui theme --
-
-    pub fn egui_theme(&self) -> catppuccin_egui::Theme {
-        match self.active_flavor {
-            FlavorName::Latte => catppuccin_egui::LATTE,
-            FlavorName::Frappe => catppuccin_egui::FRAPPE,
-            FlavorName::Macchiato => catppuccin_egui::MACCHIATO,
-            FlavorName::Mocha => catppuccin_egui::MOCHA,
-        }
-    }
 }
 
 /// Convert a `bevy::color::Color` to `egui::Color32`.
@@ -109,32 +37,339 @@ pub fn to_egui_color32_alpha(color: Color, alpha: u8) -> egui::Color32 {
     )
 }
 
-/// All available flavor names for iteration in UI.
-pub const ALL_FLAVORS: &[FlavorName] = &[
-    FlavorName::Latte,
-    FlavorName::Frappe,
-    FlavorName::Macchiato,
-    FlavorName::Mocha,
-];
+/// Blend two Color32 values by a ratio (0.0 = all `a`, 1.0 = all `b`).
+fn blend_color32(a: egui::Color32, b: egui::Color32, t: f32) -> egui::Color32 {
+    let inv = 1.0 - t;
+    egui::Color32::from_rgb(
+        (a.r() as f32 * inv + b.r() as f32 * t) as u8,
+        (a.g() as f32 * inv + b.g() as f32 * t) as u8,
+        (a.b() as f32 * inv + b.b() as f32 * t) as u8,
+    )
+}
 
-pub fn flavor_display_name(flavor: FlavorName) -> &'static str {
-    match flavor {
-        FlavorName::Latte => "Latte",
-        FlavorName::Frappe => "Frappe",
-        FlavorName::Macchiato => "Macchiato",
-        FlavorName::Mocha => "Mocha",
+// ── AppTheme resource ───────────────────────────────────────────────
+
+/// Central theme resource for the application.
+///
+/// Wraps an egui-aesthetix theme and provides semantic color accessors
+/// returning `bevy::color::Color` values.
+#[derive(Resource)]
+pub struct AppTheme {
+    inner: Box<dyn Aesthetix + Send + Sync>,
+    name: String,
+    // Extended colors not covered by Aesthetix
+    ext_text_dim: egui::Color32,
+    ext_bg_overlay: egui::Color32,
+    ext_altitude_low: egui::Color32,
+    ext_altitude_high: egui::Color32,
+    ext_altitude_ultra: egui::Color32,
+}
+
+impl AppTheme {
+    /// Create a new AppTheme from an Aesthetix implementation with default extended colors.
+    pub fn new(name: impl Into<String>, theme: impl Aesthetix + Send + Sync + 'static) -> Self {
+        let text = theme
+            .fg_primary_text_color_visuals()
+            .unwrap_or(egui::Color32::WHITE);
+        let bg = theme.bg_primary_color_visuals();
+        let ext_text_dim = blend_color32(text, bg, 0.4);
+        let ext_bg_overlay = theme.bg_auxiliary_color_visuals();
+        let ext_altitude_low = theme.secondary_accent_color_visuals();
+        let ext_altitude_high = blend_color32(
+            theme.fg_warn_text_color_visuals(),
+            theme.fg_error_text_color_visuals(),
+            0.5,
+        );
+        let ext_altitude_ultra = theme.secondary_accent_color_visuals();
+
+        Self {
+            inner: Box::new(theme),
+            name: name.into(),
+            ext_text_dim,
+            ext_bg_overlay,
+            ext_altitude_low,
+            ext_altitude_high,
+            ext_altitude_ultra,
+        }
+    }
+
+    /// Create with explicit extended colors (used by Catppuccin adapters).
+    pub fn with_extended_colors(
+        mut self,
+        text_dim: egui::Color32,
+        bg_overlay: egui::Color32,
+        altitude_low: egui::Color32,
+        altitude_high: egui::Color32,
+        altitude_ultra: egui::Color32,
+    ) -> Self {
+        self.ext_text_dim = text_dim;
+        self.ext_bg_overlay = bg_overlay;
+        self.ext_altitude_low = altitude_low;
+        self.ext_altitude_high = altitude_high;
+        self.ext_altitude_ultra = altitude_ultra;
+        self
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Get the egui Style from the underlying Aesthetix theme.
+    pub fn egui_style(&self) -> egui::Style {
+        self.inner.custom_style()
+    }
+
+    // ── Background colors ──
+
+    pub fn bg_primary(&self) -> Color {
+        color32_to_bevy(self.inner.bg_primary_color_visuals())
+    }
+
+    pub fn bg_secondary(&self) -> Color {
+        color32_to_bevy(self.inner.bg_secondary_color_visuals())
+    }
+
+    pub fn bg_triage(&self) -> Color {
+        color32_to_bevy(self.inner.bg_triage_color_visuals())
+    }
+
+    pub fn bg_auxiliary(&self) -> Color {
+        color32_to_bevy(self.inner.bg_auxiliary_color_visuals())
+    }
+
+    pub fn bg_contrast(&self) -> Color {
+        color32_to_bevy(self.inner.bg_contrast_color_visuals())
+    }
+
+    pub fn bg_overlay(&self) -> Color {
+        color32_to_bevy(self.ext_bg_overlay)
+    }
+
+    // ── Accent colors ──
+
+    pub fn accent_primary(&self) -> Color {
+        color32_to_bevy(self.inner.primary_accent_color_visuals())
+    }
+
+    pub fn accent_secondary(&self) -> Color {
+        color32_to_bevy(self.inner.secondary_accent_color_visuals())
+    }
+
+    // ── Text colors ──
+
+    pub fn text_primary(&self) -> Color {
+        color32_to_bevy(
+            self.inner
+                .fg_primary_text_color_visuals()
+                .unwrap_or(egui::Color32::WHITE),
+        )
+    }
+
+    pub fn text_dim(&self) -> Color {
+        color32_to_bevy(self.ext_text_dim)
+    }
+
+    pub fn text_success(&self) -> Color {
+        color32_to_bevy(self.inner.fg_success_text_color_visuals())
+    }
+
+    pub fn text_warn(&self) -> Color {
+        color32_to_bevy(self.inner.fg_warn_text_color_visuals())
+    }
+
+    pub fn text_error(&self) -> Color {
+        color32_to_bevy(self.inner.fg_error_text_color_visuals())
+    }
+
+    // ── Domain-specific colors ──
+
+    pub fn altitude_low(&self) -> Color {
+        color32_to_bevy(self.ext_altitude_low)
+    }
+
+    pub fn altitude_high(&self) -> Color {
+        color32_to_bevy(self.ext_altitude_high)
+    }
+
+    pub fn altitude_ultra(&self) -> Color {
+        color32_to_bevy(self.ext_altitude_ultra)
     }
 }
 
-/// System that applies the catppuccin egui theme whenever `AppTheme` changes.
-pub fn apply_egui_theme(
-    theme: Res<AppTheme>,
-    mut contexts: EguiContexts,
-) {
+impl Default for AppTheme {
+    fn default() -> Self {
+        Self::new(
+            "Nord Dark",
+            egui_aesthetix::themes::NordDark,
+        )
+    }
+}
+
+// ── Catppuccin adapter themes ───────────────────────────────────────
+//
+// Each adapter implements the Aesthetix trait using catppuccin palette colors.
+// Extended colors (text_dim, bg_overlay, altitude colors) use exact palette values.
+
+/// Helper: get the catppuccin Color32 for a given flavor and color accessor.
+fn cat_color(
+    flavor: FlavorName,
+    f: fn(&catppuccin::FlavorColors) -> &catppuccin::Color,
+) -> egui::Color32 {
+    let c = f(&catppuccin::PALETTE.get_flavor(flavor).colors);
+    egui::Color32::from_rgb(c.rgb.r, c.rgb.g, c.rgb.b)
+}
+
+macro_rules! catppuccin_theme {
+    ($struct_name:ident, $ctor_fn:ident, $flavor:expr, $display_name:expr, $is_dark:expr) => {
+        pub struct $struct_name;
+
+        impl Aesthetix for $struct_name {
+            fn name(&self) -> &str {
+                $display_name
+            }
+            fn primary_accent_color_visuals(&self) -> egui::Color32 {
+                cat_color($flavor, |c| &c.blue)
+            }
+            fn secondary_accent_color_visuals(&self) -> egui::Color32 {
+                cat_color($flavor, |c| &c.mauve)
+            }
+            fn bg_primary_color_visuals(&self) -> egui::Color32 {
+                cat_color($flavor, |c| &c.base)
+            }
+            fn bg_secondary_color_visuals(&self) -> egui::Color32 {
+                cat_color($flavor, |c| &c.mantle)
+            }
+            fn bg_triage_color_visuals(&self) -> egui::Color32 {
+                cat_color($flavor, |c| &c.crust)
+            }
+            fn bg_auxiliary_color_visuals(&self) -> egui::Color32 {
+                cat_color($flavor, |c| &c.surface0)
+            }
+            fn bg_contrast_color_visuals(&self) -> egui::Color32 {
+                cat_color($flavor, |c| &c.surface1)
+            }
+            fn fg_primary_text_color_visuals(&self) -> Option<egui::Color32> {
+                Some(cat_color($flavor, |c| &c.text))
+            }
+            fn fg_success_text_color_visuals(&self) -> egui::Color32 {
+                cat_color($flavor, |c| &c.green)
+            }
+            fn fg_warn_text_color_visuals(&self) -> egui::Color32 {
+                cat_color($flavor, |c| &c.yellow)
+            }
+            fn fg_error_text_color_visuals(&self) -> egui::Color32 {
+                cat_color($flavor, |c| &c.red)
+            }
+            fn dark_mode_visuals(&self) -> bool {
+                $is_dark
+            }
+            fn margin_style(&self) -> i8 {
+                10
+            }
+            fn button_padding(&self) -> egui::Vec2 {
+                egui::Vec2::new(8.0, 4.0)
+            }
+            fn item_spacing_style(&self) -> f32 {
+                8.0
+            }
+            fn scroll_bar_width_style(&self) -> f32 {
+                12.0
+            }
+            fn rounding_visuals(&self) -> u8 {
+                6
+            }
+        }
+
+        pub fn $ctor_fn() -> AppTheme {
+            let flavor = $flavor;
+            AppTheme::new($display_name, $struct_name).with_extended_colors(
+                cat_color(flavor, |c| &c.subtext0),
+                cat_color(flavor, |c| &c.overlay0),
+                cat_color(flavor, |c| &c.teal),
+                cat_color(flavor, |c| &c.peach),
+                cat_color(flavor, |c| &c.mauve),
+            )
+        }
+    };
+}
+
+catppuccin_theme!(CatppuccinMochaTheme, catppuccin_mocha, FlavorName::Mocha, "Catppuccin Mocha", true);
+catppuccin_theme!(CatppuccinMacchiatoTheme, catppuccin_macchiato, FlavorName::Macchiato, "Catppuccin Macchiato", true);
+catppuccin_theme!(CatppuccinFrappeTheme, catppuccin_frappe, FlavorName::Frappe, "Catppuccin Frappe", true);
+catppuccin_theme!(CatppuccinLatteTheme, catppuccin_latte, FlavorName::Latte, "Catppuccin Latte", false);
+
+// ── Theme registry ──────────────────────────────────────────────────
+
+pub type ThemeConstructor = fn() -> AppTheme;
+
+#[derive(Resource)]
+pub struct ThemeRegistry {
+    themes: Vec<(String, ThemeConstructor)>,
+}
+
+impl ThemeRegistry {
+    pub fn new() -> Self {
+        let mut reg = Self { themes: Vec::new() };
+
+        // Catppuccin themes
+        reg.register("Catppuccin Mocha", catppuccin_mocha);
+        reg.register("Catppuccin Macchiato", catppuccin_macchiato);
+        reg.register("Catppuccin Frappe", catppuccin_frappe);
+        reg.register("Catppuccin Latte", catppuccin_latte);
+
+        // egui-aesthetix built-in themes
+        reg.register("Standard Dark", || {
+            AppTheme::new("Standard Dark", egui_aesthetix::themes::StandardDark)
+        });
+        reg.register("Standard Light", || {
+            AppTheme::new("Standard Light", egui_aesthetix::themes::StandardLight)
+        });
+        reg.register("Carl Dark", || {
+            AppTheme::new("Carl Dark", egui_aesthetix::themes::CarlDark)
+        });
+        reg.register("Nord Dark", || {
+            AppTheme::new("Nord Dark", egui_aesthetix::themes::NordDark)
+        });
+        reg.register("Nord Light", || {
+            AppTheme::new("Nord Light", egui_aesthetix::themes::NordLight)
+        });
+        reg.register("Tokyo Night Storm", || {
+            AppTheme::new("Tokyo Night Storm", egui_aesthetix::themes::TokyoNightStorm)
+        });
+
+        reg
+    }
+
+    pub fn register(&mut self, name: &str, constructor: ThemeConstructor) {
+        self.themes.push((name.to_string(), constructor));
+    }
+
+    pub fn get(&self, name: &str) -> Option<AppTheme> {
+        self.themes
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, ctor)| ctor())
+    }
+
+    pub fn names(&self) -> Vec<&str> {
+        self.themes.iter().map(|(n, _)| n.as_str()).collect()
+    }
+}
+
+impl Default for ThemeRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ── egui theme application system ───────────────────────────────────
+
+/// System that applies the active theme's egui Style whenever `AppTheme` changes.
+pub fn apply_egui_theme(theme: Res<AppTheme>, mut contexts: EguiContexts) {
     if !theme.is_changed() {
         return;
     }
     if let Ok(ctx) = contexts.ctx_mut() {
-        catppuccin_egui::set_theme(ctx, theme.egui_theme());
+        ctx.set_style(theme.egui_style());
     }
 }

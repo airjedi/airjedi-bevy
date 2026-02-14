@@ -56,8 +56,8 @@ pub fn render_tools_window(
         return;
     };
 
-    let panel_bg = to_egui_color32_alpha(theme.mantle(), 240);
-    let border_color = to_egui_color32(theme.surface1());
+    let panel_bg = to_egui_color32_alpha(theme.bg_secondary(), 240);
+    let border_color = to_egui_color32(theme.bg_contrast());
 
     let window_frame = egui::Frame::default()
         .fill(panel_bg)
