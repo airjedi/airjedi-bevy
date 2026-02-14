@@ -197,7 +197,7 @@ pub fn render_debug_panel_ui(
 pub fn render_debug_panel(
     mut contexts: EguiContexts,
     mut debug: ResMut<DebugPanelState>,
-    panels: Res<UiPanelManager>,
+    mut panels: ResMut<UiPanelManager>,
     map_state: Option<Res<MapState>>,
     zoom_state: Option<Res<ZoomState>>,
     adsb_data: Option<Res<AdsbAircraftData>>,
@@ -206,11 +206,21 @@ pub fn render_debug_panel(
         return;
     }
 
+    debug.open = true;
+
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
     };
 
     render_debug_panel_ui(ctx, &mut debug, map_state.as_deref(), zoom_state.as_deref());
+
+    // If the egui X button closed the window, close it in UiPanelManager too.
+    // This is handled here instead of via sync_resources_to_panel_manager because
+    // update_debug_metrics mutates DebugPanelState every frame, which would cause
+    // is_changed() to always fire and immediately undo any toolbar/keyboard toggle.
+    if !debug.open {
+        panels.close_panel(PanelId::Debug);
+    }
 
     // Render ADSB connection state separately (requires Bevy Res)
     // This is intentionally kept in the system function since AdsbAircraftData

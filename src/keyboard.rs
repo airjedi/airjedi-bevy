@@ -310,9 +310,11 @@ pub fn sync_resources_to_panel_manager(
     if measurement_state.is_changed() {
         sync_one(&mut panels, PanelId::Measurement, measurement_state.active);
     }
-    if debug_state.is_changed() {
-        sync_one(&mut panels, PanelId::Debug, debug_state.open);
-    }
+    // Note: DebugPanelState is NOT synced here because update_debug_metrics
+    // mutates it every frame (fps, aircraft_count, etc.), causing is_changed()
+    // to always return true. This would immediately undo any toolbar/keyboard
+    // toggle. Instead, the debug panel's X-button close is handled directly
+    // in render_debug_panel.
 
     // Note: Tool panels (Export, Coverage, Airspace, DataSources, View3D)
     // are managed by ToolsWindowState, not UiPanelManager.
