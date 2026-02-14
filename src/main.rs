@@ -339,8 +339,8 @@ fn main() {
         .add_systems(Update, animate_tile_fades.after(display_tiles_filtered))
         .add_systems(Update, handle_keyboard_shortcuts)
         .add_systems(Update, toggle_overlays_keyboard)
-        .add_systems(Update, sync_panel_manager_to_resources.after(handle_keyboard_shortcuts))
-        .add_systems(Update, sync_resources_to_panel_manager.after(sync_panel_manager_to_resources))
+        .add_systems(Update, sync_resources_to_panel_manager.after(handle_keyboard_shortcuts))
+        .add_systems(Update, sync_panel_manager_to_resources.after(sync_resources_to_panel_manager))
         .add_systems(Update, update_help_overlay)
         .add_systems(Update, debug_panel::update_debug_metrics)
         .run();

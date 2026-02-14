@@ -8,6 +8,7 @@ use bevy_egui::{egui, EguiContexts};
 use bevy_slippy_tiles::{MapTile, SlippyTileDownloadStatus, DownloadSlippyTilesMessage};
 
 use crate::ui_panels::{UiPanelManager, PanelId};
+use crate::tools_window::{ToolsWindowState, ToolsTab};
 use crate::MapState;
 use crate::adsb::AdsbAircraftData;
 
@@ -18,6 +19,7 @@ const TOOLBAR_WIDTH: f32 = 44.0;
 pub fn render_toolbar(
     mut contexts: EguiContexts,
     mut panels: ResMut<UiPanelManager>,
+    mut tools_state: ResMut<ToolsWindowState>,
     map_state: Res<MapState>,
     mut download_events: MessageWriter<DownloadSlippyTilesMessage>,
     mut commands: Commands,
@@ -61,11 +63,11 @@ pub fn render_toolbar(
                 ui.add_space(4.0);
 
                 toolbar_button(ui, &mut panels, PanelId::Measurement, "\u{21A6}", "Measurement (M)");
-                toolbar_button(ui, &mut panels, PanelId::Export, "\u{21E9}", "Export (E)");
-                toolbar_button(ui, &mut panels, PanelId::Coverage, "\u{25CE}", "Coverage (V)");
-                toolbar_button(ui, &mut panels, PanelId::Airspace, "\u{25A1}", "Airspace (Shift+A)");
-                toolbar_button(ui, &mut panels, PanelId::DataSources, "\u{2637}", "Data Sources (Shift+D)");
-                toolbar_button(ui, &mut panels, PanelId::View3D, "\u{2B1A}", "3D View (3)");
+                toolbar_tool_button(ui, &mut tools_state, ToolsTab::Export, "\u{21E9}", "Export (E)");
+                toolbar_tool_button(ui, &mut tools_state, ToolsTab::Coverage, "\u{25CE}", "Coverage (V)");
+                toolbar_tool_button(ui, &mut tools_state, ToolsTab::Airspace, "\u{25A1}", "Airspace (Shift+A)");
+                toolbar_tool_button(ui, &mut tools_state, ToolsTab::DataSources, "\u{2637}", "Data Sources (Shift+D)");
+                toolbar_tool_button(ui, &mut tools_state, ToolsTab::View3D, "\u{2B1A}", "3D View (3)");
 
                 ui.add_space(4.0);
                 ui.separator();
@@ -143,6 +145,50 @@ fn toolbar_button(
 
     if btn.clicked() {
         panels.toggle_panel(panel_id);
+    }
+}
+
+/// Render a toolbar button for a tool that lives in the Tools window.
+///
+/// Clicking opens the Tools window to that tab. If the window is already
+/// showing that tab, it closes the window instead.
+fn toolbar_tool_button(
+    ui: &mut egui::Ui,
+    tools_state: &mut ToolsWindowState,
+    tab: ToolsTab,
+    icon: &str,
+    tooltip: &str,
+) {
+    let is_active = tools_state.open && tools_state.active_tab == tab;
+    let icon_color = if is_active {
+        egui::Color32::from_rgb(100, 200, 255)
+    } else {
+        egui::Color32::from_rgb(180, 180, 180)
+    };
+
+    let btn = ui.add(
+        egui::Button::new(
+            egui::RichText::new(icon)
+                .size(18.0)
+                .color(icon_color),
+        )
+        .fill(if is_active {
+            egui::Color32::from_rgba_unmultiplied(100, 200, 255, 30)
+        } else {
+            egui::Color32::TRANSPARENT
+        })
+        .min_size(egui::vec2(32.0, 32.0))
+    ).on_hover_text(tooltip);
+
+    if btn.clicked() {
+        if is_active {
+            // Already showing this tab - close the window
+            tools_state.open = false;
+        } else {
+            // Open the window and switch to this tab
+            tools_state.open = true;
+            tools_state.active_tab = tab;
+        }
     }
 }
 

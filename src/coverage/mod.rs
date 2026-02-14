@@ -354,7 +354,7 @@ impl Plugin for CoveragePlugin {
             .add_systems(Update, (
                 toggle_coverage_mode,
                 update_coverage_from_aircraft,
-            ))
-            .add_systems(bevy_egui::EguiPrimaryContextPass, render_coverage_stats_panel);
+            ));
+        // Coverage stats panel is rendered via the consolidated Tools window (tools_window.rs)
     }
 }

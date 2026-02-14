@@ -433,7 +433,7 @@ impl Plugin for View3DPlugin {
                 handle_3d_camera_controls,
                 update_3d_camera.after(animate_view_transition),
             ))
-            .add_systems(Update, update_aircraft_altitude_z)
-            .add_systems(bevy_egui::EguiPrimaryContextPass, render_3d_view_panel);
+            .add_systems(Update, update_aircraft_altitude_z);
+        // 3D view settings panel is rendered via the consolidated Tools window (tools_window.rs)
     }
 }
