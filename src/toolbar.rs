@@ -9,6 +9,7 @@ use bevy_slippy_tiles::{MapTile, SlippyTileDownloadStatus, DownloadSlippyTilesMe
 
 use crate::ui_panels::{UiPanelManager, PanelId};
 use crate::tools_window::{ToolsWindowState, ToolsTab};
+use crate::theme::{AppTheme, to_egui_color32, to_egui_color32_alpha};
 use crate::MapState;
 use crate::adsb::AdsbAircraftData;
 
@@ -26,13 +27,14 @@ pub fn render_toolbar(
     tile_query: Query<Entity, With<MapTile>>,
     mut slippy_tile_download_status: ResMut<SlippyTileDownloadStatus>,
     adsb_data: Option<Res<AdsbAircraftData>>,
+    theme: Res<AppTheme>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
     };
 
-    let panel_bg = egui::Color32::from_rgba_unmultiplied(20, 22, 28, 245);
-    let border_color = egui::Color32::from_rgb(50, 55, 65);
+    let panel_bg = to_egui_color32_alpha(theme.mantle(), 245);
+    let border_color = to_egui_color32(theme.surface1());
 
     let toolbar_frame = egui::Frame::default()
         .fill(panel_bg)
@@ -45,44 +47,49 @@ pub fn render_toolbar(
         .frame(toolbar_frame)
         .show(ctx, |ui| {
             ui.vertical_centered(|ui| {
+                let active_color = to_egui_color32(theme.blue());
+                let inactive_color = to_egui_color32(theme.subtext0());
+                let active_bg = to_egui_color32_alpha(theme.blue(), 30);
+
                 // -- Connection status indicator at top --
-                render_connection_indicator(ui, &adsb_data);
+                render_connection_indicator(ui, &adsb_data, &theme);
 
                 ui.add_space(8.0);
                 ui.separator();
                 ui.add_space(4.0);
 
                 // -- Panel toggle buttons --
-                toolbar_button(ui, &mut panels, PanelId::Settings, "\u{2699}", "Settings");
-                toolbar_button(ui, &mut panels, PanelId::AircraftList, "\u{2708}", "Aircraft List (L)");
-                toolbar_button(ui, &mut panels, PanelId::Bookmarks, "\u{2605}", "Bookmarks (B)");
-                toolbar_button(ui, &mut panels, PanelId::Statistics, "S", "Statistics (S)");
+                toolbar_button(ui, &mut panels, PanelId::Settings, "\u{2699}", "Settings", active_color, inactive_color, active_bg);
+                toolbar_button(ui, &mut panels, PanelId::AircraftList, "\u{2708}", "Aircraft List (L)", active_color, inactive_color, active_bg);
+                toolbar_button(ui, &mut panels, PanelId::Bookmarks, "\u{2605}", "Bookmarks (B)", active_color, inactive_color, active_bg);
+                toolbar_button(ui, &mut panels, PanelId::Statistics, "S", "Statistics (S)", active_color, inactive_color, active_bg);
 
                 ui.add_space(4.0);
                 ui.separator();
                 ui.add_space(4.0);
 
-                toolbar_button(ui, &mut panels, PanelId::Measurement, "\u{21A6}", "Measurement (M)");
-                toolbar_tool_button(ui, &mut tools_state, ToolsTab::Export, "\u{21E9}", "Export (E)");
-                toolbar_tool_button(ui, &mut tools_state, ToolsTab::Coverage, "\u{25CE}", "Coverage (V)");
-                toolbar_tool_button(ui, &mut tools_state, ToolsTab::Airspace, "\u{25A1}", "Airspace (Shift+A)");
-                toolbar_tool_button(ui, &mut tools_state, ToolsTab::DataSources, "\u{2637}", "Data Sources (Shift+D)");
-                toolbar_tool_button(ui, &mut tools_state, ToolsTab::View3D, "\u{2B1A}", "3D View (3)");
+                toolbar_button(ui, &mut panels, PanelId::Measurement, "\u{21A6}", "Measurement (M)", active_color, inactive_color, active_bg);
+                toolbar_tool_button(ui, &mut tools_state, ToolsTab::Export, "\u{21E9}", "Export (E)", active_color, inactive_color, active_bg);
+                toolbar_tool_button(ui, &mut tools_state, ToolsTab::Coverage, "\u{25CE}", "Coverage (V)", active_color, inactive_color, active_bg);
+                toolbar_tool_button(ui, &mut tools_state, ToolsTab::Airspace, "\u{25A1}", "Airspace (Shift+A)", active_color, inactive_color, active_bg);
+                toolbar_tool_button(ui, &mut tools_state, ToolsTab::DataSources, "\u{2637}", "Data Sources (Shift+D)", active_color, inactive_color, active_bg);
+                toolbar_tool_button(ui, &mut tools_state, ToolsTab::View3D, "\u{2B1A}", "3D View (3)", active_color, inactive_color, active_bg);
 
                 ui.add_space(4.0);
                 ui.separator();
                 ui.add_space(4.0);
 
-                toolbar_button(ui, &mut panels, PanelId::Debug, "#", "Debug (`)");
-                toolbar_button(ui, &mut panels, PanelId::Help, "?", "Help (H)");
+                toolbar_button(ui, &mut panels, PanelId::Debug, "#", "Debug (`)", active_color, inactive_color, active_bg);
+                toolbar_button(ui, &mut panels, PanelId::Help, "?", "Help (H)", active_color, inactive_color, active_bg);
 
                 // -- Clear Cache button (action, not a panel toggle) --
                 ui.add_space(4.0);
+                let icon_dim = to_egui_color32(theme.subtext0());
                 let clear_btn = ui.add(
                     egui::Button::new(
                         egui::RichText::new("\u{2716}")
                             .size(16.0)
-                            .color(egui::Color32::from_rgb(180, 180, 180)),
+                            .color(icon_dim),
                     )
                     .min_size(egui::vec2(32.0, 32.0))
                 ).on_hover_text("Clear tile cache");
@@ -121,13 +128,12 @@ fn toolbar_button(
     panel_id: PanelId,
     icon: &str,
     tooltip: &str,
+    active_color: egui::Color32,
+    inactive_color: egui::Color32,
+    active_bg: egui::Color32,
 ) {
     let is_open = panels.is_open(panel_id);
-    let icon_color = if is_open {
-        egui::Color32::from_rgb(100, 200, 255) // Highlight color when active
-    } else {
-        egui::Color32::from_rgb(180, 180, 180) // Default dim color
-    };
+    let icon_color = if is_open { active_color } else { inactive_color };
 
     let btn = ui.add(
         egui::Button::new(
@@ -135,11 +141,7 @@ fn toolbar_button(
                 .size(18.0)
                 .color(icon_color),
         )
-        .fill(if is_open {
-            egui::Color32::from_rgba_unmultiplied(100, 200, 255, 30)
-        } else {
-            egui::Color32::TRANSPARENT
-        })
+        .fill(if is_open { active_bg } else { egui::Color32::TRANSPARENT })
         .min_size(egui::vec2(32.0, 32.0))
     ).on_hover_text(tooltip);
 
@@ -158,13 +160,12 @@ fn toolbar_tool_button(
     tab: ToolsTab,
     icon: &str,
     tooltip: &str,
+    active_color: egui::Color32,
+    inactive_color: egui::Color32,
+    active_bg: egui::Color32,
 ) {
     let is_active = tools_state.open && tools_state.active_tab == tab;
-    let icon_color = if is_active {
-        egui::Color32::from_rgb(100, 200, 255)
-    } else {
-        egui::Color32::from_rgb(180, 180, 180)
-    };
+    let icon_color = if is_active { active_color } else { inactive_color };
 
     let btn = ui.add(
         egui::Button::new(
@@ -172,20 +173,14 @@ fn toolbar_tool_button(
                 .size(18.0)
                 .color(icon_color),
         )
-        .fill(if is_active {
-            egui::Color32::from_rgba_unmultiplied(100, 200, 255, 30)
-        } else {
-            egui::Color32::TRANSPARENT
-        })
+        .fill(if is_active { active_bg } else { egui::Color32::TRANSPARENT })
         .min_size(egui::vec2(32.0, 32.0))
     ).on_hover_text(tooltip);
 
     if btn.clicked() {
         if is_active {
-            // Already showing this tab - close the window
             tools_state.open = false;
         } else {
-            // Open the window and switch to this tab
             tools_state.open = true;
             tools_state.active_tab = tab;
         }
@@ -196,9 +191,10 @@ fn toolbar_tool_button(
 fn render_connection_indicator(
     ui: &mut egui::Ui,
     adsb_data: &Option<Res<AdsbAircraftData>>,
+    theme: &AppTheme,
 ) {
     let Some(adsb_data) = adsb_data else {
-        ui.label(egui::RichText::new("\u{25CF}").size(12.0).color(egui::Color32::GRAY))
+        ui.label(egui::RichText::new("\u{25CF}").size(12.0).color(to_egui_color32(theme.overlay0())))
             .on_hover_text("ADS-B: No client");
         return;
     };
@@ -209,19 +205,19 @@ fn render_connection_indicator(
     use adsb_client::ConnectionState;
     let (color, tooltip) = match connection_state {
         ConnectionState::Connected => (
-            egui::Color32::from_rgb(0, 200, 0),
+            to_egui_color32(theme.green()),
             format!("ADS-B: {} aircraft", aircraft_count),
         ),
         ConnectionState::Connecting => (
-            egui::Color32::from_rgb(255, 200, 0),
+            to_egui_color32(theme.yellow()),
             "ADS-B: Connecting...".to_string(),
         ),
         ConnectionState::Disconnected => (
-            egui::Color32::from_rgb(255, 80, 80),
+            to_egui_color32(theme.red()),
             "ADS-B: Disconnected".to_string(),
         ),
         ConnectionState::Error(ref msg) => (
-            egui::Color32::from_rgb(255, 0, 0),
+            to_egui_color32(theme.red()),
             format!("ADS-B: Error - {}", msg),
         ),
     };
@@ -233,6 +229,7 @@ fn render_connection_indicator(
 /// Render map attribution as an egui overlay at the bottom of the screen.
 pub fn render_map_attribution(
     mut contexts: EguiContexts,
+    theme: Res<AppTheme>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
@@ -243,13 +240,13 @@ pub fn render_map_attribution(
         .interactable(false)
         .show(ctx, |ui| {
             let bg = egui::Frame::default()
-                .fill(egui::Color32::from_rgba_unmultiplied(0, 0, 0, 128))
+                .fill(to_egui_color32_alpha(theme.crust(), 128))
                 .inner_margin(egui::Margin::same(4));
             bg.show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("\u{00A9} OpenStreetMap contributors, \u{00A9} CartoDB")
                         .size(11.0)
-                        .color(egui::Color32::from_rgb(180, 180, 180)),
+                        .color(to_egui_color32(theme.subtext0())),
                 );
             });
         });

@@ -112,6 +112,7 @@ pub fn update_connection_status(
     mut status_query: Query<(&mut Text, &mut TextColor), With<ConnectionStatusText>>,
     mut debug: Option<ResMut<DebugPanelState>>,
     mut prev_state: Local<String>,
+    theme: Res<crate::theme::AppTheme>,
 ) {
     let Some(adsb_data) = adsb_data else {
         return;
@@ -133,19 +134,19 @@ pub fn update_connection_status(
         let (status_text, status_color) = match connection_state {
             ConnectionState::Connected => (
                 format!("ADS-B: {} aircraft", aircraft_count),
-                Color::srgb(0.0, 1.0, 0.0),
+                theme.green(),
             ),
             ConnectionState::Connecting => (
                 "ADS-B: Connecting...".to_string(),
-                Color::srgb(1.0, 0.8, 0.0),
+                theme.yellow(),
             ),
             ConnectionState::Disconnected => (
                 "ADS-B: Disconnected".to_string(),
-                Color::srgb(1.0, 0.3, 0.3),
+                theme.red(),
             ),
             ConnectionState::Error(ref msg) => (
                 format!("ADS-B: Error - {}", msg),
-                Color::srgb(1.0, 0.0, 0.0),
+                theme.red(),
             ),
         };
 
