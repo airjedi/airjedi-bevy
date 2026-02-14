@@ -18,6 +18,6 @@ impl Plugin for RecordingPlugin {
                 playback_frame,
                 toggle_recording,
             ))
-            .add_systems(EguiPrimaryContextPass, render_recording_ui);
+            .add_systems(EguiPrimaryContextPass, render_recording_indicator);
     }
 }

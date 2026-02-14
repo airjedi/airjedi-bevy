@@ -73,6 +73,7 @@ pub fn render_toolbar(
                 toolbar_tool_button(ui, &mut tools_state, ToolsTab::Coverage, "\u{25CE}", "Coverage (V)", active_color, inactive_color, active_bg);
                 toolbar_tool_button(ui, &mut tools_state, ToolsTab::Airspace, "\u{25A1}", "Airspace (Shift+A)", active_color, inactive_color, active_bg);
                 toolbar_tool_button(ui, &mut tools_state, ToolsTab::DataSources, "\u{2637}", "Data Sources (Shift+D)", active_color, inactive_color, active_bg);
+                toolbar_tool_button(ui, &mut tools_state, ToolsTab::Recording, "\u{23FA}", "Recording (Ctrl+R)", active_color, inactive_color, active_bg);
                 toolbar_tool_button(ui, &mut tools_state, ToolsTab::View3D, "\u{2B1A}", "3D View (3)", active_color, inactive_color, active_bg);
 
                 ui.add_space(4.0);

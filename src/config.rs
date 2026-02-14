@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
-use crate::theme::{AppTheme, ThemeRegistry};
+use crate::theme::{AppTheme, ThemeRegistry, to_egui_color32, to_egui_color32_alpha};
 
 const CONFIG_FILE: &str = "config.toml";
 
@@ -358,9 +358,18 @@ pub fn render_settings_panel(
         return;
     };
 
+    let panel_bg = to_egui_color32_alpha(app_theme.bg_secondary(), 240);
+    let border_color = to_egui_color32(app_theme.bg_contrast());
+
+    let panel_frame = egui::Frame::default()
+        .fill(panel_bg)
+        .stroke(egui::Stroke::new(1.0, border_color))
+        .inner_margin(egui::Margin::same(8));
+
     egui::SidePanel::left("settings_panel")
         .default_width(300.0)
         .resizable(false)
+        .frame(panel_frame)
         .show(ctx, |ui| {
             ui.heading("Settings");
             ui.separator();

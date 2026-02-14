@@ -3,6 +3,7 @@ use bevy_egui::{egui, EguiContexts};
 
 use crate::MapState;
 use crate::geo::{haversine_distance_nm, CoordinateConverter};
+use crate::theme::{AppTheme, to_egui_color32, to_egui_color32_alpha};
 use super::{CameraFollowState, DetailPanelState, TrailHistory, SessionClock, format_altitude, format_altitude_with_indicator};
 
 /// Sort criteria for aircraft list
@@ -243,6 +244,7 @@ pub fn render_aircraft_list_panel(
     map_state: Res<MapState>,
     clock: Res<SessionClock>,
     aircraft_query: Query<(&crate::Aircraft, &TrailHistory)>,
+    theme: Res<AppTheme>,
 ) {
     if !list_state.expanded {
         return;
@@ -253,8 +255,8 @@ pub fn render_aircraft_list_panel(
     };
 
     // Define colors matching desktop theme
-    let panel_bg = egui::Color32::from_rgba_unmultiplied(25, 30, 35, 230);
-    let border_color = egui::Color32::from_rgb(60, 80, 100);
+    let panel_bg = to_egui_color32_alpha(theme.bg_secondary(), 230);
+    let border_color = to_egui_color32(theme.bg_contrast());
     let selected_bg = egui::Color32::from_rgba_unmultiplied(100, 140, 180, 26);
     let header_color = egui::Color32::from_rgb(150, 150, 150);
     let icao_color = egui::Color32::from_rgb(200, 220, 255);
