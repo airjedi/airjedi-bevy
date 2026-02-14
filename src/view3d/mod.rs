@@ -243,13 +243,10 @@ pub fn animate_view_transition(
         }
         TransitionState::TransitioningTo2D { progress } => {
             let new_progress = (progress + delta).min(1.0);
-            if new_progress >= 1.0 {
-                state.mode = ViewMode::Map2D;
-                state.transition = TransitionState::Idle;
-                info!("Transition to 2D complete");
-            } else {
-                state.transition = TransitionState::TransitioningTo2D { progress: new_progress };
-            }
+            // Don't finalize here — let update_3d_camera reset the camera
+            // before clearing the transition state, avoiding the one-frame
+            // race where the early return skips the camera reset.
+            state.transition = TransitionState::TransitioningTo2D { progress: new_progress };
         }
         TransitionState::Idle => {}
     }
@@ -258,8 +255,10 @@ pub fn animate_view_transition(
 /// System to update Camera2d for 3D perspective view.
 /// Works entirely in pixel-coordinate space so tiles, trails, and aircraft all align.
 pub fn update_3d_camera(
-    state: Res<View3DState>,
+    mut state: ResMut<View3DState>,
     mut camera_query: Query<(&mut Transform, &mut Projection), With<Camera2d>>,
+    window_query: Query<&Window>,
+    zoom_state: Res<crate::ZoomState>,
 ) {
     // Only run when transitioning or in 3D mode
     if matches!(state.mode, ViewMode::Map2D) && !state.is_transitioning() {
@@ -282,36 +281,59 @@ pub fn update_3d_camera(
         TransitionState::TransitioningTo2D { progress } => smooth_step(1.0 - progress),
     };
 
+    // Fixed endpoints for interpolation
+    let pos_2d = Vec3::new(state.saved_2d_center.x, state.saved_2d_center.y, 0.0);
+    let center = pos_2d;
+    let transform_3d = state.calculate_camera_transform(center);
+
+    // Compute the perspective altitude that produces the same visible area as
+    // the current orthographic view. At this height with a 60° FOV looking
+    // straight down, the perspective and orthographic views match exactly,
+    // making the projection switch at the endpoints visually seamless.
+    let base_fov = 60.0_f32.to_radians();
+    let matching_z = if let Ok(window) = window_query.single() {
+        window.height() / (2.0 * zoom_state.camera_zoom * (base_fov / 2.0).tan())
+    } else {
+        transform_3d.translation.z * 0.5
+    };
+
     if t < 0.001 {
-        // Pure 2D mode - restore orthographic projection and reset rotation
+        // Pure 2D mode - restore orthographic projection, position, and rotation
         *projection = Projection::Orthographic(OrthographicProjection::default_2d());
+        transform.translation = pos_2d;
         transform.rotation = Quat::IDENTITY;
+
+        // Finalize the transition now that the camera has been reset
+        if matches!(state.transition, TransitionState::TransitioningTo2D { .. }) {
+            state.mode = ViewMode::Map2D;
+            state.transition = TransitionState::Idle;
+            info!("Transition to 2D complete");
+        }
         return;
     }
 
-    // Use the saved 2D center as the orbit target (in pixel space)
-    let center = Vec3::new(state.saved_2d_center.x, state.saved_2d_center.y, 0.0);
-    let target_transform = state.calculate_camera_transform(center);
-
     if t > 0.999 {
         // Pure 3D mode
-        *transform = target_transform;
+        *transform = transform_3d;
         *projection = Projection::Perspective(PerspectiveProjection {
-            fov: 60.0_f32.to_radians(),
+            fov: base_fov,
             ..default()
         });
     } else {
-        // Interpolating between 2D and 3D
-        transform.translation = transform.translation.lerp(target_transform.translation, t);
-        transform.rotation = transform.rotation.slerp(target_transform.rotation, t);
+        // Straight-line transition using perspective throughout. The 2D
+        // endpoint is placed at matching_z — the altitude where a 60° FOV
+        // perspective camera looking straight down shows the same area as the
+        // orthographic view. This makes the ortho↔perspective switch at the
+        // animation boundaries visually seamless, and the camera follows a
+        // natural straight-line path between the overhead and orbit positions.
+        let pos_match = Vec3::new(pos_2d.x, pos_2d.y, matching_z);
 
-        // Switch projection type at halfway point
-        if t > 0.5 {
-            *projection = Projection::Perspective(PerspectiveProjection {
-                fov: 60.0_f32.to_radians(),
-                ..default()
-            });
-        }
+        transform.translation = pos_match.lerp(transform_3d.translation, t);
+        transform.rotation = Quat::IDENTITY.slerp(transform_3d.rotation, t);
+        *projection = Projection::Perspective(PerspectiveProjection {
+            fov: base_fov,
+            ..default()
+        });
     }
 }
 

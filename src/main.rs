@@ -677,7 +677,13 @@ fn update_camera_position(
     tile_settings: Res<SlippyTilesSettings>,
     mut camera_query: Query<&mut Transform, With<Camera2d>>,
     logger: Option<Res<ZoomDebugLogger>>,
+    view3d_state: Res<view3d::View3DState>,
 ) {
+    // Don't fight with update_3d_camera during 3D mode or transitions
+    if view3d_state.is_3d_active() || view3d_state.is_transitioning() {
+        return;
+    }
+
     let zoom_level = map_state.zoom_level;
 
     if let Ok(mut camera_transform) = camera_query.single_mut() {
