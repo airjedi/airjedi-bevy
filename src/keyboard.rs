@@ -4,7 +4,6 @@ use bevy_egui::EguiContexts;
 use crate::aircraft::{AircraftListState, DetailPanelState, CameraFollowState, StatsPanelState};
 use crate::config::{AppConfig, SettingsUiState};
 use crate::ui_panels::{UiPanelManager, PanelId};
-use crate::tools_window::{ToolsWindowState, ToolsTab};
 use crate::{MapState, ZoomState, Aircraft};
 
 /// Resource for help overlay visibility
@@ -24,7 +23,6 @@ pub struct HelpOverlay;
 pub fn handle_keyboard_shortcuts(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut panels: ResMut<UiPanelManager>,
-    mut tools_state: ResMut<ToolsWindowState>,
     mut list_state: ResMut<AircraftListState>,
     mut follow_state: ResMut<CameraFollowState>,
     mut zoom_state: ResMut<ZoomState>,
@@ -70,32 +68,32 @@ pub fn handle_keyboard_shortcuts(
         panels.toggle_panel(PanelId::Measurement);
     }
 
-    // E - Toggle export (Tools window)
+    // E - Toggle export
     if keyboard.just_pressed(KeyCode::KeyE) {
-        toggle_tools_tab(&mut tools_state, ToolsTab::Export);
+        panels.toggle_panel(PanelId::Export);
     }
 
-    // V - Toggle coverage (Tools window)
+    // V - Toggle coverage
     if keyboard.just_pressed(KeyCode::KeyV) && !shift {
-        toggle_tools_tab(&mut tools_state, ToolsTab::Coverage);
+        panels.toggle_panel(PanelId::Coverage);
     }
 
-    // A - Toggle airports / Shift+A - Airspace (Tools window)
+    // A - Toggle airports / Shift+A - Airspace
     if keyboard.just_pressed(KeyCode::KeyA) {
         if shift {
-            toggle_tools_tab(&mut tools_state, ToolsTab::Airspace);
+            panels.toggle_panel(PanelId::Airspace);
         }
         // Non-shift A (airports toggle) is handled by toggle_overlays_keyboard
     }
 
-    // Shift+D - Data sources (Tools window)
+    // Shift+D - Data sources
     if keyboard.just_pressed(KeyCode::KeyD) && shift {
-        toggle_tools_tab(&mut tools_state, ToolsTab::DataSources);
+        panels.toggle_panel(PanelId::DataSources);
     }
 
-    // 3 - Toggle 3D view (Tools window)
+    // 3 - Toggle 3D view
     if keyboard.just_pressed(KeyCode::Digit3) {
-        toggle_tools_tab(&mut tools_state, ToolsTab::View3D);
+        panels.toggle_panel(PanelId::View3D);
     }
 
     // H - Toggle help overlay
@@ -108,9 +106,9 @@ pub fn handle_keyboard_shortcuts(
         panels.toggle_panel(PanelId::Debug);
     }
 
-    // Ctrl+R - Toggle recording tab in tools window
+    // Ctrl+R - Toggle recording
     if ctrl && keyboard.just_pressed(KeyCode::KeyR) {
-        toggle_tools_tab(&mut tools_state, ToolsTab::Recording);
+        panels.toggle_panel(PanelId::Recording);
     }
 
     // Escape - Deselect aircraft, cancel follow, close panels (cascading)
@@ -166,20 +164,6 @@ pub fn handle_keyboard_shortcuts(
         map_state.longitude = app_config.map.default_longitude;
         zoom_state.camera_zoom = 1.0;
         follow_state.following_icao = None;
-    }
-}
-
-/// Toggle the Tools window to a specific tab.
-///
-/// If the window is closed, open it on this tab.
-/// If already showing this tab, close it.
-/// If showing a different tab, switch to this tab.
-fn toggle_tools_tab(tools_state: &mut ToolsWindowState, tab: ToolsTab) {
-    if tools_state.open && tools_state.active_tab == tab {
-        tools_state.open = false;
-    } else {
-        tools_state.open = true;
-        tools_state.active_tab = tab;
     }
 }
 
@@ -264,9 +248,6 @@ pub fn sync_panel_manager_to_resources(
 
     let v = panels.is_open(PanelId::Debug);
     if debug_state.open != v { debug_state.open = v; }
-
-    // Note: Tool panels (Export, Coverage, Airspace, DataSources, View3D)
-    // are managed by ToolsWindowState, not UiPanelManager.
 }
 
 /// Sync per-module resource changes back to UiPanelManager.
@@ -277,47 +258,19 @@ pub fn sync_panel_manager_to_resources(
 /// overriding toolbar/keyboard changes to other panels.
 pub fn sync_resources_to_panel_manager(
     mut panels: ResMut<UiPanelManager>,
-    settings_ui: Res<SettingsUiState>,
-    list_state: Res<AircraftListState>,
-    detail_state: Res<DetailPanelState>,
-    bookmarks_state: Res<crate::bookmarks::BookmarksPanelState>,
-    stats_state: Res<StatsPanelState>,
     help_state: Res<HelpOverlayState>,
     measurement_state: Res<crate::tools::MeasurementState>,
-    debug_state: Res<crate::debug_panel::DebugPanelState>,
 ) {
-    // Only sync each resource individually when IT changed, not all at once.
-    // This prevents a close-button change on one panel from being overridden
-    // by stale values from other unchanged resources.
-    if settings_ui.is_changed() {
-        sync_one(&mut panels, PanelId::Settings, settings_ui.open);
-    }
-    if list_state.is_changed() {
-        sync_one(&mut panels, PanelId::AircraftList, list_state.expanded);
-    }
-    if detail_state.is_changed() {
-        sync_one(&mut panels, PanelId::AircraftDetail, detail_state.open);
-    }
-    if bookmarks_state.is_changed() {
-        sync_one(&mut panels, PanelId::Bookmarks, bookmarks_state.open);
-    }
-    if stats_state.is_changed() {
-        sync_one(&mut panels, PanelId::Statistics, stats_state.expanded);
-    }
+    // Only sync non-dock-managed panels here. All dock-managed panels
+    // (Settings, AircraftList, Bookmarks, Stats, Debug, tool panels)
+    // have their visibility controlled by UiPanelManager → dock tile sync.
+    // Dock tab close is routed back to UiPanelManager via DockBehavior::on_tab_close.
     if help_state.is_changed() {
         sync_one(&mut panels, PanelId::Help, help_state.visible);
     }
     if measurement_state.is_changed() {
         sync_one(&mut panels, PanelId::Measurement, measurement_state.active);
     }
-    // Note: DebugPanelState is NOT synced here because update_debug_metrics
-    // mutates it every frame (fps, aircraft_count, etc.), causing is_changed()
-    // to always return true. This would immediately undo any toolbar/keyboard
-    // toggle. Instead, the debug panel's X-button close is handled directly
-    // in render_debug_panel.
-
-    // Note: Tool panels (Export, Coverage, Airspace, DataSources, View3D)
-    // are managed by ToolsWindowState, not UiPanelManager.
 }
 
 fn sync_one(panels: &mut UiPanelManager, id: PanelId, resource_open: bool) {
