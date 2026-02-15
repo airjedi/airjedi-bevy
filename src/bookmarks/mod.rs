@@ -102,6 +102,46 @@ pub fn render_bookmarks_panel(
     }
 }
 
+/// Render bookmarks content into a bare `egui::Ui` (for dock/tab usage).
+///
+/// This contains the same content as `render_bookmarks_panel` but without
+/// the `Window` wrapper or open-state check, so it can be embedded in
+/// an `egui_tiles` pane.
+pub fn render_bookmarks_pane_content(
+    ui: &mut egui::Ui,
+    panel_state: &mut BookmarksPanelState,
+    app_config: &mut AppConfig,
+    map_state: &mut MapState,
+    zoom_state: &mut ZoomState,
+    list_state: &AircraftListState,
+    aircraft_query: &Query<&Aircraft>,
+    theme: &AppTheme,
+) {
+    let bookmark_color = to_egui_color32(theme.accent_secondary());
+
+    // Tab bar
+    ui.horizontal(|ui| {
+        if ui.selectable_label(panel_state.selected_tab == 0, "Locations").clicked() {
+            panel_state.selected_tab = 0;
+        }
+        if ui.selectable_label(panel_state.selected_tab == 1, "Aircraft").clicked() {
+            panel_state.selected_tab = 1;
+        }
+    });
+
+    ui.add_space(8.0);
+
+    match panel_state.selected_tab {
+        0 => {
+            render_location_bookmarks(ui, panel_state, app_config, map_state, zoom_state, bookmark_color);
+        }
+        1 => {
+            render_aircraft_bookmarks(ui, panel_state, app_config, list_state, aircraft_query, bookmark_color);
+        }
+        _ => {}
+    }
+}
+
 fn render_location_bookmarks(
     ui: &mut egui::Ui,
     panel_state: &mut BookmarksPanelState,

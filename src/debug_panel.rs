@@ -202,6 +202,90 @@ pub fn render_debug_panel_ui(
     }
 }
 
+/// Render just the debug panel content into a bare `&mut egui::Ui`.
+///
+/// This contains the Metrics and Log sections without any `egui::Window` wrapper,
+/// suitable for embedding in a docking pane or other container.
+pub fn render_debug_pane_content(
+    ui: &mut egui::Ui,
+    debug: &mut DebugPanelState,
+    map_state: Option<&MapState>,
+    zoom_state: Option<&ZoomState>,
+) {
+    // -- Metrics section --
+    egui::CollapsingHeader::new("Metrics")
+        .default_open(true)
+        .show(ui, |ui| {
+            egui::Grid::new("debug_metrics_grid")
+                .num_columns(2)
+                .spacing([12.0, 4.0])
+                .show(ui, |ui| {
+                    ui.label("FPS:");
+                    ui.label(format!("{:.0}", debug.fps));
+                    ui.end_row();
+
+                    ui.label("Aircraft:");
+                    ui.label(format!("{}", debug.aircraft_count));
+                    ui.end_row();
+
+                    ui.label("Msgs processed:");
+                    ui.label(format!("{}", debug.messages_processed));
+                    ui.end_row();
+
+                    ui.label("Msg rate:");
+                    ui.label(format!("{:.1}/s", debug.message_rate));
+                    ui.end_row();
+
+                    ui.label("Pos rejected:");
+                    ui.label(format!("{}", debug.positions_rejected));
+                    ui.end_row();
+
+                    // Map state
+                    if let Some(ref ms) = map_state {
+                        ui.label("Map center:");
+                        ui.label(format!("{:.4}, {:.4}", ms.latitude, ms.longitude));
+                        ui.end_row();
+
+                        ui.label("Tile zoom:");
+                        ui.label(format!("{}", ms.zoom_level.to_u8()));
+                        ui.end_row();
+                    }
+
+                    if let Some(ref zs) = zoom_state {
+                        ui.label("Camera zoom:");
+                        ui.label(format!("{:.3}", zs.camera_zoom));
+                        ui.end_row();
+                    }
+                });
+        });
+
+    ui.separator();
+
+    // -- Log section --
+    egui::CollapsingHeader::new("Log")
+        .default_open(true)
+        .show(ui, |ui| {
+            let text_style = egui::TextStyle::Monospace;
+            let row_height = ui.text_style_height(&text_style);
+            let num_rows = debug.log_messages.len();
+
+            egui::ScrollArea::vertical()
+                .max_height(250.0)
+                .stick_to_bottom(true)
+                .show_rows(ui, row_height, num_rows, |ui, row_range| {
+                    for i in row_range {
+                        if let Some(msg) = debug.log_messages.get(i) {
+                            ui.label(
+                                egui::RichText::new(msg)
+                                    .text_style(text_style.clone())
+                                    .size(11.0),
+                            );
+                        }
+                    }
+                });
+        });
+}
+
 /// Render the debug panel as a floating egui window (Bevy system).
 pub fn render_debug_panel(
     mut contexts: EguiContexts,
