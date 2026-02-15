@@ -729,7 +729,15 @@ fn handle_zoom(
     window_query: Query<&Window>,
     mut tile_query: Query<(&mut TileFadeState, &mut Transform), With<MapTile>>,
     logger: Option<Res<ZoomDebugLogger>>,
+    mut contexts: EguiContexts,
 ) {
+    // Don't zoom the map when pointer is over an egui panel (e.g. scrolling a dock panel)
+    if let Ok(ctx) = contexts.ctx_mut() {
+        if ctx.is_pointer_over_area() {
+            return;
+        }
+    }
+
     let Ok(window) = window_query.single() else {
         return;
     };
