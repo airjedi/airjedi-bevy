@@ -13,7 +13,6 @@ impl Plugin for BookmarksPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<BookmarksPanelState>()
             .add_systems(Update, (
-                render_bookmarks_panel,
                 toggle_bookmarks_panel,
                 highlight_bookmarked_aircraft,
             ));

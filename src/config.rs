@@ -705,7 +705,6 @@ impl Plugin for ConfigPlugin {
             .insert_resource(registry)
             .insert_resource(initial_theme)
             .init_resource::<SettingsUiState>()
-            .add_systems(Update, (toggle_settings_panel, sync_config_to_render_states, apply_basemap_changes))
-            .add_systems(EguiPrimaryContextPass, render_settings_panel);
+            .add_systems(Update, (toggle_settings_panel, sync_config_to_render_states, apply_basemap_changes));
     }
 }

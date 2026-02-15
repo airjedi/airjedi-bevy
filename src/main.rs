@@ -331,8 +331,6 @@ fn main() {
             toolbar::render_toolbar,
             dock::render_dock_tree,
             toolbar::render_map_attribution,
-            tools_window::render_tools_window,
-            debug_panel::render_debug_panel,
         ))
         .add_systems(Update, display_tiles_filtered.after(ApplyDeferred))
         .add_systems(Update, animate_tile_fades.after(display_tiles_filtered))
