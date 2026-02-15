@@ -122,7 +122,7 @@ pub fn render_tools_window(
     }
 }
 
-pub(crate) fn render_coverage_tab(ui: &mut egui::Ui, coverage: &mut CoverageState) {
+pub fn render_coverage_tab(ui: &mut egui::Ui, coverage: &mut CoverageState) {
     let stats = coverage.get_stats();
 
     ui.horizontal(|ui| {
@@ -180,7 +180,7 @@ pub(crate) fn render_coverage_tab(ui: &mut egui::Ui, coverage: &mut CoverageStat
     });
 }
 
-fn render_airspace_tab(
+pub fn render_airspace_tab(
     ui: &mut egui::Ui,
     display_state: &mut AirspaceDisplayState,
     airspace_data: &mut AirspaceData,
@@ -214,7 +214,7 @@ fn render_airspace_tab(
     }
 }
 
-fn render_data_sources_tab(ui: &mut egui::Ui, manager: &mut DataSourceManager) {
+pub fn render_data_sources_tab(ui: &mut egui::Ui, manager: &mut DataSourceManager) {
     let stats = manager.get_stats();
     ui.label(format!(
         "{}/{} sources connected, {} aircraft",
@@ -248,7 +248,7 @@ fn render_data_sources_tab(ui: &mut egui::Ui, manager: &mut DataSourceManager) {
     }
 }
 
-fn render_export_tab(ui: &mut egui::Ui, export_state: &mut ExportState) {
+pub fn render_export_tab(ui: &mut egui::Ui, export_state: &mut ExportState) {
     ui.label("Export recorded flight data to various formats.");
     ui.separator();
 
@@ -313,7 +313,7 @@ fn render_export_tab(ui: &mut egui::Ui, export_state: &mut ExportState) {
     }
 }
 
-pub(crate) fn render_view3d_tab(ui: &mut egui::Ui, state: &mut View3DState) {
+pub fn render_view3d_tab(ui: &mut egui::Ui, state: &mut View3DState) {
     ui.colored_label(egui::Color32::YELLOW, "This feature is in research/prototype stage");
     ui.separator();
 
@@ -353,7 +353,7 @@ pub(crate) fn render_view3d_tab(ui: &mut egui::Ui, state: &mut View3DState) {
 
 }
 
-fn render_recording_tab(
+pub fn render_recording_tab(
     ui: &mut egui::Ui,
     recording: &mut RecordingState,
     playback: &mut PlaybackState,

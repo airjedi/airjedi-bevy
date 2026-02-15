@@ -567,6 +567,308 @@ pub fn render_aircraft_list_panel(
         });
 }
 
+/// Render aircraft list content into a bare `egui::Ui` (for dock/tab usage).
+///
+/// This contains the same content as `render_aircraft_list_panel` but without
+/// the `SidePanel` wrapper or expanded-state check, so it can be embedded in
+/// an `egui_tiles` pane.
+pub fn render_aircraft_list_pane_content(
+    ui: &mut egui::Ui,
+    list_state: &mut AircraftListState,
+    detail_state: &mut DetailPanelState,
+    follow_state: &mut CameraFollowState,
+    display_list: &AircraftDisplayList,
+    map_state: &MapState,
+    clock: &SessionClock,
+    aircraft_query: &Query<(&crate::Aircraft, &TrailHistory)>,
+    theme: &AppTheme,
+) {
+    let selected_bg = egui::Color32::from_rgba_unmultiplied(100, 140, 180, 26);
+    let header_color = egui::Color32::from_rgb(150, 150, 150);
+    let icao_color = egui::Color32::from_rgb(200, 220, 255);
+    let callsign_color = egui::Color32::from_rgb(150, 220, 150);
+    let callsign_selected_color = egui::Color32::from_rgb(255, 50, 50);
+    let metrics_color = egui::Color32::from_rgb(170, 170, 170);
+    let range_color = egui::Color32::from_rgb(100, 200, 255);
+    let status_active = egui::Color32::from_rgb(100, 255, 100);
+
+    // Header
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new(format!("Aircraft ({})", display_list.aircraft.len()))
+            .color(egui::Color32::from_rgb(200, 200, 200))
+            .size(14.0)
+            .strong());
+    });
+
+    ui.add_space(4.0);
+    ui.separator();
+    ui.add_space(4.0);
+
+    // Sort dropdown
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new("Sort:")
+            .color(header_color)
+            .size(10.0));
+        egui::ComboBox::from_id_salt("sort_by")
+            .selected_text(list_state.sort_by.label())
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut list_state.sort_by, SortCriteria::Distance, "Distance");
+                ui.selectable_value(&mut list_state.sort_by, SortCriteria::Altitude, "Altitude");
+                ui.selectable_value(&mut list_state.sort_by, SortCriteria::Speed, "Speed");
+                ui.selectable_value(&mut list_state.sort_by, SortCriteria::Callsign, "Callsign");
+            });
+
+        if ui.button(if list_state.sort_ascending { "\u{2191}" } else { "\u{2193}" }).clicked() {
+            list_state.sort_ascending = !list_state.sort_ascending;
+        }
+
+        if ui.button("Filter").clicked() {
+            list_state.show_filter_popup = !list_state.show_filter_popup;
+        }
+    });
+
+    // Search box
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new("Search:")
+            .color(header_color)
+            .size(10.0));
+        ui.text_edit_singleline(&mut list_state.search_text);
+    });
+
+    ui.add_space(4.0);
+
+    // Filter popup
+    if list_state.show_filter_popup {
+        egui::Frame::group(ui.style())
+            .fill(egui::Color32::from_rgba_unmultiplied(35, 40, 45, 230))
+            .show(ui, |ui| {
+                ui.label(egui::RichText::new("Altitude (ft):")
+                    .color(header_color)
+                    .size(9.0));
+                ui.horizontal(|ui| {
+                    ui.add(egui::DragValue::new(&mut list_state.filters.min_altitude)
+                        .range(0..=60000)
+                        .prefix("Min: "));
+                    ui.add(egui::DragValue::new(&mut list_state.filters.max_altitude)
+                        .range(0..=60000)
+                        .prefix("Max: "));
+                });
+
+                ui.label(egui::RichText::new("Speed (kts):")
+                    .color(header_color)
+                    .size(9.0));
+                ui.horizontal(|ui| {
+                    ui.add(egui::DragValue::new(&mut list_state.filters.min_speed)
+                        .range(0.0..=600.0)
+                        .prefix("Min: "));
+                    ui.add(egui::DragValue::new(&mut list_state.filters.max_speed)
+                        .range(0.0..=600.0)
+                        .prefix("Max: "));
+                });
+
+                ui.label(egui::RichText::new("Distance (nm):")
+                    .color(header_color)
+                    .size(9.0));
+                ui.add(egui::DragValue::new(&mut list_state.filters.max_distance)
+                    .range(0.0..=500.0)
+                    .prefix("Max: "));
+
+                ui.add_space(4.0);
+
+                // Callsign/operator prefix filter
+                ui.label(egui::RichText::new("Callsign Prefix:")
+                    .color(header_color)
+                    .size(9.0));
+                ui.add(egui::TextEdit::singleline(&mut list_state.filters.callsign_prefix)
+                    .hint_text("e.g., AAL, UAL, SWA")
+                    .desired_width(120.0));
+
+                ui.add_space(4.0);
+
+                // Ground traffic toggle
+                ui.checkbox(&mut list_state.filters.include_ground_traffic,
+                    egui::RichText::new("Include ground traffic")
+                        .color(header_color)
+                        .size(9.0));
+
+                ui.add_space(4.0);
+
+                if ui.button("Close").clicked() {
+                    list_state.show_filter_popup = false;
+                }
+            });
+        ui.add_space(4.0);
+    }
+
+    // Aircraft count
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new(format!("TOTAL: {}", display_list.aircraft.len()))
+            .color(header_color)
+            .size(10.0)
+            .monospace());
+    });
+
+    ui.add_space(4.0);
+
+    // -- Lower detail section (rendered first to reserve space at the bottom) --
+    let selected_icao = list_state.selected_icao.clone();
+    let detail_open = detail_state.open && selected_icao.is_some();
+
+    if detail_open {
+        egui::TopBottomPanel::bottom("aircraft_detail_section")
+            .resizable(true)
+            .default_height(220.0)
+            .frame(egui::Frame::NONE)
+            .show_inside(ui, |ui| {
+                render_detail_section(
+                    ui,
+                    selected_icao.as_deref().unwrap(),
+                    detail_state,
+                    follow_state,
+                    map_state,
+                    clock,
+                    aircraft_query,
+                );
+            });
+    }
+
+    // -- Upper aircraft list (fills remaining space) --
+    egui::ScrollArea::vertical()
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = 1.0;
+
+            for aircraft in &display_list.aircraft {
+                let is_selected = list_state.selected_icao.as_ref() == Some(&aircraft.icao);
+                let (alt_color, alt_indicator) = get_altitude_color(aircraft.altitude);
+
+                let card_frame = if is_selected {
+                    egui::Frame::NONE
+                        .fill(selected_bg)
+                        .inner_margin(egui::Margin::symmetric(4, 2))
+                } else {
+                    egui::Frame::NONE
+                        .inner_margin(egui::Margin::symmetric(4, 2))
+                };
+
+                let card_response = card_frame.show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 1.0;
+
+                    // Row 1: Status + ICAO + Callsign + Altitude
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("\u{25CF}")
+                            .color(status_active)
+                            .size(11.0));
+
+                        ui.label(egui::RichText::new(&aircraft.icao)
+                            .color(icao_color)
+                            .size(10.5)
+                            .monospace()
+                            .strong());
+
+                        if let Some(ref callsign) = aircraft.callsign {
+                            let cs_color = if is_selected {
+                                callsign_selected_color
+                            } else {
+                                callsign_color
+                            };
+                            ui.label(egui::RichText::new(format!("\u{2502} {}", callsign.trim()))
+                                .color(cs_color)
+                                .size(10.5)
+                                .strong());
+                        }
+
+                        if let Some(alt) = aircraft.altitude {
+                            let alt_text = format!("\u{2502} {}", format_altitude_with_indicator(alt, alt_indicator));
+                            ui.label(egui::RichText::new(alt_text)
+                                .color(alt_color)
+                                .size(9.5)
+                                .monospace());
+                        }
+                    });
+
+                    // Row 2: Speed + Heading + Range
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 6.0;
+
+                        if let Some(vel) = aircraft.velocity {
+                            ui.label(egui::RichText::new(format!("{:03}kt", vel as i32))
+                                .color(metrics_color)
+                                .size(8.0)
+                                .monospace());
+                        }
+
+                        if let Some(heading) = aircraft.heading {
+                            ui.label(egui::RichText::new(format!("{:03}\u{00B0}", heading as i32))
+                                .color(metrics_color)
+                                .size(8.0)
+                                .monospace());
+                        }
+
+                        ui.label(egui::RichText::new(format!("{:.1}nm", aircraft.distance))
+                            .color(range_color)
+                            .size(8.0)
+                            .monospace());
+                    });
+
+                    // Row 3: Vertical rate and follow button
+                    ui.horizontal(|ui| {
+                        if let Some(vr) = aircraft.vertical_rate {
+                            let (vr_color, vr_symbol) = if vr > 100 {
+                                (egui::Color32::from_rgb(100, 255, 100), "\u{2191}")
+                            } else if vr < -100 {
+                                (egui::Color32::from_rgb(255, 150, 100), "\u{2193}")
+                            } else {
+                                (egui::Color32::from_rgb(150, 150, 150), "\u{2500}")
+                            };
+                            ui.label(egui::RichText::new(format!("{} {}ft/min", vr_symbol, vr))
+                                .color(vr_color)
+                                .size(7.5)
+                                .monospace());
+                        }
+
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let is_following = follow_state.following_icao.as_ref() == Some(&aircraft.icao);
+                            let follow_text = if is_following { "Unfollow" } else { "Follow" };
+                            let follow_color = if is_following {
+                                egui::Color32::from_rgb(255, 100, 100)
+                            } else {
+                                egui::Color32::from_rgb(100, 180, 255)
+                            };
+                            if ui.add(egui::Button::new(
+                                egui::RichText::new(follow_text)
+                                    .color(follow_color)
+                                    .size(8.0)
+                            ).small()).clicked() {
+                                if is_following {
+                                    follow_state.following_icao = None;
+                                } else {
+                                    follow_state.following_icao = Some(aircraft.icao.clone());
+                                }
+                            }
+                        });
+                    });
+                });
+
+                // Handle click to select
+                if card_response.response.interact(egui::Sense::click()).clicked() {
+                    list_state.selected_icao = Some(aircraft.icao.clone());
+                }
+
+                // Subtle separator line between items
+                ui.add_space(2.0);
+                let separator_color = egui::Color32::from_rgb(50, 55, 65);
+                let rect = ui.available_rect_before_wrap();
+                ui.painter().hline(
+                    rect.x_range(),
+                    rect.top(),
+                    egui::Stroke::new(1.0, separator_color),
+                );
+                ui.add_space(2.0);
+            }
+        });
+}
+
 /// Render the aircraft detail section inside the stacked right panel.
 fn render_detail_section(
     ui: &mut egui::Ui,

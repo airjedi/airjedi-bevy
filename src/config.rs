@@ -487,6 +487,131 @@ pub fn render_settings_panel(
         });
 }
 
+/// Renders the settings pane content into a bare `&mut egui::Ui`.
+/// This is used by the docking system (egui_tiles) to render settings
+/// content inside a managed pane, without the SidePanel wrapper.
+pub fn render_settings_pane_content(
+    ui: &mut egui::Ui,
+    ui_state: &mut SettingsUiState,
+    app_config: &mut AppConfig,
+    app_theme: &mut AppTheme,
+    theme_registry: &ThemeRegistry,
+) {
+    ui.heading("Settings");
+    ui.separator();
+
+    // Theme section
+    ui.collapsing("Theme", |ui| {
+        let current_name = app_theme.name().to_string();
+        egui::ComboBox::from_id_salt("theme_selector")
+            .selected_text(&current_name)
+            .show_ui(ui, |ui| {
+                for name in theme_registry.names() {
+                    let selected = current_name == name;
+                    if ui.selectable_label(selected, name).clicked() {
+                        if let Some(new_theme) = theme_registry.get(name) {
+                            *app_theme = new_theme;
+                        }
+                    }
+                }
+            });
+    });
+
+    ui.add_space(12.0);
+
+    // Feed section
+    ui.collapsing("Feed", |ui| {
+        ui.label("Endpoint (host:port):");
+        ui.text_edit_singleline(&mut ui_state.endpoint_url);
+        ui.add_space(8.0);
+
+        ui.label("Refresh Interval (ms):");
+        ui.text_edit_singleline(&mut ui_state.refresh_interval_ms);
+    });
+
+    ui.add_space(12.0);
+
+    // Map section
+    ui.collapsing("Map Defaults", |ui| {
+        ui.label("Basemap Style:");
+        egui::ComboBox::from_id_salt("basemap_style")
+            .selected_text(ui_state.basemap_style.display_name())
+            .show_ui(ui, |ui| {
+                for style in BasemapStyle::all() {
+                    ui.selectable_value(
+                        &mut ui_state.basemap_style,
+                        *style,
+                        style.display_name(),
+                    );
+                }
+            });
+        ui.add_space(8.0);
+
+        ui.label("Default Latitude:");
+        ui.text_edit_singleline(&mut ui_state.default_latitude);
+        ui.add_space(8.0);
+
+        ui.label("Default Longitude:");
+        ui.text_edit_singleline(&mut ui_state.default_longitude);
+        ui.add_space(8.0);
+
+        ui.label("Default Zoom (0-19):");
+        ui.text_edit_singleline(&mut ui_state.default_zoom);
+    });
+
+    ui.add_space(12.0);
+
+    // Overlays section
+    ui.collapsing("Overlays", |ui| {
+        ui.checkbox(&mut ui_state.show_airports, "Show Airports");
+        ui.checkbox(&mut ui_state.show_runways, "Show Runways");
+        ui.checkbox(&mut ui_state.show_navaids, "Show Navaids");
+    });
+
+    ui.add_space(12.0);
+
+    // Trails section
+    ui.collapsing("Flight Trails", |ui| {
+        ui.checkbox(&mut ui_state.trails_enabled, "Enable Trails");
+        ui.add_space(8.0);
+        ui.label("Max Age (seconds):");
+        ui.text_edit_singleline(&mut ui_state.trails_max_age);
+    });
+
+    ui.add_space(16.0);
+
+    // Error message
+    if let Some(ref error) = ui_state.error_message {
+        ui.colored_label(egui::Color32::RED, error);
+        ui.add_space(8.0);
+    }
+
+    // Buttons
+    ui.horizontal(|ui| {
+        if ui.button("Cancel").clicked() {
+            ui_state.open = false;
+            ui_state.error_message = None;
+        }
+
+        if ui.button("Save").clicked() {
+            match ui_state.validate_and_build() {
+                Ok(mut new_config) => {
+                    new_config.bookmarks = app_config.bookmarks.clone();
+                    new_config.appearance.theme = app_theme.name().to_string();
+                    save_config(&new_config);
+                    *app_config = new_config;
+                    ui_state.open = false;
+                    ui_state.error_message = None;
+                    info!("Configuration saved");
+                }
+                Err(e) => {
+                    ui_state.error_message = Some(e);
+                }
+            }
+        }
+    });
+}
+
 pub fn toggle_settings_panel(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut ui_state: ResMut<SettingsUiState>,

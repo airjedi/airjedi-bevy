@@ -25,6 +25,7 @@ mod ui_panels;
 mod toolbar;
 mod tools_window;
 mod debug_panel;
+mod dock;
 mod tile_cache;
 pub(crate) mod theme;
 
@@ -294,6 +295,7 @@ fn main() {
         .init_resource::<ui_panels::UiPanelManager>()
         .init_resource::<tools_window::ToolsWindowState>()
         .init_resource::<debug_panel::DebugPanelState>()
+        .init_resource::<dock::DockTreeState>()
         .insert_resource(ZoomState::new())
         // SlippyTilesSettings will be updated by setup_slippy_tiles_from_config after config is loaded
         .insert_resource(SlippyTilesSettings {
@@ -327,6 +329,7 @@ fn main() {
         .add_systems(bevy_egui::EguiPrimaryContextPass, (
             theme::apply_egui_theme,
             toolbar::render_toolbar,
+            dock::render_dock_tree,
             toolbar::render_map_attribution,
             tools_window::render_tools_window,
             debug_panel::render_debug_panel,
