@@ -104,9 +104,32 @@ impl DockPane {
 pub struct DockTreeState {
     pub tree: egui_tiles::Tree<DockPane>,
     pub pane_tile_ids: HashMap<DockPane, TileId>,
+    /// Container tile IDs for auto-collapse when all children are hidden.
+    pub bottom_tabs_id: TileId,
+    pub right_tabs_id: TileId,
     /// Captured each frame from MapViewport pane for camera viewport adjustment
     pub map_viewport_rect: Option<egui::Rect>,
 }
+
+/// Panes grouped in the bottom tab container.
+const BOTTOM_PANES: &[DockPane] = &[
+    DockPane::Debug,
+    DockPane::Coverage,
+    DockPane::Airspace,
+    DockPane::DataSources,
+    DockPane::Export,
+    DockPane::Recording,
+    DockPane::View3D,
+];
+
+/// Panes grouped in the right tab container.
+const RIGHT_PANES: &[DockPane] = &[
+    DockPane::AircraftList,
+    DockPane::AircraftDetail,
+    DockPane::Bookmarks,
+    DockPane::Stats,
+    DockPane::Settings,
+];
 
 impl Default for DockTreeState {
     fn default() -> Self {
@@ -197,6 +220,8 @@ impl Default for DockTreeState {
         Self {
             tree,
             pane_tile_ids,
+            bottom_tabs_id,
+            right_tabs_id,
             map_viewport_rect: None,
         }
     }
@@ -387,6 +412,10 @@ impl<'a, 'w, 's> Behavior<DockPane> for DockBehavior<'a, 'w, 's> {
         }
     }
 
+    fn gap_width(&self, _style: &egui::Style) -> f32 {
+        1.0
+    }
+
     fn tab_bar_color(&self, _visuals: &egui::Visuals) -> egui::Color32 {
         to_egui_color32(self.theme.bg_secondary())
     }
@@ -426,11 +455,13 @@ impl<'a, 'w, 's> DockBehavior<'a, 'w, 's> {
         ui: &mut egui::Ui,
         content: impl FnOnce(&mut egui::Ui, &mut Self),
     ) {
-        let pane_bg = to_egui_color32_alpha(self.theme.bg_primary(), 240);
-        egui::Frame::NONE
-            .fill(pane_bg)
-            .inner_margin(egui::Margin::same(4))
+        let pane_bg = to_egui_color32(self.theme.bg_primary());
+        // Paint opaque background across the entire pane area
+        ui.painter().rect_filled(ui.max_rect(), 0.0, pane_bg);
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
             .show(ui, |ui| {
+                ui.add_space(4.0);
                 content(ui, self);
             });
     }
@@ -483,6 +514,20 @@ pub fn render_dock_tree(
             dock_state.tree.tiles.set_visible(tile_id, should_be_visible);
         }
     }
+
+    // Auto-collapse containers when all their children are hidden
+    let bottom_id = dock_state.bottom_tabs_id;
+    let right_id = dock_state.right_tabs_id;
+    let bottom_has_visible = BOTTOM_PANES.iter().any(|p| {
+        dock_state.pane_tile_ids.get(p)
+            .is_some_and(|&id| dock_state.tree.tiles.is_visible(id))
+    });
+    let right_has_visible = RIGHT_PANES.iter().any(|p| {
+        dock_state.pane_tile_ids.get(p)
+            .is_some_and(|&id| dock_state.tree.tiles.is_visible(id))
+    });
+    dock_state.tree.tiles.set_visible(bottom_id, bottom_has_visible);
+    dock_state.tree.tiles.set_visible(right_id, right_has_visible);
 
     let mut map_viewport_rect: Option<egui::Rect> = None;
 
