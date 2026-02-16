@@ -483,13 +483,15 @@ pub(crate) fn setup_map(
     // Set up 2D camera for map tiles and labels
     commands.spawn(Camera2d);
 
-    // Set up 3D camera for aircraft models (renders on top of 2D, with transparent clear)
+    // Set up 3D camera for aircraft models (renders on top of 2D, with transparent clear).
+    // Uses Color::NONE (transparent black) so the alpha-blended upscaling pass correctly
+    // composites 3D content without overwriting the 2D camera's output.
     commands.spawn((
         Camera3d::default(),
         AircraftCamera,
         Camera {
             order: 1,
-            clear_color: ClearColorConfig::None,
+            clear_color: ClearColorConfig::Custom(Color::NONE),
             ..default()
         },
         Projection::Orthographic(OrthographicProjection::default_2d()),
@@ -976,15 +978,29 @@ fn apply_camera_zoom(
 
 /// Sync Camera3d transform and projection to match Camera2d each frame.
 /// This ensures 3D aircraft models are rendered with the same view as the 2D map.
+///
+/// In 3D mode the AircraftCamera uses `ClearColorConfig::None` so it preserves
+/// the Camera2d output (which now includes the sky).  In 2D mode it uses
+/// `ClearColorConfig::Custom(Color::NONE)` for transparent compositing.
 fn sync_aircraft_camera(
     camera_2d: Query<(&Transform, &Projection), (With<Camera2d>, Without<AircraftCamera>)>,
-    mut camera_3d: Query<(&mut Transform, &mut Projection), (With<AircraftCamera>, Without<Camera2d>)>,
+    mut camera_3d: Query<(&mut Transform, &mut Projection, &mut Camera), (With<AircraftCamera>, Without<Camera2d>)>,
+    view3d_state: Res<view3d::View3DState>,
 ) {
-    let (Ok((t2, p2)), Ok((mut t3, mut p3))) = (camera_2d.single(), camera_3d.single_mut()) else {
+    let (Ok((t2, p2)), Ok((mut t3, mut p3, mut cam))) = (camera_2d.single(), camera_3d.single_mut()) else {
         return;
     };
     *t3 = *t2;
     *p3 = p2.clone();
+
+    // In 3D mode, preserve the Camera2d's rendered output (including the sky)
+    // by not clearing the framebuffer.  In 2D mode, use transparent clear so
+    // the 3D camera composites on top without overwriting 2D content.
+    if view3d_state.is_3d_active() {
+        cam.clear_color = ClearColorConfig::None;
+    } else {
+        cam.clear_color = ClearColorConfig::Custom(Color::NONE);
+    }
 }
 
 // Keep aircraft and labels at constant screen size despite zoom changes

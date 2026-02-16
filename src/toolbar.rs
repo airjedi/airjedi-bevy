@@ -7,6 +7,8 @@ use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
 use bevy_slippy_tiles::{MapTile, SlippyTileDownloadStatus, DownloadSlippyTilesMessage};
 
+use egui_phosphor::regular;
+
 use crate::ui_panels::{UiPanelManager, PanelId};
 use crate::theme::{AppTheme, to_egui_color32, to_egui_color32_alpha};
 use crate::MapState;
@@ -56,31 +58,31 @@ pub fn render_toolbar(
                 ui.separator();
 
                 // -- Panel toggle buttons --
-                toolbar_button(ui, &mut panels, PanelId::Settings, "\u{2699}", "Settings", active_color, inactive_color, active_bg);
-                toolbar_button(ui, &mut panels, PanelId::AircraftList, "\u{2708}", "Aircraft List (L)", active_color, inactive_color, active_bg);
-                toolbar_button(ui, &mut panels, PanelId::Bookmarks, "\u{2605}", "Bookmarks (B)", active_color, inactive_color, active_bg);
-                toolbar_button(ui, &mut panels, PanelId::Statistics, "S", "Statistics (S)", active_color, inactive_color, active_bg);
+                toolbar_button(ui, &mut panels, PanelId::Settings, regular::GEAR, "Settings", active_color, inactive_color, active_bg);
+                toolbar_button(ui, &mut panels, PanelId::AircraftList, regular::AIRPLANE_TILT, "Aircraft List (L)", active_color, inactive_color, active_bg);
+                toolbar_button(ui, &mut panels, PanelId::Bookmarks, regular::STAR, "Bookmarks (B)", active_color, inactive_color, active_bg);
+                toolbar_button(ui, &mut panels, PanelId::Statistics, regular::CHART_BAR, "Statistics (S)", active_color, inactive_color, active_bg);
 
                 ui.separator();
 
-                toolbar_button(ui, &mut panels, PanelId::Measurement, "\u{21A6}", "Measurement (M)", active_color, inactive_color, active_bg);
-                toolbar_button(ui, &mut panels, PanelId::Export, "\u{21E9}", "Export (E)", active_color, inactive_color, active_bg);
-                toolbar_button(ui, &mut panels, PanelId::Coverage, "\u{25CE}", "Coverage (V)", active_color, inactive_color, active_bg);
-                toolbar_button(ui, &mut panels, PanelId::Airspace, "\u{25A1}", "Airspace (Shift+A)", active_color, inactive_color, active_bg);
-                toolbar_button(ui, &mut panels, PanelId::DataSources, "\u{2637}", "Data Sources (Shift+D)", active_color, inactive_color, active_bg);
-                toolbar_button(ui, &mut panels, PanelId::Recording, "\u{23FA}", "Recording (Ctrl+R)", active_color, inactive_color, active_bg);
-                toolbar_button(ui, &mut panels, PanelId::View3D, "\u{2B1A}", "3D View (3)", active_color, inactive_color, active_bg);
+                toolbar_button(ui, &mut panels, PanelId::Measurement, regular::RULER, "Measurement (M)", active_color, inactive_color, active_bg);
+                toolbar_button(ui, &mut panels, PanelId::Export, regular::DOWNLOAD_SIMPLE, "Export (E)", active_color, inactive_color, active_bg);
+                toolbar_button(ui, &mut panels, PanelId::Coverage, regular::TARGET, "Coverage (V)", active_color, inactive_color, active_bg);
+                toolbar_button(ui, &mut panels, PanelId::Airspace, regular::STACK, "Airspace (Shift+A)", active_color, inactive_color, active_bg);
+                toolbar_button(ui, &mut panels, PanelId::DataSources, regular::DATABASE, "Data Sources (Shift+D)", active_color, inactive_color, active_bg);
+                toolbar_button(ui, &mut panels, PanelId::Recording, regular::RECORD, "Recording (Ctrl+R)", active_color, inactive_color, active_bg);
+                toolbar_button(ui, &mut panels, PanelId::View3D, regular::CUBE, "3D View (3)", active_color, inactive_color, active_bg);
 
                 ui.separator();
 
-                toolbar_button(ui, &mut panels, PanelId::Debug, "#", "Debug (`)", active_color, inactive_color, active_bg);
-                toolbar_button(ui, &mut panels, PanelId::Help, "?", "Help (H)", active_color, inactive_color, active_bg);
+                toolbar_button(ui, &mut panels, PanelId::Debug, regular::HASH, "Debug (`)", active_color, inactive_color, active_bg);
+                toolbar_button(ui, &mut panels, PanelId::Help, regular::QUESTION, "Help (H)", active_color, inactive_color, active_bg);
 
                 // -- Clear Cache button (action, not a panel toggle) --
                 let icon_dim = to_egui_color32(theme.text_dim());
                 let clear_btn = ui.add(
                     egui::Button::new(
-                        egui::RichText::new("\u{2716}")
+                        egui::RichText::new(regular::X)
                             .size(16.0)
                             .color(icon_dim),
                     )
