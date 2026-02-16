@@ -1,4 +1,4 @@
-use bevy::{prelude::*, input::mouse::MouseWheel, ecs::schedule::ApplyDeferred};
+use bevy::{prelude::*, input::mouse::MouseWheel, ecs::schedule::ApplyDeferred, light::SunDisk};
 use bevy_slippy_tiles::*;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
@@ -356,6 +356,10 @@ fn main() {
 }
 
 
+/// Marker for the 3D camera that renders aircraft models
+#[derive(Component)]
+struct AircraftCamera;
+
 // Component to track tile fade state for smooth zoom transitions
 #[derive(Component)]
 struct TileFadeState {
@@ -482,6 +486,7 @@ pub(crate) fn setup_map(
     // Set up 3D camera for aircraft models (renders on top of 2D, with transparent clear)
     commands.spawn((
         Camera3d::default(),
+        AircraftCamera,
         Camera {
             order: 1,
             clear_color: ClearColorConfig::None,
@@ -503,6 +508,8 @@ pub(crate) fn setup_map(
             shadows_enabled: false,
             ..default()
         },
+        SunDisk::EARTH,
+        view3d::sky::SunLight,
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -1.0, 0.3, 0.0)),
     ));
 
@@ -970,8 +977,8 @@ fn apply_camera_zoom(
 /// Sync Camera3d transform and projection to match Camera2d each frame.
 /// This ensures 3D aircraft models are rendered with the same view as the 2D map.
 fn sync_aircraft_camera(
-    camera_2d: Query<(&Transform, &Projection), With<Camera2d>>,
-    mut camera_3d: Query<(&mut Transform, &mut Projection), (With<Camera3d>, Without<Camera2d>)>,
+    camera_2d: Query<(&Transform, &Projection), (With<Camera2d>, Without<AircraftCamera>)>,
+    mut camera_3d: Query<(&mut Transform, &mut Projection), (With<AircraftCamera>, Without<Camera2d>)>,
 ) {
     let (Ok((t2, p2)), Ok((mut t3, mut p3))) = (camera_2d.single(), camera_3d.single_mut()) else {
         return;
