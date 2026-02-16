@@ -74,8 +74,7 @@ pub(crate) mod constants {
     pub const BUTTON_FONT_SIZE: f32 = 16.0;
 
     // Tile fade/despawn timing
-    pub const TILE_FADE_SPEED: f32 = 4.0;
-    pub const OLD_TILE_DESPAWN_DELAY: f32 = 0.4;
+    pub const TILE_FADE_SPEED: f32 = 3.0;
 
     // Z-layers
     pub const TILE_Z_LAYER: f32 = 0.0;
@@ -363,8 +362,6 @@ struct TileFadeState {
     alpha: f32,
     /// The zoom level this tile was spawned for
     tile_zoom: u8,
-    /// If Some, this tile is from an old zoom level and will despawn after the timer expires
-    despawn_delay: Option<f32>,
 }
 
 /// Tracks which tile positions have been spawned to prevent duplicate entities.
@@ -1084,7 +1081,6 @@ fn display_tiles_filtered(
     logger: Option<Res<ZoomDebugLogger>>,
 ) {
     let current_zoom = map_state.zoom_level.to_u8();
-    let mut spawned_new_tiles = false;
 
     for event in tile_events.read() {
         // Only display tiles that match the current zoom level
@@ -1130,22 +1126,21 @@ fn display_tiles_filtered(
         let tile_handle = asset_server.load(tile_path.clone());
         asset_server.reload(tile_path);
 
+        // Spawn new tiles translucent and slightly above old tiles so they
+        // fade in on top, hiding the old zoom level progressively.
         commands.spawn((
             Sprite {
                 image: tile_handle,
-                color: Color::WHITE,
+                color: Color::srgba(1.0, 1.0, 1.0, 0.0),
                 ..default()
             },
-            Transform::from_xyz(transform_x, transform_y, tile_settings.z_layer),
+            Transform::from_xyz(transform_x, transform_y, tile_settings.z_layer + 0.1),
             MapTile,
             TileFadeState {
-                alpha: 1.0,
+                alpha: 0.0,
                 tile_zoom: current_zoom,
-                despawn_delay: None,
             },
         ));
-
-        spawned_new_tiles = true;
 
         if let Some(ref log) = logger {
             log.log(&format!("TILE DISPLAYED: zoom={} pos=({:.0}, {:.0})",
@@ -1153,19 +1148,6 @@ fn display_tiles_filtered(
         }
     }
 
-    // When new tiles at the current zoom have been spawned, mark old-zoom tiles for despawn.
-    if spawned_new_tiles {
-        let mut marked = 0;
-        for (_entity, mut fade_state) in tile_query.iter_mut() {
-            if fade_state.tile_zoom != current_zoom && fade_state.despawn_delay.is_none() {
-                fade_state.despawn_delay = Some(constants::OLD_TILE_DESPAWN_DELAY);
-                marked += 1;
-            }
-        }
-        if marked > 0 {
-            info!("Marked {} old-zoom tiles for despawn (new zoom {} tiles arrived)", marked, current_zoom);
-        }
-    }
 }
 
 /// Despawn tile entities that are far outside the visible viewport.
@@ -1174,7 +1156,7 @@ fn display_tiles_filtered(
 /// Maximum number of tile entities allowed at any time.
 /// At zoom 10 with 256px tiles, a 1280x720 viewport needs ~35 tiles.
 /// We allow extra margin for smooth panning.
-const MAX_TILE_ENTITIES: usize = 200;
+const MAX_TILE_ENTITIES: usize = 400;
 
 fn cull_offscreen_tiles(
     mut commands: Commands,
@@ -1245,35 +1227,54 @@ fn cull_offscreen_tiles(
     }
 }
 
-// Animate tile fade-in and handle delayed despawn for smooth zoom transitions
-// Uses crossfade technique: new tiles fade in ON TOP of old tiles, old tiles stay
-// fully visible until they're covered, then get despawned after a delay.
+// Animate tile fade-in and despawn old tiles only when covered by fully-loaded new tiles.
+// New tiles fade in ON TOP of old tiles (higher z-layer). Old tiles are only removed
+// once a new tile at the same grid position has reached full opacity, guaranteeing
+// the user never sees empty gray gaps.
 fn animate_tile_fades(
     mut commands: Commands,
     time: Res<Time>,
-    mut tile_query: Query<(Entity, &mut TileFadeState, &mut Sprite), With<MapTile>>,
+    map_state: Res<MapState>,
+    mut tile_query: Query<(Entity, &mut TileFadeState, &mut Sprite, &Transform), With<MapTile>>,
 ) {
     let delta = time.delta_secs();
+    let current_zoom = map_state.zoom_level.to_u8();
 
-    for (entity, mut fade_state, mut sprite) in tile_query.iter_mut() {
-        // Handle tiles scheduled for despawn (old tiles from previous zoom level)
-        if let Some(ref mut delay) = fade_state.despawn_delay {
-            *delay -= delta;
-            if *delay <= 0.0 {
-                // Timer expired - despawn the old tile (it's hidden under new tiles anyway)
-                commands.entity(entity).despawn();
+    // Collect grid cells covered by fully-opaque new tiles.
+    // Quantize positions to 256px cells so old (rescaled) tiles can be matched.
+    let mut loaded_cells: std::collections::HashSet<(i32, i32)> = std::collections::HashSet::new();
+    let mut old_tiles: Vec<(Entity, i32, i32)> = Vec::new();
+
+    for (entity, mut fade_state, mut sprite, transform) in tile_query.iter_mut() {
+        if fade_state.tile_zoom == current_zoom {
+            // Fade in new tiles
+            if fade_state.alpha < 1.0 {
+                fade_state.alpha += constants::TILE_FADE_SPEED * delta;
+                fade_state.alpha = fade_state.alpha.min(1.0);
+                sprite.color = Color::srgba(1.0, 1.0, 1.0, fade_state.alpha);
             }
-            // Old tiles stay at their current alpha (fully visible) - don't change anything
-            continue;
+            // Track fully-opaque new tiles by grid cell
+            if fade_state.alpha >= 1.0 {
+                let cell = (
+                    (transform.translation.x / 256.0).round() as i32,
+                    (transform.translation.y / 256.0).round() as i32,
+                );
+                loaded_cells.insert(cell);
+            }
+        } else {
+            // Old-zoom tile: record for coverage check
+            let cell = (
+                (transform.translation.x / 256.0).round() as i32,
+                (transform.translation.y / 256.0).round() as i32,
+            );
+            old_tiles.push((entity, cell.0, cell.1));
         }
+    }
 
-        // Handle tiles fading in (new tiles)
-        if fade_state.alpha < 1.0 {
-            fade_state.alpha += constants::TILE_FADE_SPEED * delta;
-            fade_state.alpha = fade_state.alpha.min(1.0);
-
-            // Update sprite color alpha
-            sprite.color = Color::srgba(1.0, 1.0, 1.0, fade_state.alpha);
+    // Despawn old tiles whose grid cell is covered by a fully-loaded new tile
+    for (entity, cx, cy) in old_tiles {
+        if loaded_cells.contains(&(cx, cy)) {
+            commands.entity(entity).despawn();
         }
     }
 }
