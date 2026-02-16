@@ -37,7 +37,7 @@ pub fn render_toolbar(
     let toolbar_frame = egui::Frame::default()
         .fill(panel_bg)
         .stroke(egui::Stroke::new(1.0, border_color))
-        .inner_margin(egui::Margin::symmetric(4, 8));
+        .inner_margin(egui::Margin::symmetric(4, 4));
 
     egui::SidePanel::left("toolbar")
         .exact_width(TOOLBAR_WIDTH)
@@ -45,6 +45,7 @@ pub fn render_toolbar(
         .frame(toolbar_frame)
         .show(ctx, |ui| {
             ui.vertical_centered(|ui| {
+                ui.spacing_mut().item_spacing.y = 2.0;
                 let active_color = to_egui_color32(theme.accent_primary());
                 let inactive_color = to_egui_color32(theme.text_dim());
                 let active_bg = to_egui_color32_alpha(theme.accent_primary(), 30);
@@ -52,9 +53,7 @@ pub fn render_toolbar(
                 // -- Connection status indicator at top --
                 render_connection_indicator(ui, &adsb_data, &theme);
 
-                ui.add_space(8.0);
                 ui.separator();
-                ui.add_space(4.0);
 
                 // -- Panel toggle buttons --
                 toolbar_button(ui, &mut panels, PanelId::Settings, "\u{2699}", "Settings", active_color, inactive_color, active_bg);
@@ -62,9 +61,7 @@ pub fn render_toolbar(
                 toolbar_button(ui, &mut panels, PanelId::Bookmarks, "\u{2605}", "Bookmarks (B)", active_color, inactive_color, active_bg);
                 toolbar_button(ui, &mut panels, PanelId::Statistics, "S", "Statistics (S)", active_color, inactive_color, active_bg);
 
-                ui.add_space(4.0);
                 ui.separator();
-                ui.add_space(4.0);
 
                 toolbar_button(ui, &mut panels, PanelId::Measurement, "\u{21A6}", "Measurement (M)", active_color, inactive_color, active_bg);
                 toolbar_button(ui, &mut panels, PanelId::Export, "\u{21E9}", "Export (E)", active_color, inactive_color, active_bg);
@@ -74,15 +71,12 @@ pub fn render_toolbar(
                 toolbar_button(ui, &mut panels, PanelId::Recording, "\u{23FA}", "Recording (Ctrl+R)", active_color, inactive_color, active_bg);
                 toolbar_button(ui, &mut panels, PanelId::View3D, "\u{2B1A}", "3D View (3)", active_color, inactive_color, active_bg);
 
-                ui.add_space(4.0);
                 ui.separator();
-                ui.add_space(4.0);
 
                 toolbar_button(ui, &mut panels, PanelId::Debug, "#", "Debug (`)", active_color, inactive_color, active_bg);
                 toolbar_button(ui, &mut panels, PanelId::Help, "?", "Help (H)", active_color, inactive_color, active_bg);
 
                 // -- Clear Cache button (action, not a panel toggle) --
-                ui.add_space(4.0);
                 let icon_dim = to_egui_color32(theme.text_dim());
                 let clear_btn = ui.add(
                     egui::Button::new(
@@ -90,7 +84,7 @@ pub fn render_toolbar(
                             .size(16.0)
                             .color(icon_dim),
                     )
-                    .min_size(egui::vec2(32.0, 32.0))
+                    .min_size(egui::vec2(28.0, 22.0))
                 ).on_hover_text("Clear tile cache");
 
                 if clear_btn.clicked() {
@@ -141,7 +135,7 @@ fn toolbar_button(
                 .color(icon_color),
         )
         .fill(if is_open { active_bg } else { egui::Color32::TRANSPARENT })
-        .min_size(egui::vec2(32.0, 32.0))
+        .min_size(egui::vec2(28.0, 22.0))
     ).on_hover_text(tooltip);
 
     if btn.clicked() {
@@ -186,30 +180,4 @@ fn render_connection_indicator(
 
     ui.label(egui::RichText::new("\u{25CF}").size(12.0).color(color))
         .on_hover_text(tooltip);
-}
-
-/// Render map attribution as an egui overlay at the bottom of the screen.
-pub fn render_map_attribution(
-    mut contexts: EguiContexts,
-    theme: Res<AppTheme>,
-) {
-    let Ok(ctx) = contexts.ctx_mut() else {
-        return;
-    };
-
-    egui::Area::new(egui::Id::new("map_attribution"))
-        .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-5.0, -5.0))
-        .interactable(false)
-        .show(ctx, |ui| {
-            let bg = egui::Frame::default()
-                .fill(to_egui_color32_alpha(theme.bg_triage(), 128))
-                .inner_margin(egui::Margin::same(4));
-            bg.show(ui, |ui| {
-                ui.label(
-                    egui::RichText::new("\u{00A9} OpenStreetMap contributors, \u{00A9} CartoDB")
-                        .size(11.0)
-                        .color(to_egui_color32(theme.text_dim())),
-                );
-            });
-        });
 }

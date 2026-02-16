@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy_egui::{egui, EguiContexts};
+use bevy_egui::EguiContexts;
 use serde::{Deserialize, Serialize};
 use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Write};
@@ -221,33 +221,3 @@ pub fn toggle_recording(
     }
 }
 
-/// System to render the recording indicator overlay (blinking REC in top-right).
-///
-/// The recording controls panel has been moved into the Tools window.
-pub fn render_recording_indicator(
-    mut contexts: EguiContexts,
-    recording: Res<RecordingState>,
-) {
-    if !recording.is_recording {
-        return;
-    }
-
-    let Ok(ctx) = contexts.ctx_mut() else {
-        return;
-    };
-
-    egui::Area::new(egui::Id::new("recording_indicator"))
-        .fixed_pos(egui::pos2(ctx.available_rect().width() - 150.0, 10.0))
-        .show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                let time = ui.input(|i| i.time);
-                let alpha = if (time * 2.0) as i32 % 2 == 0 { 255 } else { 100 };
-                ui.label(
-                    egui::RichText::new("REC")
-                        .color(egui::Color32::from_rgba_unmultiplied(255, 0, 0, alpha as u8))
-                        .strong()
-                );
-                ui.label(format!("{}s", recording.duration_secs()));
-            });
-        });
-}
