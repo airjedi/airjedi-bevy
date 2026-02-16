@@ -5,6 +5,8 @@
 //! all existing 2D content (tiles, trails, sprites) renders correctly.
 //! Aircraft altitude is shown by adjusting sprite Z positions.
 
+pub mod sky;
+
 use bevy::prelude::*;
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy_egui::{egui, EguiContexts};
@@ -449,13 +451,19 @@ pub struct View3DPlugin;
 impl Plugin for View3DPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<View3DState>()
+            .init_resource::<sky::SunState>()
+            .add_systems(Startup, sky::setup_sky)
             .add_systems(Update, (
                 toggle_3d_view,
                 animate_view_transition,
                 handle_3d_camera_controls,
                 update_3d_camera.after(animate_view_transition),
             ))
-            .add_systems(Update, update_aircraft_altitude_z);
+            .add_systems(Update, update_aircraft_altitude_z)
+            .add_systems(Update, sky::update_sky_visibility)
+            .add_systems(Update, sky::sync_sky_camera.after(update_3d_camera))
+            .add_systems(Update, sky::update_sun_position)
+            .add_systems(Update, sky::update_star_visibility);
         // 3D view settings panel is rendered via the consolidated Tools window (tools_window.rs)
     }
 }
