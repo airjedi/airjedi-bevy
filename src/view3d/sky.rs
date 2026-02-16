@@ -1,8 +1,9 @@
 //! Sky rendering with atmospheric scattering and day/night cycle.
 //!
-//! Uses Bevy's built-in Atmosphere component on a dedicated Camera3d
-//! to render a physically-based sky. Sun position is computed from
-//! real wall-clock time and the map's geographic coordinates.
+//! Dynamically adds Atmosphere/HDR/Bloom to the Camera2d entity when
+//! entering 3D mode, and removes them when returning to 2D.
+//! Sun position is computed from real wall-clock time and the map's
+//! geographic coordinates.
 
 use bevy::prelude::*;
 use bevy::pbr::{Atmosphere, ScatteringMedium};
@@ -12,13 +13,13 @@ use bevy::render::view::Hdr;
 use super::View3DState;
 use crate::map::MapState;
 
-/// Marker component for the sky camera
-#[derive(Component)]
-pub struct SkyCamera;
-
 /// Marker component for the star field sphere
 #[derive(Component)]
 pub struct StarField;
+
+/// Resource holding the ScatteringMedium handle for dynamic Atmosphere creation
+#[derive(Resource)]
+pub struct SkyMediumHandle(pub Handle<ScatteringMedium>);
 
 /// Resource tracking current sun position
 #[derive(Resource)]
@@ -92,38 +93,36 @@ pub fn compute_sun_position(latitude: f64, longitude: f64) -> (f32, f32) {
 #[derive(Component)]
 pub struct SunLight;
 
-/// Show/hide sky camera and toggle Camera2d clear color based on view mode.
+/// Dynamically add/remove Hdr, Atmosphere, and Bloom on the Camera2d entity
+/// based on whether 3D mode is active.
 pub fn update_sky_visibility(
     state: Res<View3DState>,
-    mut sky_query: Query<&mut Visibility, With<SkyCamera>>,
-    mut camera2d_query: Query<&mut Camera, With<Camera2d>>,
+    medium_handle: Res<SkyMediumHandle>,
+    camera2d_query: Query<(Entity, Has<Hdr>), With<Camera2d>>,
+    mut commands: Commands,
 ) {
     let should_show = state.is_3d_active();
 
-    for mut vis in sky_query.iter_mut() {
-        *vis = if should_show {
-            Visibility::Inherited
-        } else {
-            Visibility::Hidden
-        };
-    }
+    let Ok((camera_entity, has_hdr)) = camera2d_query.single() else {
+        return;
+    };
 
-    for mut camera in camera2d_query.iter_mut() {
-        camera.clear_color = if should_show {
-            ClearColorConfig::None
-        } else {
-            ClearColorConfig::default()
-        };
+    if should_show && !has_hdr {
+        commands.entity(camera_entity).insert((
+            Hdr,
+            Atmosphere::earthlike(medium_handle.0.clone()),
+            Bloom::default(),
+        ));
+    } else if !should_show && has_hdr {
+        commands.entity(camera_entity).remove::<(Hdr, Atmosphere, Bloom)>();
     }
 }
 
-/// Sync sky camera rotation to match the main camera's orientation
-/// and keep star sphere centered on camera position.
+/// Keep star field sphere centered on the Camera2d position.
 pub fn sync_sky_camera(
     state: Res<View3DState>,
-    main_camera: Query<&Transform, (With<Camera2d>, Without<SkyCamera>, Without<StarField>)>,
-    mut sky_camera: Query<&mut Transform, (With<SkyCamera>, Without<StarField>, Without<Camera2d>)>,
-    mut star_query: Query<&mut Transform, (With<StarField>, Without<SkyCamera>, Without<Camera2d>)>,
+    main_camera: Query<&Transform, (With<Camera2d>, Without<StarField>)>,
+    mut star_query: Query<&mut Transform, (With<StarField>, Without<Camera2d>)>,
 ) {
     if !state.is_3d_active() {
         return;
@@ -133,16 +132,13 @@ pub fn sync_sky_camera(
         return;
     };
 
-    if let Ok(mut sky_tf) = sky_camera.single_mut() {
-        sky_tf.rotation = main_tf.rotation;
-    }
-
     if let Ok(mut star_tf) = star_query.single_mut() {
         star_tf.translation = main_tf.translation;
     }
 }
 
-/// Spawn the sky camera and star field. Starts hidden (2D mode is default).
+/// Spawn the star field. Starts hidden (2D mode is default).
+/// The ScatteringMedium handle is stored as a resource for dynamic Atmosphere creation.
 pub fn setup_sky(
     mut commands: Commands,
     mut media: ResMut<Assets<ScatteringMedium>>,
@@ -151,21 +147,7 @@ pub fn setup_sky(
     mut images: ResMut<Assets<Image>>,
 ) {
     let medium = media.add(ScatteringMedium::default());
-
-    commands.spawn((
-        Name::new("Sky Camera"),
-        SkyCamera,
-        Camera3d::default(),
-        Camera {
-            order: -1,
-            ..default()
-        },
-        Hdr,
-        Atmosphere::earthlike(medium),
-        Bloom::default(),
-        Transform::default(),
-        Visibility::Hidden,
-    ));
+    commands.insert_resource(SkyMediumHandle(medium));
 
     // Generate procedural star texture
     let star_image = generate_star_texture(2048);

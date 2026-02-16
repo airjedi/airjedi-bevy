@@ -365,11 +365,22 @@ impl Default for ThemeRegistry {
 // ── egui theme application system ───────────────────────────────────
 
 /// System that applies the active theme's egui Style whenever `AppTheme` changes.
-pub fn apply_egui_theme(theme: Res<AppTheme>, mut contexts: EguiContexts) {
-    if !theme.is_changed() {
+/// Also loads the Phosphor icon font on first run.
+pub fn apply_egui_theme(
+    theme: Res<AppTheme>,
+    mut contexts: EguiContexts,
+    mut fonts_loaded: Local<bool>,
+) {
+    let Ok(ctx) = contexts.ctx_mut() else {
         return;
+    };
+    if !*fonts_loaded {
+        let mut fonts = egui::FontDefinitions::default();
+        egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
+        ctx.set_fonts(fonts);
+        *fonts_loaded = true;
     }
-    if let Ok(ctx) = contexts.ctx_mut() {
+    if theme.is_changed() {
         ctx.set_style(theme.egui_style());
     }
 }
