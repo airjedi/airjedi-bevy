@@ -290,6 +290,7 @@ fn main() {
             view3d::View3DPlugin,
             adsb::AdsbPlugin,
         ))
+        .insert_resource(bevy::winit::WinitSettings::continuous())
         .init_resource::<DragState>()
         .init_resource::<HelpOverlayState>()
         .init_resource::<ui_panels::UiPanelManager>()
@@ -730,11 +731,23 @@ fn handle_zoom(
     mut tile_query: Query<(&mut TileFadeState, &mut Transform), With<MapTile>>,
     logger: Option<Res<ZoomDebugLogger>>,
     mut contexts: EguiContexts,
+    dock_state: Res<dock::DockTreeState>,
 ) {
-    // Don't zoom the map when pointer is over an egui panel (e.g. scrolling a dock panel)
+    // Don't zoom the map when pointer is over a dock panel (but allow zoom over the map viewport)
     if let Ok(ctx) = contexts.ctx_mut() {
         if ctx.is_pointer_over_area() {
-            return;
+            // The egui CentralPanel covers the entire window, so is_pointer_over_area() is
+            // always true. Check if the pointer is inside the map viewport pane -- if so,
+            // allow zoom through to Bevy.
+            if let Some(map_rect) = dock_state.map_viewport_rect {
+                if let Some(pos) = ctx.pointer_latest_pos() {
+                    if !map_rect.contains(pos) {
+                        return;
+                    }
+                } else {
+                    return;
+                }
+            }
         }
     }
 
