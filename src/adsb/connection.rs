@@ -26,13 +26,21 @@ impl AdsbAircraftData {
         }
     }
 
-    pub fn get_aircraft(&self) -> Vec<adsb_client::Aircraft> {
-        self.aircraft.lock().map(|a| a.clone()).unwrap_or_default()
+    /// Try to get a snapshot of all tracked aircraft without blocking.
+    /// Returns `None` if the background thread currently holds the lock.
+    pub fn try_get_aircraft(&self) -> Option<Vec<adsb_client::Aircraft>> {
+        self.aircraft.try_lock().ok().map(|a| a.clone())
+    }
+
+    /// Try to get the aircraft count without cloning the full Vec.
+    /// Returns `None` if the lock is held.
+    pub fn try_aircraft_count(&self) -> Option<usize> {
+        self.aircraft.try_lock().ok().map(|a| a.len())
     }
 
     pub fn get_connection_state(&self) -> ConnectionState {
         self.connection_state
-            .lock()
+            .try_lock()
             .map(|s| s.clone())
             .unwrap_or(ConnectionState::Disconnected)
     }
@@ -119,7 +127,7 @@ pub fn update_connection_status(
     };
 
     let connection_state = adsb_data.get_connection_state();
-    let aircraft_count = adsb_data.get_aircraft().len();
+    let aircraft_count = adsb_data.try_aircraft_count().unwrap_or(0);
 
     // Log connection state transitions
     let state_label = format!("{:?}", connection_state);
