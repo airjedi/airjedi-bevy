@@ -159,6 +159,7 @@ pub fn setup_sky(
         base_color_texture: Some(star_texture),
         unlit: true,
         cull_mode: None,
+        alpha_mode: AlphaMode::Blend,
         ..default()
     });
 
