@@ -38,7 +38,11 @@ pub fn sync_aircraft_from_adsb(
         return; // Aircraft model not yet loaded
     };
 
-    let adsb_aircraft = adsb_data.get_aircraft();
+    // Use try_get to avoid blocking the main thread if the background ADS-B
+    // thread currently holds the lock. We'll just skip this frame and retry next frame.
+    let Some(adsb_aircraft) = adsb_data.try_get_aircraft() else {
+        return;
+    };
 
     // Build a map of existing aircraft entities by ICAO
     let mut existing_aircraft: HashMap<String, Entity> = aircraft_query

@@ -290,7 +290,15 @@ fn main() {
             view3d::View3DPlugin,
             adsb::AdsbPlugin,
         ))
-        .insert_resource(bevy::winit::WinitSettings::continuous())
+        // Full speed when focused; ~4 FPS when unfocused to keep ADS-B data
+        // flowing without overwhelming the GPU or triggering macOS throttling.
+        .insert_resource(bevy::winit::WinitSettings {
+            focused_mode: bevy::winit::UpdateMode::Continuous,
+            unfocused_mode: bevy::winit::UpdateMode::reactive(
+                std::time::Duration::from_millis(250),
+            ),
+        })
+        .init_resource::<SpawnedTiles>()
         .init_resource::<DragState>()
         .init_resource::<HelpOverlayState>()
         .init_resource::<ui_panels::UiPanelManager>()
@@ -335,12 +343,14 @@ fn main() {
         ))
         .add_systems(Update, display_tiles_filtered.after(ApplyDeferred))
         .add_systems(Update, animate_tile_fades.after(display_tiles_filtered))
+        .add_systems(Update, cull_offscreen_tiles.after(display_tiles_filtered))
         .add_systems(Update, handle_keyboard_shortcuts)
         .add_systems(Update, toggle_overlays_keyboard)
         .add_systems(Update, sync_resources_to_panel_manager.after(handle_keyboard_shortcuts))
         .add_systems(Update, sync_panel_manager_to_resources.after(sync_resources_to_panel_manager))
         .add_systems(Update, update_help_overlay)
         .add_systems(Update, debug_panel::update_debug_metrics)
+        .add_systems(Update, heartbeat_diagnostic)
         .run();
 }
 
@@ -353,6 +363,13 @@ struct TileFadeState {
     tile_zoom: u8,
     /// If Some, this tile is from an old zoom level and will despawn after the timer expires
     despawn_delay: Option<f32>,
+}
+
+/// Tracks which tile positions have been spawned to prevent duplicate entities.
+/// Key is (transform_x rounded, transform_y rounded, zoom_level).
+#[derive(Resource, Default)]
+struct SpawnedTiles {
+    positions: std::collections::HashSet<(i32, i32, u8)>,
 }
 
 // Resource to track pan/drag state
@@ -375,6 +392,46 @@ impl ZoomDebugLogger {
             let _ = writeln!(file, "{}", msg);
             let _ = file.flush();
         }
+    }
+}
+
+/// Diagnostic heartbeat: logs wall-clock time, frame delta, and focus state to
+/// tmp/heartbeat.log every ~5 seconds.  If the app freezes, gaps in the log reveal
+/// whether the process was suspended (App Nap) or the main thread was blocked.
+fn heartbeat_diagnostic(
+    time: Res<Time>,
+    mut last_wall: Local<Option<std::time::Instant>>,
+    windows: Query<&Window>,
+    tile_query: Query<(), With<MapTile>>,
+) {
+    // Use wall clock for interval tracking (immune to Bevy virtual time capping)
+    let now = std::time::Instant::now();
+    if let Some(prev) = *last_wall {
+        if now.duration_since(prev).as_secs() < 5 {
+            return;
+        }
+    }
+    *last_wall = Some(now);
+
+    let focused = windows.iter().next().is_some_and(|w| w.focused);
+    let delta_ms = time.delta_secs() * 1000.0;
+    let tile_count = tile_query.iter().count();
+    let elapsed = time.elapsed_secs_f64();
+
+    let msg = format!(
+        "HEARTBEAT: elapsed={:.1}s delta={:.1}ms focused={} tiles={}",
+        elapsed, delta_ms, focused, tile_count
+    );
+    info!("{}", msg);
+
+    // Also write to file with explicit flush
+    let log_path = std::env::current_dir()
+        .ok()
+        .map(|p| p.join("tmp/heartbeat.log"))
+        .unwrap_or_else(|| std::path::PathBuf::from("tmp/heartbeat.log"));
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&log_path) {
+        let _ = writeln!(f, "{}", msg);
+        let _ = f.flush();
     }
 }
 
@@ -732,6 +789,7 @@ fn handle_zoom(
     logger: Option<Res<ZoomDebugLogger>>,
     mut contexts: EguiContexts,
     dock_state: Res<dock::DockTreeState>,
+    mut spawned_tiles: ResMut<SpawnedTiles>,
 ) {
     // Don't zoom the map when pointer is over a dock panel (but allow zoom over the map viewport)
     if let Ok(ctx) = contexts.ctx_mut() {
@@ -857,6 +915,8 @@ fn handle_zoom(
 
         // === Handle zoom level transition (scale old tiles, request new) ===
         if zoom_level_changed {
+            // Clear spawned tile tracker since positions change with zoom level
+            spawned_tiles.positions.clear();
             // Calculate scale factor: when zooming IN, positions double; when zooming OUT, positions halve
             let scale_factor = if map_state.zoom_level.to_u8() > old_tile_zoom.to_u8() {
                 2.0_f32 // Zooming in: scale up
@@ -1018,26 +1078,17 @@ fn display_tiles_filtered(
     map_state: Res<MapState>,
     mut tile_events: MessageReader<SlippyTileDownloadedMessage>,
     mut tile_query: Query<(Entity, &mut TileFadeState), With<MapTile>>,
+    mut spawned_tiles: ResMut<SpawnedTiles>,
     logger: Option<Res<ZoomDebugLogger>>,
 ) {
     let current_zoom = map_state.zoom_level.to_u8();
     let mut spawned_new_tiles = false;
 
     for event in tile_events.read() {
-        info!("Received tile download event: zoom={}, path={:?}", event.zoom_level.to_u8(), event.path);
-
         // Only display tiles that match the current zoom level
         if event.zoom_level != map_state.zoom_level {
-            info!("TILE IGNORED: tile zoom {} != current zoom {}", event.zoom_level.to_u8(), current_zoom);
-            if let Some(ref log) = logger {
-                log.log("=== TILE IGNORED (wrong zoom) ===");
-                log.log(&format!("  tile zoom_level: {} (current map zoom: {})",
-                    event.zoom_level.to_u8(), current_zoom));
-            }
             continue;
         }
-
-        info!("Spawning tile at zoom level {}", event.zoom_level.to_u8());
 
         // Calculate tile position (same logic as bevy_slippy_tiles display_tiles)
         let reference_point = LatitudeLongitudeCoordinates {
@@ -1060,31 +1111,27 @@ fn display_tiles_filtered(
             event.zoom_level
         );
 
-        // SlippyTile.to_latitude_longitude returns the NW corner of the tile.
-        // Since Bevy sprites are centered on their Transform, we need to offset
-        // by half a tile to position the sprite's center at the tile's center.
-        // In world coords: +X is east, +Y is north
-        // Tile center = NW corner + (half_tile_east, half_tile_south)
-        //             = NW corner + (128, -128) for 256-pixel tiles
         let half_tile = event.tile_size.to_pixels() as f64 / 2.0;
-        let tile_center_x = tile_x + half_tile;  // East of NW corner
-        let tile_center_y = tile_y - half_tile;  // South of NW corner (in Bevy coords where +Y is north)
+        let tile_center_x = tile_x + half_tile;
+        let tile_center_y = tile_y - half_tile;
 
         let transform_x = (tile_center_x - ref_x) as f32;
         let transform_y = (tile_center_y - ref_y) as f32;
 
-        // Load the tile image and force a reload to ensure fresh data from disk
-        // This is necessary because AssetServer caches handles by path, and after
-        // clearing the cache, we need to re-read the file from disk
+        // Skip if a tile entity already exists at this position and zoom level
+        let tile_key = (transform_x as i32, transform_y as i32, current_zoom);
+        if !spawned_tiles.positions.insert(tile_key) {
+            continue; // Already spawned
+        }
+
         let tile_path = event.path.clone();
         let tile_handle = asset_server.load(tile_path.clone());
         asset_server.reload(tile_path);
 
-        // Spawn the tile sprite at full opacity for immediate visibility
         commands.spawn((
             Sprite {
                 image: tile_handle,
-                color: Color::WHITE, // Full opacity
+                color: Color::WHITE,
                 ..default()
             },
             Transform::from_xyz(transform_x, transform_y, tile_settings.z_layer),
@@ -1092,23 +1139,19 @@ fn display_tiles_filtered(
             TileFadeState {
                 alpha: 1.0,
                 tile_zoom: current_zoom,
-                despawn_delay: None, // Not scheduled for despawn
+                despawn_delay: None,
             },
         ));
 
         spawned_new_tiles = true;
 
         if let Some(ref log) = logger {
-            log.log("=== TILE DISPLAYED ===");
-            log.log(&format!("  tile zoom_level: {} (current map zoom: {})",
-                event.zoom_level.to_u8(), current_zoom));
-            log.log(&format!("  tile coords: ({:.6}, {:.6})", current_coords.latitude, current_coords.longitude));
-            log.log(&format!("  tile transform: ({:.2}, {:.2})", transform_x, transform_y));
+            log.log(&format!("TILE DISPLAYED: zoom={} pos=({:.0}, {:.0})",
+                current_zoom, transform_x, transform_y));
         }
     }
 
     // When new tiles at the current zoom have been spawned, mark old-zoom tiles for despawn.
-    // This ensures old tiles stay visible until replacements actually arrive.
     if spawned_new_tiles {
         let mut marked = 0;
         for (_entity, mut fade_state) in tile_query.iter_mut() {
@@ -1119,10 +1162,84 @@ fn display_tiles_filtered(
         }
         if marked > 0 {
             info!("Marked {} old-zoom tiles for despawn (new zoom {} tiles arrived)", marked, current_zoom);
-            if let Some(ref log) = logger {
-                log.log(&format!("Marked {} old-zoom tiles for despawn", marked));
-            }
         }
+    }
+}
+
+/// Despawn tile entities that are far outside the visible viewport.
+/// Without this, tiles accumulate indefinitely as the user pans, causing
+/// frame time to grow continuously until the app becomes unresponsive.
+/// Maximum number of tile entities allowed at any time.
+/// At zoom 10 with 256px tiles, a 1280x720 viewport needs ~35 tiles.
+/// We allow extra margin for smooth panning.
+const MAX_TILE_ENTITIES: usize = 200;
+
+fn cull_offscreen_tiles(
+    mut commands: Commands,
+    camera_query: Query<(&Transform, &Projection), With<Camera2d>>,
+    tile_query: Query<(Entity, &Transform, &TileFadeState), With<MapTile>>,
+    window_query: Query<&Window>,
+    mut spawned_tiles: ResMut<SpawnedTiles>,
+) {
+    let Ok((camera_tf, projection)) = camera_query.single() else {
+        return;
+    };
+    let Ok(window) = window_query.single() else {
+        return;
+    };
+
+    let ortho_scale = if let Projection::Orthographic(ref ortho) = projection {
+        ortho.scale
+    } else {
+        1.0
+    };
+
+    // Visible half-extents in world space, with 1.5x margin for smooth panning
+    let margin = 1.5;
+    let half_w = (window.width() / 2.0) * ortho_scale * margin;
+    let half_h = (window.height() / 2.0) * ortho_scale * margin;
+    let cam_x = camera_tf.translation.x;
+    let cam_y = camera_tf.translation.y;
+
+    // Collect all tiles with their distance from camera for sorting
+    let mut tiles: Vec<(Entity, f32, i32, i32, u8)> = tile_query
+        .iter()
+        .map(|(entity, tile_tf, fade_state)| {
+            let dx = (tile_tf.translation.x - cam_x).abs();
+            let dy = (tile_tf.translation.y - cam_y).abs();
+            let dist = dx.max(dy); // Chebyshev distance
+            (entity, dist, tile_tf.translation.x as i32, tile_tf.translation.y as i32, fade_state.tile_zoom)
+        })
+        .collect();
+
+    let mut culled = 0u32;
+
+    // First pass: cull tiles outside the viewport margin
+    tiles.retain(|&(entity, _, tx, ty, zoom)| {
+        let dx = (tx as f32 - cam_x).abs();
+        let dy = (ty as f32 - cam_y).abs();
+        if dx > half_w || dy > half_h {
+            spawned_tiles.positions.remove(&(tx, ty, zoom));
+            commands.entity(entity).despawn();
+            culled += 1;
+            false
+        } else {
+            true
+        }
+    });
+
+    // Second pass: if still over budget, cull farthest tiles
+    if tiles.len() > MAX_TILE_ENTITIES {
+        tiles.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        for &(entity, _, tx, ty, zoom) in &tiles[..tiles.len() - MAX_TILE_ENTITIES] {
+            spawned_tiles.positions.remove(&(tx, ty, zoom));
+            commands.entity(entity).despawn();
+            culled += 1;
+        }
+    }
+
+    if culled > 0 {
+        info!("Culled {} tiles (remaining: {})", culled, tiles.len().min(MAX_TILE_ENTITIES));
     }
 }
 

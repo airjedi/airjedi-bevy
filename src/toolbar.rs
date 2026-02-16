@@ -162,7 +162,7 @@ fn render_connection_indicator(
     };
 
     let connection_state = adsb_data.get_connection_state();
-    let aircraft_count = adsb_data.get_aircraft().len();
+    let aircraft_count = adsb_data.try_aircraft_count().unwrap_or(0);
 
     use adsb_client::ConnectionState;
     let (color, tooltip) = match connection_state {
