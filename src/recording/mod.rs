@@ -5,7 +5,6 @@ pub use recorder::*;
 pub use player::*;
 
 use bevy::prelude::*;
-use bevy_egui::EguiPrimaryContextPass;
 
 pub struct RecordingPlugin;
 
@@ -17,7 +16,6 @@ impl Plugin for RecordingPlugin {
                 record_frame,
                 playback_frame,
                 toggle_recording,
-            ))
-            .add_systems(EguiPrimaryContextPass, render_recording_indicator);
+            ));
     }
 }
