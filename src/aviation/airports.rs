@@ -100,6 +100,7 @@ pub fn update_airport_positions(
     tile_settings: Res<SlippyTilesSettings>,
     map_state: Res<MapState>,
     aviation_data: Res<AviationData>,
+    view3d_state: Res<crate::view3d::View3DState>,
     mut airport_query: Query<(&AirportMarker, &mut Transform)>,
 ) {
     if aviation_data.loading_state != LoadingState::Ready {
@@ -107,6 +108,13 @@ pub fn update_airport_positions(
     }
 
     let converter = CoordinateConverter::new(&tile_settings, map_state.zoom_level);
+
+    // In 3D mode, raise airport markers to ground elevation
+    let z = if view3d_state.is_3d_active() {
+        view3d_state.altitude_to_z(view3d_state.ground_elevation_ft)
+    } else {
+        AIRPORT_Z_LAYER
+    };
 
     // Build a lookup map for airports
     let airport_map: std::collections::HashMap<i64, &Airport> = aviation_data
@@ -120,6 +128,7 @@ pub fn update_airport_positions(
             let pos = converter.latlon_to_world(airport.latitude_deg, airport.longitude_deg);
             transform.translation.x = pos.x;
             transform.translation.y = pos.y;
+            transform.translation.z = z;
         }
     }
 }

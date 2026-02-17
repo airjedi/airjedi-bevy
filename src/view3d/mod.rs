@@ -53,6 +53,10 @@ pub struct View3DState {
     pub show_panel: bool,
     /// Saved 2D camera position (pixel coords) when entering 3D mode
     pub saved_2d_center: Vec2,
+    /// Ground plane elevation in feet ASL (from nearest airport)
+    pub ground_elevation_ft: i32,
+    /// Name of the detected nearest airport (for UI display)
+    pub detected_airport_name: Option<String>,
 }
 
 impl Default for View3DState {
@@ -66,6 +70,8 @@ impl Default for View3DState {
             altitude_scale: ALTITUDE_EXAGGERATION,
             show_panel: false,
             saved_2d_center: Vec2::ZERO,
+            ground_elevation_ft: 0,
+            detected_airport_name: None,
         }
     }
 }
@@ -120,6 +126,8 @@ pub fn toggle_3d_view(
     mut state: ResMut<View3DState>,
     mut contexts: EguiContexts,
     camera_query: Query<&Transform, With<Camera2d>>,
+    map_state: Res<crate::MapState>,
+    aviation_data: Res<crate::aviation::AviationData>,
 ) {
     let egui_wants_input = contexts.ctx_mut()
         .map(|ctx| ctx.wants_keyboard_input())
@@ -144,15 +152,52 @@ pub fn toggle_3d_view(
                         cam_transform.translation.y,
                     );
                 }
+
+                // Auto-detect ground elevation from nearest airport
+                detect_ground_elevation(&mut state, &map_state, &aviation_data);
+
                 state.transition = TransitionState::TransitioningTo3D { progress: 0.0 };
                 state.show_panel = true;
-                info!("Starting transition to 3D view");
+                info!("Starting transition to 3D view (ground elevation: {} ft)", state.ground_elevation_ft);
             }
             ViewMode::Perspective3D => {
                 state.transition = TransitionState::TransitioningTo2D { progress: 0.0 };
                 info!("Starting transition to 2D view");
             }
         }
+    }
+}
+
+/// Find the nearest airport to the current map center and set ground elevation.
+fn detect_ground_elevation(
+    state: &mut View3DState,
+    map_state: &crate::MapState,
+    aviation_data: &crate::aviation::AviationData,
+) {
+    use crate::geo::haversine_distance_nm;
+
+    let center_lat = map_state.latitude;
+    let center_lon = map_state.longitude;
+
+    let mut best_dist = f64::MAX;
+    let mut best_elevation: i32 = 0;
+    let mut best_name: Option<String> = None;
+
+    for airport in &aviation_data.airports {
+        let dist = haversine_distance_nm(center_lat, center_lon, airport.latitude_deg, airport.longitude_deg);
+        if dist < best_dist && dist <= 50.0 {
+            best_dist = dist;
+            best_elevation = airport.elevation_ft.unwrap_or(0);
+            best_name = Some(format!("{} ({})", airport.name, airport.ident));
+        }
+    }
+
+    if best_name.is_some() {
+        state.ground_elevation_ft = best_elevation;
+        state.detected_airport_name = best_name;
+    } else {
+        state.ground_elevation_ft = 0;
+        state.detected_airport_name = None;
     }
 }
 
@@ -214,6 +259,31 @@ pub fn render_3d_view_panel(
             ui.horizontal(|ui| {
                 ui.label("Exaggeration:");
                 ui.add(egui::Slider::new(&mut state.altitude_scale, 0.5..=50.0).suffix("x"));
+            });
+
+            ui.separator();
+            ui.heading("Ground Elevation");
+
+            if let Some(ref name) = state.detected_airport_name {
+                ui.label(
+                    egui::RichText::new(format!("Nearest: {}", name))
+                        .size(11.0)
+                        .color(egui::Color32::LIGHT_BLUE)
+                );
+            } else {
+                ui.label(
+                    egui::RichText::new("No nearby airport detected")
+                        .size(11.0)
+                        .color(egui::Color32::GRAY)
+                );
+            }
+
+            ui.horizontal(|ui| {
+                ui.label("Elevation:");
+                let mut elev = state.ground_elevation_ft as f32;
+                if ui.add(egui::Slider::new(&mut elev, 0.0..=15000.0).suffix(" ft")).changed() {
+                    state.ground_elevation_ft = elev as i32;
+                }
             });
 
             ui.separator();
@@ -284,9 +354,10 @@ pub fn update_3d_camera(
     };
 
     // Fixed endpoints for interpolation
+    let ground_z = state.altitude_to_z(state.ground_elevation_ft);
     let pos_2d = Vec3::new(state.saved_2d_center.x, state.saved_2d_center.y, 0.0);
-    let center = pos_2d;
-    let transform_3d = state.calculate_camera_transform(center);
+    let center_3d = Vec3::new(state.saved_2d_center.x, state.saved_2d_center.y, ground_z);
+    let transform_3d = state.calculate_camera_transform(center_3d);
 
     // Compute the perspective altitude that produces the same visible area as
     // the current orthographic view. At this height with a 60° FOV looking
@@ -414,6 +485,25 @@ pub fn handle_3d_camera_controls(
     }
 }
 
+/// System to raise map tiles to ground elevation in 3D mode.
+/// In 2D mode, tiles sit at TILE_Z_LAYER + 0.1; in 3D mode, they are raised
+/// to match the ground elevation so the map surface appears at terrain height.
+pub fn update_tile_elevation(
+    state: Res<View3DState>,
+    mut tile_query: Query<&mut Transform, With<bevy_slippy_tiles::MapTile>>,
+) {
+    if state.is_3d_active() {
+        let ground_z = state.altitude_to_z(state.ground_elevation_ft);
+        for mut transform in tile_query.iter_mut() {
+            transform.translation.z = ground_z;
+        }
+    } else if !state.is_transitioning() {
+        for mut transform in tile_query.iter_mut() {
+            transform.translation.z = crate::constants::TILE_Z_LAYER + 0.1;
+        }
+    }
+}
+
 /// System to adjust aircraft sprite Z positions based on altitude in 3D mode.
 /// In 2D mode, aircraft Z is the fixed layer constant. In 3D mode, Z represents altitude
 /// so aircraft appear at different heights above the map when viewed from a tilted camera.
@@ -459,6 +549,7 @@ impl Plugin for View3DPlugin {
                 handle_3d_camera_controls,
                 update_3d_camera.after(animate_view_transition),
             ))
+            .add_systems(Update, update_tile_elevation)
             .add_systems(Update, update_aircraft_altitude_z)
             .add_systems(Update, sky::update_sky_visibility)
             .add_systems(Update, sky::sync_sky_camera.after(update_3d_camera))
