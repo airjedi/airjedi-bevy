@@ -267,14 +267,19 @@ pub fn request_tiles_at_location(
 fn main() {
     App::new()
         .add_plugins((
-            DefaultPlugins.set(WindowPlugin {
-                primary_window: Some(Window {
-                    title: "AirJedi - Aircraft Map Tracker".to_string(),
-                    resolution: (1280, 720).into(),
+            DefaultPlugins
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: "AirJedi - Aircraft Map Tracker".to_string(),
+                        resolution: (1280, 720).into(),
+                        ..default()
+                    }),
+                    ..default()
+                })
+                .set(bevy::log::LogPlugin {
+                    filter: "info,wgpu=warn,naga=warn,bevy_render=info".to_string(),
                     ..default()
                 }),
-                ..default()
-            }),
             SlippyTilesPlugin,
             ConfigPlugin,
             aviation::AviationPlugin,
@@ -425,7 +430,7 @@ fn heartbeat_diagnostic(
         "HEARTBEAT: elapsed={:.1}s delta={:.1}ms focused={} tiles={}",
         elapsed, delta_ms, focused, tile_count
     );
-    info!("{}", msg);
+    debug!("{}", msg);
 
     // Also write to file with explicit flush
     let log_path = std::env::current_dir()
@@ -826,7 +831,7 @@ fn handle_zoom(
         ($($arg:tt)*) => {
             {
                 let msg = format!($($arg)*);
-                info!("{}", msg);
+                debug!("{}", msg);
                 if let Some(ref log) = logger {
                     log.log(&msg);
                 }
@@ -1246,7 +1251,7 @@ fn cull_offscreen_tiles(
     }
 
     if culled > 0 {
-        info!("Culled {} tiles (remaining: {})", culled, tiles.len().min(MAX_TILE_ENTITIES));
+        debug!("Culled {} tiles (remaining: {})", culled, tiles.len().min(MAX_TILE_ENTITIES));
     }
 }
 

@@ -21,6 +21,9 @@ cargo build --release
 # Run with release optimizations
 cargo run --release
 
+# Run with debug logging for airjedi
+RUST_LOG=airjedi_bevy=debug cargo run
+
 # Generate and open documentation
 cargo doc --open
 ```
