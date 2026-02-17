@@ -351,6 +351,30 @@ pub fn render_view3d_tab(ui: &mut egui::Ui, state: &mut View3DState) {
         ui.add(egui::Slider::new(&mut state.altitude_scale, 0.1..=10.0));
     });
 
+    ui.separator();
+    ui.label("Ground Elevation:");
+
+    if let Some(ref name) = state.detected_airport_name {
+        ui.label(
+            egui::RichText::new(format!("Nearest: {}", name))
+                .size(11.0)
+                .color(egui::Color32::LIGHT_BLUE)
+        );
+    } else {
+        ui.label(
+            egui::RichText::new("No nearby airport detected")
+                .size(11.0)
+                .color(egui::Color32::GRAY)
+        );
+    }
+
+    ui.horizontal(|ui| {
+        ui.label("Elevation:");
+        let mut elev = state.ground_elevation_ft as f32;
+        if ui.add(egui::Slider::new(&mut elev, 0.0..=15000.0).suffix(" ft")).changed() {
+            state.ground_elevation_ft = elev as i32;
+        }
+    });
 }
 
 pub fn render_recording_tab(
