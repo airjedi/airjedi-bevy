@@ -1,4 +1,4 @@
-use bevy::{prelude::*, input::mouse::MouseWheel, ecs::schedule::ApplyDeferred, light::SunDisk};
+use bevy::{prelude::*, camera::visibility::RenderLayers, gizmos::config::{DefaultGizmoConfigGroup, GizmoConfigStore}, input::mouse::MouseWheel, ecs::schedule::ApplyDeferred, light::SunDisk};
 use bevy_slippy_tiles::*;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
@@ -322,7 +322,7 @@ fn main() {
             auto_render: false,            // Disable auto-render, we handle tile display ourselves
             ..default()
         })
-        .add_systems(Startup, (setup_debug_logger, setup_map))
+        .add_systems(Startup, (setup_debug_logger, setup_map, configure_gizmo_layers))
         .add_systems(Update, check_egui_wants_input.before(handle_pan_drag).before(handle_zoom))
         .add_systems(Update, handle_pan_drag)
         .add_systems(Update, handle_zoom)
@@ -479,18 +479,30 @@ fn setup_debug_logger(mut commands: Commands) {
     }
 }
 
+/// Configure gizmos to render on layer 2 so they are only drawn by Camera2d
+/// (which includes layer 2) and not by Camera3d (default layer 0 only).
+/// This prevents trails, navaids, and runways from being double-rendered
+/// when both cameras share the same transform in 3D mode.
+fn configure_gizmo_layers(mut config_store: ResMut<GizmoConfigStore>) {
+    let (config, _) = config_store.config_mut::<DefaultGizmoConfigGroup>();
+    config.render_layers = RenderLayers::layer(2);
+}
+
 pub(crate) fn setup_map(
     mut commands: Commands,
     mut download_events: MessageWriter<DownloadSlippyTilesMessage>,
     mut tile_settings: ResMut<SlippyTilesSettings>,
     app_config: Res<config::AppConfig>,
 ) {
-    // Set up 2D camera for map tiles and labels
-    commands.spawn(Camera2d);
+    // Set up 2D camera for map tiles and labels.
+    // Layer 0 = default content (tiles, sprites, text).
+    // Layer 2 = gizmos (trails, navaids, runways) — kept off Camera3d to prevent
+    //           double-rendering during 2D↔3D transitions.
+    commands.spawn((Camera2d, RenderLayers::from_layers(&[0, 2])));
 
     // Set up 3D camera for aircraft models (renders on top of 2D, with transparent clear).
-    // Uses Color::NONE (transparent black) so the alpha-blended upscaling pass correctly
-    // composites 3D content without overwriting the 2D camera's output.
+    // Stays on default layer 0 so it sees 3D meshes (SceneRoot children inherit layer 0)
+    // but NOT gizmos (layer 2).
     commands.spawn((
         Camera3d::default(),
         AircraftCamera,
@@ -984,28 +996,18 @@ fn apply_camera_zoom(
 /// Sync Camera3d transform and projection to match Camera2d each frame.
 /// This ensures 3D aircraft models are rendered with the same view as the 2D map.
 ///
-/// In 3D mode the AircraftCamera uses `ClearColorConfig::None` so it preserves
-/// the Camera2d output (which now includes the sky).  In 2D mode it uses
-/// `ClearColorConfig::Custom(Color::NONE)` for transparent compositing.
+/// Camera3d always clears to transparent (`Color::NONE`) so it gets a fresh
+/// canvas each frame. Its rendered content alpha-composites on top of
+/// Camera2d's output (tiles, sky, gizmos) without accumulating old frames.
 fn sync_aircraft_camera(
     camera_2d: Query<(&Transform, &Projection), (With<Camera2d>, Without<AircraftCamera>)>,
-    mut camera_3d: Query<(&mut Transform, &mut Projection, &mut Camera), (With<AircraftCamera>, Without<Camera2d>)>,
-    view3d_state: Res<view3d::View3DState>,
+    mut camera_3d: Query<(&mut Transform, &mut Projection), (With<AircraftCamera>, Without<Camera2d>)>,
 ) {
-    let (Ok((t2, p2)), Ok((mut t3, mut p3, mut cam))) = (camera_2d.single(), camera_3d.single_mut()) else {
+    let (Ok((t2, p2)), Ok((mut t3, mut p3))) = (camera_2d.single(), camera_3d.single_mut()) else {
         return;
     };
     *t3 = *t2;
     *p3 = p2.clone();
-
-    // In 3D mode, preserve the Camera2d's rendered output (including the sky)
-    // by not clearing the framebuffer.  In 2D mode, use transparent clear so
-    // the 3D camera composites on top without overwriting 2D content.
-    if view3d_state.is_3d_active() {
-        cam.clear_color = ClearColorConfig::None;
-    } else {
-        cam.clear_color = ClearColorConfig::Custom(Color::NONE);
-    }
 }
 
 // Keep aircraft and labels at constant screen size despite zoom changes

@@ -12,7 +12,6 @@ use egui_phosphor::regular;
 use crate::ui_panels::{UiPanelManager, PanelId};
 use crate::theme::{AppTheme, to_egui_color32, to_egui_color32_alpha};
 use crate::MapState;
-use crate::adsb::AdsbAircraftData;
 
 /// Width of the toolbar in pixels.
 const TOOLBAR_WIDTH: f32 = 44.0;
@@ -26,7 +25,6 @@ pub fn render_toolbar(
     mut commands: Commands,
     tile_query: Query<Entity, With<MapTile>>,
     mut slippy_tile_download_status: ResMut<SlippyTileDownloadStatus>,
-    adsb_data: Option<Res<AdsbAircraftData>>,
     theme: Res<AppTheme>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
@@ -51,11 +49,6 @@ pub fn render_toolbar(
                 let active_color = to_egui_color32(theme.accent_primary());
                 let inactive_color = to_egui_color32(theme.text_dim());
                 let active_bg = to_egui_color32_alpha(theme.accent_primary(), 30);
-
-                // -- Connection status indicator at top --
-                render_connection_indicator(ui, &adsb_data, &theme);
-
-                ui.separator();
 
                 // -- Panel toggle buttons --
                 toolbar_button(ui, &mut panels, PanelId::Settings, regular::GEAR, "Settings", active_color, inactive_color, active_bg);
@@ -145,41 +138,3 @@ fn toolbar_button(
     }
 }
 
-/// Render the ADS-B connection status indicator at the top of the toolbar.
-fn render_connection_indicator(
-    ui: &mut egui::Ui,
-    adsb_data: &Option<Res<AdsbAircraftData>>,
-    theme: &AppTheme,
-) {
-    let Some(adsb_data) = adsb_data else {
-        ui.label(egui::RichText::new("\u{25CF}").size(12.0).color(to_egui_color32(theme.bg_overlay())))
-            .on_hover_text("ADS-B: No client");
-        return;
-    };
-
-    let connection_state = adsb_data.get_connection_state();
-    let aircraft_count = adsb_data.try_aircraft_count().unwrap_or(0);
-
-    use adsb_client::ConnectionState;
-    let (color, tooltip) = match connection_state {
-        ConnectionState::Connected => (
-            to_egui_color32(theme.text_success()),
-            format!("ADS-B: {} aircraft", aircraft_count),
-        ),
-        ConnectionState::Connecting => (
-            to_egui_color32(theme.text_warn()),
-            "ADS-B: Connecting...".to_string(),
-        ),
-        ConnectionState::Disconnected => (
-            to_egui_color32(theme.text_error()),
-            "ADS-B: Disconnected".to_string(),
-        ),
-        ConnectionState::Error(ref msg) => (
-            to_egui_color32(theme.text_error()),
-            format!("ADS-B: Error - {}", msg),
-        ),
-    };
-
-    ui.label(egui::RichText::new("\u{25CF}").size(12.0).color(color))
-        .on_hover_text(tooltip);
-}
