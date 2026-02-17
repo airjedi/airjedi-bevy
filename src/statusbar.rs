@@ -152,11 +152,10 @@ fn render_connection_section(
     theme: &AppTheme,
 ) {
     let Some(data) = adsb_data else {
-        ui.label(
-            egui::RichText::new("\u{25CF} No client")
-                .size(FONT_SIZE)
-                .color(to_egui_color32(theme.text_dim())),
-        );
+        let dim = to_egui_color32(theme.text_dim());
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
+        ui.painter().circle_filled(rect.center(), 4.0, dim);
+        ui.label(egui::RichText::new("No client").size(FONT_SIZE).color(dim));
         return;
     };
 
@@ -169,7 +168,8 @@ fn render_connection_section(
         ConnectionState::Error(_) => (to_egui_color32(theme.text_error()), "Error"),
     };
 
-    ui.label(egui::RichText::new("\u{25CF}").size(FONT_SIZE).color(color));
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
+    ui.painter().circle_filled(rect.center(), 4.0, color);
     ui.label(egui::RichText::new(label).size(FONT_SIZE).color(color));
 }
 
