@@ -9,6 +9,7 @@ pub mod sky;
 
 use bevy::prelude::*;
 use bevy::input::mouse::{MouseMotion, MouseWheel};
+use bevy::input::gestures::PinchGesture;
 use bevy_egui::{egui, EguiContexts};
 
 // Constants for 3D view
@@ -416,66 +417,115 @@ fn smooth_step(t: f32) -> f32 {
 }
 
 const ORBIT_SENSITIVITY: f32 = 0.3;
+const PAN_3D_SENSITIVITY: f32 = 0.003;
 const PITCH_SCROLL_SENSITIVITY: f32 = 2.0;
 const ALTITUDE_SCROLL_SENSITIVITY: f32 = 1000.0;
 
-/// System to handle 3D camera controls (orbit, pitch, distance)
+/// System to handle 3D camera controls.
+///
+/// - **Click+drag**: Pan (translate camera and target in XY, no rotation)
+/// - **Shift+click+drag**: Orbit (rotate yaw and pitch around target)
+/// - **Scroll**: Change camera altitude (zoom in/out)
+/// - **Shift+scroll**: Change camera pitch
+/// - **Pinch**: Change camera altitude
 pub fn handle_3d_camera_controls(
     mouse_button: Res<ButtonInput<MouseButton>>,
     keyboard: Res<ButtonInput<KeyCode>>,
     mut mouse_motion: MessageReader<MouseMotion>,
     mut scroll_events: MessageReader<MouseWheel>,
+    mut pinch_events: MessageReader<PinchGesture>,
     mut state: ResMut<View3DState>,
+    mut map_state: ResMut<crate::MapState>,
+    mut follow_state: ResMut<crate::aircraft::CameraFollowState>,
+    tile_settings: Res<bevy_slippy_tiles::SlippyTilesSettings>,
     mut contexts: EguiContexts,
+    dock_state: Res<crate::dock::DockTreeState>,
 ) {
     // Only active in 3D mode
     if !matches!(state.mode, ViewMode::Perspective3D) {
-        // Clear events to avoid accumulation
         mouse_motion.clear();
         scroll_events.clear();
+        pinch_events.clear();
         return;
     }
 
-    // Don't process if transitioning
     if state.is_transitioning() {
         mouse_motion.clear();
         scroll_events.clear();
+        pinch_events.clear();
         return;
     }
 
-    // Check if egui wants input
-    let egui_wants_input = contexts.ctx_mut()
-        .map(|ctx| ctx.wants_pointer_input() || ctx.wants_keyboard_input())
-        .unwrap_or(false);
-
-    if egui_wants_input {
-        mouse_motion.clear();
-        scroll_events.clear();
-        return;
+    // Don't process input when pointer is over UI panels (allow over map viewport)
+    if let Ok(ctx) = contexts.ctx_mut() {
+        if ctx.is_pointer_over_area() {
+            let over_map = if let Some(map_rect) = dock_state.map_viewport_rect {
+                ctx.pointer_latest_pos().is_some_and(|pos| map_rect.contains(pos))
+            } else {
+                false
+            };
+            if !over_map {
+                mouse_motion.clear();
+                scroll_events.clear();
+                pinch_events.clear();
+                return;
+            }
+        }
     }
 
-    // Left drag = orbit (yaw)
+    let shift_held = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
+
+    // Mouse drag handling
     if mouse_button.pressed(MouseButton::Left) {
         for event in mouse_motion.read() {
-            state.camera_yaw += event.delta.x * ORBIT_SENSITIVITY;
-            if state.camera_yaw < 0.0 {
-                state.camera_yaw += 360.0;
-            } else if state.camera_yaw >= 360.0 {
-                state.camera_yaw -= 360.0;
+            if shift_held {
+                // Shift+drag = Orbit (rotate around target)
+                state.camera_yaw += event.delta.x * ORBIT_SENSITIVITY;
+                if state.camera_yaw < 0.0 { state.camera_yaw += 360.0; }
+                if state.camera_yaw >= 360.0 { state.camera_yaw -= 360.0; }
+                state.camera_pitch = (state.camera_pitch - event.delta.y * ORBIT_SENSITIVITY)
+                    .clamp(MIN_PITCH, MAX_PITCH);
+            } else {
+                // Plain drag = Pan (translate XY only, no rotation)
+                if event.delta.length() > 2.0 && follow_state.following_icao.is_some() {
+                    follow_state.following_icao = None;
+                }
+
+                let pan_speed = state.altitude_to_distance() * PAN_3D_SENSITIVITY;
+                let yaw_rad = state.camera_yaw.to_radians();
+
+                // Camera basis vectors projected onto the ground plane.
+                // At yaw=0 the camera is south of center looking north, so
+                // camera-right = east (+X) and camera-forward = north (+Y).
+                let cam_right_x = yaw_rad.cos();
+                let cam_right_y = -yaw_rad.sin();
+                let cam_fwd_x = yaw_rad.sin();
+                let cam_fwd_y = yaw_rad.cos();
+
+                // Negate deltas: dragging right moves the map right (center left)
+                // Y is NOT negated so dragging toward the top moves the view backward
+                let dx = -event.delta.x * pan_speed;
+                let dy = event.delta.y * pan_speed;
+
+                state.saved_2d_center.x += dx * cam_right_x + dy * cam_fwd_x;
+                state.saved_2d_center.y += dx * cam_right_y + dy * cam_fwd_y;
+
+                // Keep map_state in sync so tiles are loaded for the new position
+                sync_center_to_map_state(&state, &tile_settings, &mut map_state);
             }
         }
     } else {
         mouse_motion.clear();
     }
 
-    // Scroll = altitude, Shift+Scroll = pitch
+    // Scroll = altitude (zoom), Shift+Scroll = pitch
     for event in scroll_events.read() {
         let scroll_y = match event.unit {
             bevy::input::mouse::MouseScrollUnit::Line => event.y,
             bevy::input::mouse::MouseScrollUnit::Pixel => event.y * 0.01,
         };
 
-        if keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight) {
+        if shift_held {
             state.camera_pitch = (state.camera_pitch + scroll_y * PITCH_SCROLL_SENSITIVITY)
                 .clamp(MIN_PITCH, MAX_PITCH);
         } else {
@@ -483,6 +533,42 @@ pub fn handle_3d_camera_controls(
                 .clamp(MIN_CAMERA_ALTITUDE, MAX_CAMERA_ALTITUDE);
         }
     }
+
+    // Pinch = altitude (zoom)
+    for event in pinch_events.read() {
+        state.camera_altitude = (state.camera_altitude * (1.0 - event.0))
+            .clamp(MIN_CAMERA_ALTITUDE, MAX_CAMERA_ALTITUDE);
+    }
+}
+
+/// Convert saved_2d_center (pixel-space offset from tile reference point) back to
+/// geographic coordinates and update the shared map state so tiles are loaded.
+fn sync_center_to_map_state(
+    state: &View3DState,
+    tile_settings: &bevy_slippy_tiles::SlippyTilesSettings,
+    map_state: &mut crate::MapState,
+) {
+    use bevy_slippy_tiles::*;
+
+    let reference_ll = LatitudeLongitudeCoordinates {
+        latitude: tile_settings.reference_latitude,
+        longitude: tile_settings.reference_longitude,
+    };
+    let reference_pixel = world_coords_to_world_pixel(
+        &reference_ll,
+        TileSize::Normal,
+        map_state.zoom_level,
+    );
+
+    let center_geo = world_pixel_to_world_coords(
+        state.saved_2d_center.x as f64 + reference_pixel.0,
+        state.saved_2d_center.y as f64 + reference_pixel.1,
+        TileSize::Normal,
+        map_state.zoom_level,
+    );
+
+    map_state.latitude = crate::clamp_latitude(center_geo.latitude);
+    map_state.longitude = crate::clamp_longitude(center_geo.longitude);
 }
 
 /// System to raise map tiles to ground elevation in 3D mode.
