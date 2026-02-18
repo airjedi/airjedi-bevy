@@ -49,11 +49,8 @@ pub fn draw_runways(
     }
 
     let converter = CoordinateConverter::new(&tile_settings, map_state.zoom_level);
-    let ground_z = if view3d_state.is_3d_active() {
-        view3d_state.altitude_to_z(view3d_state.ground_elevation_ft)
-    } else {
-        0.0
-    };
+    let is_3d = view3d_state.is_3d_active();
+    let ground_z = view3d_state.altitude_to_z(view3d_state.ground_elevation_ft);
 
     for runway in &aviation_data.runways {
         if !runway.has_valid_coords() || runway.is_closed() {
@@ -68,7 +65,7 @@ pub fn draw_runways(
         let start = converter.latlon_to_world(le_lat, le_lon);
         let end = converter.latlon_to_world(he_lat, he_lon);
 
-        if ground_z != 0.0 {
+        if is_3d {
             gizmos.line(
                 Vec3::new(start.x, start.y, ground_z),
                 Vec3::new(end.x, end.y, ground_z),

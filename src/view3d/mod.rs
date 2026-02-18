@@ -549,7 +549,8 @@ impl Plugin for View3DPlugin {
                 handle_3d_camera_controls,
                 update_3d_camera.after(animate_view_transition),
             ))
-            .add_systems(Update, update_tile_elevation)
+            .add_systems(Update, update_tile_elevation
+                .after(animate_view_transition))
             .add_systems(Update, update_aircraft_altitude_z)
             .add_systems(Update, sky::update_sky_visibility)
             .add_systems(Update, sky::sync_sky_camera.after(update_3d_camera))
