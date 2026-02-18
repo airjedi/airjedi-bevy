@@ -47,11 +47,7 @@ pub fn draw_navaids(
 
     let converter = CoordinateConverter::new(&tile_settings, map_state.zoom_level);
     let is_3d = view3d_state.is_3d_active();
-    let ground_z = if is_3d {
-        view3d_state.altitude_to_z(view3d_state.ground_elevation_ft)
-    } else {
-        0.0
-    };
+    let ground_z = view3d_state.altitude_to_z(view3d_state.ground_elevation_ft);
 
     for navaid in &aviation_data.navaids {
         let pos = converter.latlon_to_world(navaid.latitude_deg, navaid.longitude_deg);

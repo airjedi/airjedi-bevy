@@ -1109,6 +1109,7 @@ fn display_tiles_filtered(
     mut tile_query: Query<(Entity, &mut TileFadeState), With<MapTile>>,
     mut spawned_tiles: ResMut<SpawnedTiles>,
     logger: Option<Res<ZoomDebugLogger>>,
+    view3d_state: Res<view3d::View3DState>,
 ) {
     let current_zoom = map_state.zoom_level.to_u8();
 
@@ -1158,13 +1159,20 @@ fn display_tiles_filtered(
 
         // Spawn new tiles translucent and slightly above old tiles so they
         // fade in on top, hiding the old zoom level progressively.
+        // In 3D mode, spawn at ground elevation so tiles are coplanar with
+        // airports, runways, and other ground-level features.
+        let tile_z = if view3d_state.is_3d_active() {
+            view3d_state.altitude_to_z(view3d_state.ground_elevation_ft)
+        } else {
+            tile_settings.z_layer + 0.1
+        };
         commands.spawn((
             Sprite {
                 image: tile_handle,
                 color: Color::srgba(1.0, 1.0, 1.0, 0.0),
                 ..default()
             },
-            Transform::from_xyz(transform_x, transform_y, tile_settings.z_layer + 0.1),
+            Transform::from_xyz(transform_x, transform_y, tile_z),
             MapTile,
             TileFadeState {
                 alpha: 0.0,
