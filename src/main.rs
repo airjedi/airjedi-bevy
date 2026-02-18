@@ -1,4 +1,4 @@
-use bevy::{prelude::*, camera::visibility::RenderLayers, gizmos::config::{DefaultGizmoConfigGroup, GizmoConfigStore}, input::mouse::MouseWheel, ecs::schedule::ApplyDeferred, light::SunDisk};
+use bevy::{prelude::*, camera::visibility::RenderLayers, gizmos::config::{DefaultGizmoConfigGroup, GizmoConfigStore}, input::mouse::MouseWheel, input::gestures::PinchGesture, ecs::schedule::ApplyDeferred, light::SunDisk};
 use bevy_slippy_tiles::*;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
@@ -104,12 +104,12 @@ pub(crate) mod constants {
 // =============================================================================
 
 /// Clamp latitude to valid Mercator projection range
-fn clamp_latitude(lat: f64) -> f64 {
+pub(crate) fn clamp_latitude(lat: f64) -> f64 {
     lat.clamp(-constants::MERCATOR_LAT_LIMIT, constants::MERCATOR_LAT_LIMIT)
 }
 
 /// Clamp longitude to valid range
-fn clamp_longitude(lon: f64) -> f64 {
+pub(crate) fn clamp_longitude(lon: f64) -> f64 {
     lon.clamp(-180.0, 180.0)
 }
 
@@ -310,6 +310,7 @@ fn main() {
         })
         .init_resource::<SpawnedTiles>()
         .init_resource::<DragState>()
+        .init_resource::<EguiWantsPointer>()
         .init_resource::<HelpOverlayState>()
         .init_resource::<ui_panels::UiPanelManager>()
         .init_resource::<tools_window::ToolsWindowState>()
@@ -331,6 +332,7 @@ fn main() {
         .add_systems(Update, check_egui_wants_input.before(handle_pan_drag).before(handle_zoom))
         .add_systems(Update, handle_pan_drag)
         .add_systems(Update, handle_zoom)
+        .add_systems(Update, handle_pinch_zoom)
         .add_systems(Update, handle_window_resize)
         .add_systems(Update, handle_3d_view_tile_refresh)
         // Apply deferred commands (like despawns) before updating camera/tiles
@@ -623,15 +625,31 @@ fn handle_3d_view_tile_refresh(
 // Aircraft texture setup, sync, label update, and connection status
 // are now in the adsb module.
 
+/// Tracks whether egui wants pointer input this frame, used to prevent
+/// map interactions when clicking/scrolling over UI panels.
+#[derive(Resource, Default)]
+struct EguiWantsPointer(bool);
+
 fn check_egui_wants_input(
     mut contexts: EguiContexts,
     mut drag_state: ResMut<DragState>,
+    mut egui_wants: ResMut<EguiWantsPointer>,
+    dock_state: Res<dock::DockTreeState>,
 ) {
+    egui_wants.0 = false;
     if let Ok(ctx) = contexts.ctx_mut() {
         if ctx.wants_keyboard_input() || ctx.wants_pointer_input() {
-            // Reset drag state to prevent map panning while in settings
-            drag_state.is_dragging = false;
-            drag_state.last_position = None;
+            // Check if pointer is over the map viewport (allow interaction there)
+            let over_map = if let Some(map_rect) = dock_state.map_viewport_rect {
+                ctx.pointer_latest_pos().is_some_and(|pos| map_rect.contains(pos))
+            } else {
+                false
+            };
+            if !over_map {
+                egui_wants.0 = true;
+                drag_state.is_dragging = false;
+                drag_state.last_position = None;
+            }
         }
     }
 }
@@ -645,41 +663,40 @@ fn handle_pan_drag(
     mut download_events: MessageWriter<DownloadSlippyTilesMessage>,
     mut follow_state: ResMut<aircraft::CameraFollowState>,
     window_query: Query<&Window>,
+    egui_wants: Res<EguiWantsPointer>,
+    view3d_state: Res<view3d::View3DState>,
 ) {
-    let Ok(_window) = window_query.single() else {
+    let Ok(window) = window_query.single() else {
         return;
     };
 
-    // Check if left mouse button is pressed
-    if mouse_button.just_pressed(MouseButton::Left) {
+    // In 3D mode, panning is handled by handle_3d_camera_controls
+    if view3d_state.is_3d_active() || view3d_state.is_transitioning() {
+        drag_state.is_dragging = false;
+        drag_state.last_position = None;
+        return;
+    }
+
+    // Only start a new drag if pointer is not over a UI panel
+    if mouse_button.just_pressed(MouseButton::Left) && !egui_wants.0 {
         drag_state.is_dragging = true;
         drag_state.last_position = None;
     }
 
     if mouse_button.just_released(MouseButton::Left) {
-        drag_state.is_dragging = false;
-        drag_state.last_position = None;
-
-        // Request new tiles after drag completes
-        if let Some((last_lat, last_lon)) = drag_state.last_tile_request_coords {
-            // Only request if moved significantly (more than ~100m at equator)
-            let lat_diff = (map_state.latitude - last_lat).abs();
-            let lon_diff = (map_state.longitude - last_lon).abs();
-            if lat_diff > constants::PAN_TILE_REQUEST_THRESHOLD
-                || lon_diff > constants::PAN_TILE_REQUEST_THRESHOLD
-            {
-                request_tiles_at_location(
-                    &mut download_events,
-                    map_state.latitude,
-                    map_state.longitude,
-                    map_state.zoom_level,
-                    true,
-                );
-                drag_state.last_tile_request_coords = Some((map_state.latitude, map_state.longitude));
-            }
-        } else {
+        if drag_state.is_dragging {
+            // Final tile request at drag end position
+            request_tiles_at_location(
+                &mut download_events,
+                map_state.latitude,
+                map_state.longitude,
+                map_state.zoom_level,
+                true,
+            );
             drag_state.last_tile_request_coords = Some((map_state.latitude, map_state.longitude));
         }
+        drag_state.is_dragging = false;
+        drag_state.last_position = None;
     }
 
     // Handle dragging
@@ -695,7 +712,7 @@ fn handle_pan_drag(
 
                 // Convert screen delta to world delta (account for ortho projection)
                 // When ortho.scale = 1/camera_zoom, world_delta = screen_delta / camera_zoom
-                let delta_world_x = -(delta.x as f64) / zoom_state.camera_zoom as f64; // Negative for natural pan direction
+                let delta_world_x = -(delta.x as f64) / zoom_state.camera_zoom as f64;
                 let delta_world_y = (delta.y as f64) / zoom_state.camera_zoom as f64;
 
                 // Get current center in world pixels
@@ -724,6 +741,37 @@ fn handle_pan_drag(
                 // Update map coordinates
                 map_state.latitude = clamp_latitude(new_center_geo.latitude);
                 map_state.longitude = clamp_longitude(new_center_geo.longitude);
+
+                // Request tiles periodically during drag to fill visible area
+                let should_request = match drag_state.last_tile_request_coords {
+                    Some((last_lat, last_lon)) => {
+                        let lat_diff = (map_state.latitude - last_lat).abs();
+                        let lon_diff = (map_state.longitude - last_lon).abs();
+                        lat_diff > constants::PAN_TILE_REQUEST_THRESHOLD
+                            || lon_diff > constants::PAN_TILE_REQUEST_THRESHOLD
+                    }
+                    None => true,
+                };
+                if should_request {
+                    let radius = compute_tile_radius(
+                        window.width(),
+                        window.height(),
+                        zoom_state.camera_zoom,
+                        Some(&view3d_state),
+                    );
+                    download_events.write(DownloadSlippyTilesMessage {
+                        tile_size: TileSize::Normal,
+                        zoom_level: map_state.zoom_level,
+                        coordinates: Coordinates::from_latitude_longitude(
+                            map_state.latitude,
+                            map_state.longitude,
+                        ),
+                        radius: Radius(radius),
+                        use_cache: true,
+                    });
+                    drag_state.last_tile_request_coords =
+                        Some((map_state.latitude, map_state.longitude));
+                }
             }
             drag_state.last_position = Some(event.position);
         }
@@ -820,7 +868,12 @@ fn handle_zoom(
     mut contexts: EguiContexts,
     dock_state: Res<dock::DockTreeState>,
     mut spawned_tiles: ResMut<SpawnedTiles>,
+    view3d_state: Res<view3d::View3DState>,
 ) {
+    // In 3D mode, scroll is handled by handle_3d_camera_controls
+    if view3d_state.is_3d_active() || view3d_state.is_transitioning() {
+        return;
+    }
     // Don't zoom the map when pointer is over a dock panel (but allow zoom over the map viewport)
     if let Ok(ctx) = contexts.ctx_mut() {
         if ctx.is_pointer_over_area() {
@@ -872,9 +925,6 @@ fn handle_zoom(
         // Get cursor position in viewport coordinates (None if cursor not in window)
         let Some(cursor_viewport_pos) = window.cursor_position() else {
             // No cursor, just zoom at center
-            let zoom_factor = 1.0 - zoom_delta;
-            zoom_state.camera_zoom = (zoom_state.camera_zoom * zoom_factor)
-                .clamp(zoom_state.min_zoom, zoom_state.max_zoom);
             log_info!("No cursor - new camera_zoom={}", zoom_state.camera_zoom);
             continue;
         };
@@ -885,8 +935,8 @@ fn handle_zoom(
         let camera_zoom_before_scroll = zoom_state.camera_zoom;
 
         // Update camera zoom (multiplicative for smooth feel)
-        // Positive scroll = zoom in (smaller scale), negative = zoom out (larger scale)
-        let zoom_factor = 1.0 - zoom_delta;
+        // Positive scroll (up/forward) = zoom in, negative = zoom out
+        let zoom_factor = 1.0 + zoom_delta;
         let new_camera_zoom = (zoom_state.camera_zoom * zoom_factor)
             .clamp(zoom_state.min_zoom, zoom_state.max_zoom);
 
@@ -980,6 +1030,112 @@ fn handle_zoom(
 
         log_info!("=== SCROLL EVENT END ===
 ");
+    }
+}
+
+/// Handle trackpad pinch-to-zoom gestures (macOS).
+/// PinchGesture.0 is positive for zoom in, negative for zoom out.
+fn handle_pinch_zoom(
+    mut pinch_events: MessageReader<PinchGesture>,
+    mut map_state: ResMut<MapState>,
+    mut zoom_state: ResMut<ZoomState>,
+    mut download_events: MessageWriter<DownloadSlippyTilesMessage>,
+    window_query: Query<&Window>,
+    mut tile_query: Query<(&mut TileFadeState, &mut Transform), With<MapTile>>,
+    mut contexts: EguiContexts,
+    dock_state: Res<dock::DockTreeState>,
+    mut spawned_tiles: ResMut<SpawnedTiles>,
+    view3d_state: Res<view3d::View3DState>,
+) {
+    // In 3D mode, zoom is handled by handle_3d_camera_controls
+    if view3d_state.is_3d_active() || view3d_state.is_transitioning() {
+        return;
+    }
+
+    // Don't zoom when pointer is over a dock panel (same logic as handle_zoom)
+    if let Ok(ctx) = contexts.ctx_mut() {
+        if ctx.is_pointer_over_area() {
+            if let Some(map_rect) = dock_state.map_viewport_rect {
+                if let Some(pos) = ctx.pointer_latest_pos() {
+                    if !map_rect.contains(pos) {
+                        return;
+                    }
+                } else {
+                    return;
+                }
+            }
+        }
+    }
+
+    let Ok(window) = window_query.single() else {
+        return;
+    };
+
+    use constants::{ZOOM_UPGRADE_THRESHOLD, ZOOM_DOWNGRADE_THRESHOLD};
+
+    for event in pinch_events.read() {
+        let pinch_delta = event.0;
+        let camera_zoom_before = zoom_state.camera_zoom;
+
+        // Apply pinch directly as a multiplicative factor
+        let zoom_factor = 1.0 + pinch_delta;
+        zoom_state.camera_zoom = (zoom_state.camera_zoom * zoom_factor)
+            .clamp(zoom_state.min_zoom, zoom_state.max_zoom);
+
+        // Zoom-to-cursor: keep the point under cursor stationary
+        if let Some(cursor_viewport_pos) = window.cursor_position() {
+            let old_tile_zoom = map_state.zoom_level;
+
+            // Check for zoom level transitions
+            let current_tile_zoom = old_tile_zoom.to_u8();
+            let mut zoom_level_changed = false;
+            if zoom_state.camera_zoom >= ZOOM_UPGRADE_THRESHOLD && current_tile_zoom < 19 {
+                zoom_state.camera_zoom /= 2.0;
+                if let Ok(new_zoom) = ZoomLevel::try_from(current_tile_zoom + 1) {
+                    map_state.zoom_level = new_zoom;
+                    zoom_level_changed = true;
+                }
+            } else if zoom_state.camera_zoom <= ZOOM_DOWNGRADE_THRESHOLD && current_tile_zoom > 0 {
+                zoom_state.camera_zoom *= 2.0;
+                if let Ok(new_zoom) = ZoomLevel::try_from(current_tile_zoom - 1) {
+                    map_state.zoom_level = new_zoom;
+                    zoom_level_changed = true;
+                }
+            }
+
+            let (new_lat, new_lon) = calculate_zoom_to_cursor_center(
+                cursor_viewport_pos,
+                (window.width(), window.height()),
+                (map_state.latitude, map_state.longitude),
+                camera_zoom_before,
+                zoom_state.camera_zoom,
+                old_tile_zoom,
+                map_state.zoom_level,
+            );
+            map_state.latitude = clamp_latitude(new_lat);
+            map_state.longitude = clamp_longitude(new_lon);
+
+            if zoom_level_changed {
+                spawned_tiles.positions.clear();
+                let scale_factor = if map_state.zoom_level.to_u8() > old_tile_zoom.to_u8() {
+                    2.0_f32
+                } else {
+                    0.5_f32
+                };
+                for (_fade_state, mut transform) in tile_query.iter_mut() {
+                    transform.translation.x *= scale_factor;
+                    transform.translation.y *= scale_factor;
+                    transform.scale *= scale_factor;
+                }
+                request_tiles_at_location(
+                    &mut download_events,
+                    map_state.latitude,
+                    map_state.longitude,
+                    map_state.zoom_level,
+                    true,
+                );
+            }
+        }
     }
 }
 
