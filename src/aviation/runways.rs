@@ -3,7 +3,8 @@ use bevy_slippy_tiles::*;
 
 use super::{AviationData, LoadingState};
 use crate::MapState;
-use crate::geo::CoordinateConverter;
+use crate::constants;
+use crate::geo::{CoordinateConverter, haversine_distance_nm};
 
 /// Component marking a runway entity
 #[derive(Component)]
@@ -52,6 +53,9 @@ pub fn draw_runways(
     let is_3d = view3d_state.is_3d_active();
     let ground_z = view3d_state.altitude_to_z(view3d_state.ground_elevation_ft);
 
+    let center_lat = map_state.latitude;
+    let center_lon = map_state.longitude;
+
     for runway in &aviation_data.runways {
         if !runway.has_valid_coords() || runway.is_closed() {
             continue;
@@ -61,6 +65,18 @@ pub fn draw_runways(
         let le_lon = runway.le_longitude_deg.unwrap();
         let he_lat = runway.he_latitude_deg.unwrap();
         let he_lon = runway.he_longitude_deg.unwrap();
+
+        // Distance culling: skip runways beyond the visibility radius
+        if (le_lat - center_lat).abs() > constants::AVIATION_FEATURE_BBOX_DEG
+            || (le_lon - center_lon).abs() > constants::AVIATION_FEATURE_BBOX_DEG
+        {
+            continue;
+        }
+        if haversine_distance_nm(center_lat, center_lon, le_lat, le_lon)
+            > constants::AVIATION_FEATURE_RADIUS_NM
+        {
+            continue;
+        }
 
         let start = converter.latlon_to_world(le_lat, le_lon);
         let end = converter.latlon_to_world(he_lat, he_lon);

@@ -3,7 +3,8 @@ use bevy_slippy_tiles::*;
 
 use super::{Airport, AirportFilter, AviationData, LoadingState};
 use crate::MapState;
-use crate::geo::CoordinateConverter;
+use crate::constants;
+use crate::geo::{CoordinateConverter, haversine_distance_nm};
 
 /// Component marking an airport entity
 #[derive(Component)]
@@ -133,17 +134,49 @@ pub fn update_airport_positions(
     }
 }
 
-/// System to toggle airport visibility based on zoom level
+/// System to toggle airport visibility based on zoom level and distance from camera
 pub fn update_airport_visibility(
     map_state: Res<MapState>,
     render_state: Res<AirportRenderState>,
-    mut airport_query: Query<&mut Visibility, With<AirportMarker>>,
+    aviation_data: Res<AviationData>,
+    mut airport_query: Query<(&AirportMarker, &mut Visibility)>,
 ) {
     let zoom: u8 = map_state.zoom_level.to_u8();
-    let should_show = render_state.show_airports && zoom >= 6;
+    let zoom_ok = render_state.show_airports && zoom >= 6;
 
-    for mut visibility in airport_query.iter_mut() {
-        *visibility = if should_show {
+    if !zoom_ok {
+        for (_, mut visibility) in airport_query.iter_mut() {
+            *visibility = Visibility::Hidden;
+        }
+        return;
+    }
+
+    let center_lat = map_state.latitude;
+    let center_lon = map_state.longitude;
+
+    // Build a lookup map for airport coordinates
+    let airport_map: std::collections::HashMap<i64, &Airport> = aviation_data
+        .airports
+        .iter()
+        .map(|a| (a.id, a))
+        .collect();
+
+    for (marker, mut visibility) in airport_query.iter_mut() {
+        let in_range = if let Some(airport) = airport_map.get(&marker.airport_id) {
+            (airport.latitude_deg - center_lat).abs() <= constants::AVIATION_FEATURE_BBOX_DEG
+                && (airport.longitude_deg - center_lon).abs()
+                    <= constants::AVIATION_FEATURE_BBOX_DEG
+                && haversine_distance_nm(
+                    center_lat,
+                    center_lon,
+                    airport.latitude_deg,
+                    airport.longitude_deg,
+                ) <= constants::AVIATION_FEATURE_RADIUS_NM
+        } else {
+            false
+        };
+
+        *visibility = if in_range {
             Visibility::Inherited
         } else {
             Visibility::Hidden
