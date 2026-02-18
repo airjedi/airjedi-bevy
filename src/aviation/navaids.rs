@@ -3,7 +3,8 @@ use bevy_slippy_tiles::*;
 
 use super::{AviationData, LoadingState, NavaidType};
 use crate::MapState;
-use crate::geo::CoordinateConverter;
+use crate::constants;
+use crate::geo::{CoordinateConverter, haversine_distance_nm};
 
 /// Component marking a navaid entity
 #[derive(Component)]
@@ -49,7 +50,22 @@ pub fn draw_navaids(
     let is_3d = view3d_state.is_3d_active();
     let ground_z = view3d_state.altitude_to_z(view3d_state.ground_elevation_ft);
 
+    let center_lat = map_state.latitude;
+    let center_lon = map_state.longitude;
+
     for navaid in &aviation_data.navaids {
+        // Distance culling: skip navaids beyond the visibility radius
+        if (navaid.latitude_deg - center_lat).abs() > constants::AVIATION_FEATURE_BBOX_DEG
+            || (navaid.longitude_deg - center_lon).abs() > constants::AVIATION_FEATURE_BBOX_DEG
+        {
+            continue;
+        }
+        if haversine_distance_nm(center_lat, center_lon, navaid.latitude_deg, navaid.longitude_deg)
+            > constants::AVIATION_FEATURE_RADIUS_NM
+        {
+            continue;
+        }
+
         let pos = converter.latlon_to_world(navaid.latitude_deg, navaid.longitude_deg);
 
         let color = navaid.color();

@@ -88,6 +88,11 @@ pub(crate) mod constants {
     pub const DEFAULT_LATITUDE: f64 = 37.6872;
     pub const DEFAULT_LONGITUDE: f64 = -97.3301;
 
+    // Aviation feature visibility radius (nautical miles)
+    pub const AVIATION_FEATURE_RADIUS_NM: f64 = 120.0;
+    // Bounding box pre-filter margin in degrees (~3° covers 120 NM at all latitudes)
+    pub const AVIATION_FEATURE_BBOX_DEG: f64 = 3.0;
+
     // ADS-B connection settings
     pub const ADSB_SERVER_ADDRESS: &str = "98.186.33.60:30003";
     pub const ADSB_MAX_DISTANCE_MILES: f64 = 250.0;
