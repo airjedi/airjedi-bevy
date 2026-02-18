@@ -298,7 +298,7 @@ pub fn render_aircraft_list_panel(
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("Sort:")
                     .color(header_color)
-                    .size(10.0));
+                    .size(11.0));
                 egui::ComboBox::from_id_salt("sort_by")
                     .selected_text(list_state.sort_by.label())
                     .show_ui(ui, |ui| {
@@ -321,7 +321,7 @@ pub fn render_aircraft_list_panel(
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("Search:")
                     .color(header_color)
-                    .size(10.0));
+                    .size(11.0));
                 ui.text_edit_singleline(&mut list_state.search_text);
             });
 
@@ -334,7 +334,7 @@ pub fn render_aircraft_list_panel(
                     .show(ui, |ui| {
                         ui.label(egui::RichText::new("Altitude (ft):")
                             .color(header_color)
-                            .size(9.0));
+                            .size(10.0));
                         ui.horizontal(|ui| {
                             ui.add(egui::DragValue::new(&mut list_state.filters.min_altitude)
                                 .range(0..=60000)
@@ -346,7 +346,7 @@ pub fn render_aircraft_list_panel(
 
                         ui.label(egui::RichText::new("Speed (kts):")
                             .color(header_color)
-                            .size(9.0));
+                            .size(10.0));
                         ui.horizontal(|ui| {
                             ui.add(egui::DragValue::new(&mut list_state.filters.min_speed)
                                 .range(0.0..=600.0)
@@ -358,7 +358,7 @@ pub fn render_aircraft_list_panel(
 
                         ui.label(egui::RichText::new("Distance (nm):")
                             .color(header_color)
-                            .size(9.0));
+                            .size(10.0));
                         ui.add(egui::DragValue::new(&mut list_state.filters.max_distance)
                             .range(0.0..=500.0)
                             .prefix("Max: "));
@@ -368,7 +368,7 @@ pub fn render_aircraft_list_panel(
                         // Callsign/operator prefix filter
                         ui.label(egui::RichText::new("Callsign Prefix:")
                             .color(header_color)
-                            .size(9.0));
+                            .size(10.0));
                         ui.add(egui::TextEdit::singleline(&mut list_state.filters.callsign_prefix)
                             .hint_text("e.g., AAL, UAL, SWA")
                             .desired_width(120.0));
@@ -379,7 +379,7 @@ pub fn render_aircraft_list_panel(
                         ui.checkbox(&mut list_state.filters.include_ground_traffic,
                             egui::RichText::new("Include ground traffic")
                                 .color(header_color)
-                                .size(9.0));
+                                .size(10.0));
 
                         ui.add_space(4.0);
 
@@ -394,7 +394,7 @@ pub fn render_aircraft_list_panel(
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new(format!("TOTAL: {}", display_list.aircraft.len()))
                     .color(header_color)
-                    .size(10.0)
+                    .size(11.0)
                     .monospace());
             });
 
@@ -428,7 +428,7 @@ pub fn render_aircraft_list_panel(
             egui::ScrollArea::vertical()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
-                    ui.spacing_mut().item_spacing.y = 1.0;
+                    ui.spacing_mut().item_spacing.y = 2.0;
 
                     for aircraft in &display_list.aircraft {
                         let is_selected = list_state.selected_icao.as_ref() == Some(&aircraft.icao);
@@ -438,26 +438,26 @@ pub fn render_aircraft_list_panel(
                         let card_frame = if is_selected {
                             egui::Frame::NONE
                                 .fill(selected_bg)
-                                .inner_margin(egui::Margin::symmetric(4, 2))
+                                .inner_margin(egui::Margin::symmetric(4, 3))
                         } else {
                             egui::Frame::NONE
-                                .inner_margin(egui::Margin::symmetric(4, 2))
+                                .inner_margin(egui::Margin::symmetric(4, 3))
                         };
 
                         let card_response = card_frame.show(ui, |ui| {
-                            ui.spacing_mut().item_spacing.y = 1.0;
+                            ui.spacing_mut().item_spacing.y = 2.0;
 
                             // Row 1: Status + ICAO + Callsign + Altitude
                             ui.horizontal(|ui| {
                                 // Status indicator (active since we don't have timestamps)
                                 ui.label(egui::RichText::new("\u{25CF}")
                                     .color(status_active)
-                                    .size(11.0));
+                                    .size(12.0));
 
                                 // ICAO
                                 ui.label(egui::RichText::new(&aircraft.icao)
                                     .color(icao_color)
-                                    .size(10.5)
+                                    .size(12.0)
                                     .monospace()
                                     .strong());
 
@@ -470,7 +470,7 @@ pub fn render_aircraft_list_panel(
                                     };
                                     ui.label(egui::RichText::new(format!("\u{2502} {}", callsign.trim()))
                                         .color(cs_color)
-                                        .size(10.5)
+                                        .size(12.0)
                                         .strong());
                                 }
 
@@ -479,32 +479,32 @@ pub fn render_aircraft_list_panel(
                                     let alt_text = format!("\u{2502} {}", format_altitude_with_indicator(alt, alt_indicator));
                                     ui.label(egui::RichText::new(alt_text)
                                         .color(alt_color)
-                                        .size(9.5)
+                                        .size(11.0)
                                         .monospace());
                                 }
                             });
 
                             // Row 2: Speed + Heading + Range
                             ui.horizontal(|ui| {
-                                ui.spacing_mut().item_spacing.x = 6.0;
+                                ui.spacing_mut().item_spacing.x = 8.0;
 
                                 if let Some(vel) = aircraft.velocity {
                                     ui.label(egui::RichText::new(format!("{:03}kt", vel as i32))
                                         .color(metrics_color)
-                                        .size(8.0)
+                                        .size(10.0)
                                         .monospace());
                                 }
 
                                 if let Some(heading) = aircraft.heading {
                                     ui.label(egui::RichText::new(format!("{:03}\u{00B0}", heading as i32))
                                         .color(metrics_color)
-                                        .size(8.0)
+                                        .size(10.0)
                                         .monospace());
                                 }
 
                                 ui.label(egui::RichText::new(format!("{:.1}nm", aircraft.distance))
                                     .color(range_color)
-                                    .size(8.0)
+                                    .size(10.0)
                                     .monospace());
                             });
 
@@ -520,7 +520,7 @@ pub fn render_aircraft_list_panel(
                                     };
                                     ui.label(egui::RichText::new(format!("{} {}ft/min", vr_symbol, vr))
                                         .color(vr_color)
-                                        .size(7.5)
+                                        .size(9.0)
                                         .monospace());
                                 }
 
@@ -535,7 +535,7 @@ pub fn render_aircraft_list_panel(
                                     if ui.add(egui::Button::new(
                                         egui::RichText::new(follow_text)
                                             .color(follow_color)
-                                            .size(8.0)
+                                            .size(9.0)
                                     ).small()).clicked() {
                                         if is_following {
                                             follow_state.following_icao = None;
@@ -608,7 +608,7 @@ pub fn render_aircraft_list_pane_content(
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new("Sort:")
             .color(header_color)
-            .size(10.0));
+            .size(11.0));
         egui::ComboBox::from_id_salt("sort_by")
             .selected_text(list_state.sort_by.label())
             .show_ui(ui, |ui| {
@@ -631,7 +631,7 @@ pub fn render_aircraft_list_pane_content(
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new("Search:")
             .color(header_color)
-            .size(10.0));
+            .size(11.0));
         ui.text_edit_singleline(&mut list_state.search_text);
     });
 
@@ -644,7 +644,7 @@ pub fn render_aircraft_list_pane_content(
             .show(ui, |ui| {
                 ui.label(egui::RichText::new("Altitude (ft):")
                     .color(header_color)
-                    .size(9.0));
+                    .size(10.0));
                 ui.horizontal(|ui| {
                     ui.add(egui::DragValue::new(&mut list_state.filters.min_altitude)
                         .range(0..=60000)
@@ -656,7 +656,7 @@ pub fn render_aircraft_list_pane_content(
 
                 ui.label(egui::RichText::new("Speed (kts):")
                     .color(header_color)
-                    .size(9.0));
+                    .size(10.0));
                 ui.horizontal(|ui| {
                     ui.add(egui::DragValue::new(&mut list_state.filters.min_speed)
                         .range(0.0..=600.0)
@@ -668,7 +668,7 @@ pub fn render_aircraft_list_pane_content(
 
                 ui.label(egui::RichText::new("Distance (nm):")
                     .color(header_color)
-                    .size(9.0));
+                    .size(10.0));
                 ui.add(egui::DragValue::new(&mut list_state.filters.max_distance)
                     .range(0.0..=500.0)
                     .prefix("Max: "));
@@ -678,7 +678,7 @@ pub fn render_aircraft_list_pane_content(
                 // Callsign/operator prefix filter
                 ui.label(egui::RichText::new("Callsign Prefix:")
                     .color(header_color)
-                    .size(9.0));
+                    .size(10.0));
                 ui.add(egui::TextEdit::singleline(&mut list_state.filters.callsign_prefix)
                     .hint_text("e.g., AAL, UAL, SWA")
                     .desired_width(120.0));
@@ -689,7 +689,7 @@ pub fn render_aircraft_list_pane_content(
                 ui.checkbox(&mut list_state.filters.include_ground_traffic,
                     egui::RichText::new("Include ground traffic")
                         .color(header_color)
-                        .size(9.0));
+                        .size(10.0));
 
                 ui.add_space(4.0);
 
@@ -704,7 +704,7 @@ pub fn render_aircraft_list_pane_content(
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new(format!("TOTAL: {}", display_list.aircraft.len()))
             .color(header_color)
-            .size(10.0)
+            .size(11.0)
             .monospace());
     });
 
@@ -736,7 +736,7 @@ pub fn render_aircraft_list_pane_content(
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            ui.spacing_mut().item_spacing.y = 1.0;
+            ui.spacing_mut().item_spacing.y = 2.0;
 
             for aircraft in &display_list.aircraft {
                 let is_selected = list_state.selected_icao.as_ref() == Some(&aircraft.icao);
@@ -745,24 +745,24 @@ pub fn render_aircraft_list_pane_content(
                 let card_frame = if is_selected {
                     egui::Frame::NONE
                         .fill(selected_bg)
-                        .inner_margin(egui::Margin::symmetric(4, 2))
+                        .inner_margin(egui::Margin::symmetric(4, 3))
                 } else {
                     egui::Frame::NONE
-                        .inner_margin(egui::Margin::symmetric(4, 2))
+                        .inner_margin(egui::Margin::symmetric(4, 3))
                 };
 
                 let card_response = card_frame.show(ui, |ui| {
-                    ui.spacing_mut().item_spacing.y = 1.0;
+                    ui.spacing_mut().item_spacing.y = 2.0;
 
                     // Row 1: Status + ICAO + Callsign + Altitude
                     ui.horizontal(|ui| {
                         ui.label(egui::RichText::new("\u{25CF}")
                             .color(status_active)
-                            .size(11.0));
+                            .size(12.0));
 
                         ui.label(egui::RichText::new(&aircraft.icao)
                             .color(icao_color)
-                            .size(10.5)
+                            .size(12.0)
                             .monospace()
                             .strong());
 
@@ -774,7 +774,7 @@ pub fn render_aircraft_list_pane_content(
                             };
                             ui.label(egui::RichText::new(format!("\u{2502} {}", callsign.trim()))
                                 .color(cs_color)
-                                .size(10.5)
+                                .size(12.0)
                                 .strong());
                         }
 
@@ -782,32 +782,32 @@ pub fn render_aircraft_list_pane_content(
                             let alt_text = format!("\u{2502} {}", format_altitude_with_indicator(alt, alt_indicator));
                             ui.label(egui::RichText::new(alt_text)
                                 .color(alt_color)
-                                .size(9.5)
+                                .size(11.0)
                                 .monospace());
                         }
                     });
 
                     // Row 2: Speed + Heading + Range
                     ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 6.0;
+                        ui.spacing_mut().item_spacing.x = 8.0;
 
                         if let Some(vel) = aircraft.velocity {
                             ui.label(egui::RichText::new(format!("{:03}kt", vel as i32))
                                 .color(metrics_color)
-                                .size(8.0)
+                                .size(10.0)
                                 .monospace());
                         }
 
                         if let Some(heading) = aircraft.heading {
                             ui.label(egui::RichText::new(format!("{:03}\u{00B0}", heading as i32))
                                 .color(metrics_color)
-                                .size(8.0)
+                                .size(10.0)
                                 .monospace());
                         }
 
                         ui.label(egui::RichText::new(format!("{:.1}nm", aircraft.distance))
                             .color(range_color)
-                            .size(8.0)
+                            .size(10.0)
                             .monospace());
                     });
 
@@ -823,7 +823,7 @@ pub fn render_aircraft_list_pane_content(
                             };
                             ui.label(egui::RichText::new(format!("{} {}ft/min", vr_symbol, vr))
                                 .color(vr_color)
-                                .size(7.5)
+                                .size(9.0)
                                 .monospace());
                         }
 
@@ -838,7 +838,7 @@ pub fn render_aircraft_list_pane_content(
                             if ui.add(egui::Button::new(
                                 egui::RichText::new(follow_text)
                                     .color(follow_color)
-                                    .size(8.0)
+                                    .size(9.0)
                             ).small()).clicked() {
                                 if is_following {
                                     follow_state.following_icao = None;
@@ -935,59 +935,59 @@ fn render_detail_section(
         .show(ui, |ui| {
             egui::Grid::new("detail_grid_stacked")
                 .num_columns(2)
-                .spacing([30.0, 3.0])
+                .spacing([30.0, 4.0])
                 .show(ui, |ui| {
-                    ui.label(egui::RichText::new("Position").color(label_color).size(10.0));
+                    ui.label(egui::RichText::new("Position").color(label_color).size(11.0));
                     ui.label(
                         egui::RichText::new(format!("{:.4}, {:.4}", aircraft.latitude, aircraft.longitude))
-                            .color(value_color).size(10.0).monospace(),
+                            .color(value_color).size(11.0).monospace(),
                     );
                     ui.end_row();
 
-                    ui.label(egui::RichText::new("Altitude").color(label_color).size(10.0));
+                    ui.label(egui::RichText::new("Altitude").color(label_color).size(11.0));
                     let alt_text = format_altitude(aircraft.altitude);
-                    ui.label(egui::RichText::new(alt_text).color(value_color).size(10.0).monospace());
+                    ui.label(egui::RichText::new(alt_text).color(value_color).size(11.0).monospace());
                     ui.end_row();
 
-                    ui.label(egui::RichText::new("Speed").color(label_color).size(10.0));
+                    ui.label(egui::RichText::new("Speed").color(label_color).size(11.0));
                     let speed_text = aircraft.velocity
                         .map(|v| format!("{} kts", v as i32))
                         .unwrap_or_else(|| "---".to_string());
-                    ui.label(egui::RichText::new(speed_text).color(value_color).size(10.0).monospace());
+                    ui.label(egui::RichText::new(speed_text).color(value_color).size(11.0).monospace());
                     ui.end_row();
 
-                    ui.label(egui::RichText::new("Heading").color(label_color).size(10.0));
+                    ui.label(egui::RichText::new("Heading").color(label_color).size(11.0));
                     let heading_text = aircraft.heading
                         .map(|h| format!("{:03}\u{00B0}", h as i32))
                         .unwrap_or_else(|| "---".to_string());
-                    ui.label(egui::RichText::new(heading_text).color(value_color).size(10.0).monospace());
+                    ui.label(egui::RichText::new(heading_text).color(value_color).size(11.0).monospace());
                     ui.end_row();
 
-                    ui.label(egui::RichText::new("V/Rate").color(label_color).size(10.0));
+                    ui.label(egui::RichText::new("V/Rate").color(label_color).size(11.0));
                     let vr_text = aircraft.vertical_rate
                         .map(|vr| {
                             let sym = if vr > 100 { "+" } else { "" };
                             format!("{}{} ft/min", sym, vr)
                         })
                         .unwrap_or_else(|| "---".to_string());
-                    ui.label(egui::RichText::new(vr_text).color(value_color).size(10.0).monospace());
+                    ui.label(egui::RichText::new(vr_text).color(value_color).size(11.0).monospace());
                     ui.end_row();
 
-                    ui.label(egui::RichText::new("Distance").color(label_color).size(10.0));
+                    ui.label(egui::RichText::new("Distance").color(label_color).size(11.0));
                     ui.label(egui::RichText::new(format!("{:.1} nm", distance_nm))
-                        .color(highlight_color).size(10.0).monospace());
+                        .color(highlight_color).size(11.0).monospace());
                     ui.end_row();
 
-                    ui.label(egui::RichText::new("Track Pts").color(label_color).size(10.0));
+                    ui.label(egui::RichText::new("Track Pts").color(label_color).size(11.0));
                     ui.label(egui::RichText::new(format!("{}", trail.points.len()))
-                        .color(value_color).size(10.0).monospace());
+                        .color(value_color).size(11.0).monospace());
                     ui.end_row();
 
-                    ui.label(egui::RichText::new("Duration").color(label_color).size(10.0));
+                    ui.label(egui::RichText::new("Duration").color(label_color).size(11.0));
                     let dur_text = oldest_point_age.or(track_duration)
                         .map(|secs| format!("{}:{:02}", secs / 60, secs % 60))
                         .unwrap_or_else(|| "---".to_string());
-                    ui.label(egui::RichText::new(dur_text).color(value_color).size(10.0).monospace());
+                    ui.label(egui::RichText::new(dur_text).color(value_color).size(11.0).monospace());
                     ui.end_row();
                 });
 
