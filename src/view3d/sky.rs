@@ -7,6 +7,7 @@
 //! geographic coordinates.
 
 use bevy::prelude::*;
+use bevy::pbr::{Atmosphere, AtmosphereSettings};
 
 use super::View3DState;
 use crate::map::MapState;
@@ -159,12 +160,10 @@ pub fn setup_sky(
 fn generate_star_texture(size: u32) -> Image {
     use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
+    // All pixels start as RGBA(0,0,0,0) — fully transparent.
+    // Only star pixels get alpha=255 so the star field composites
+    // over the atmosphere sky without an opaque black background.
     let mut data = vec![0u8; (size * size * 4) as usize];
-
-    // Set alpha to 255 for all pixels (opaque black background)
-    for pixel in 0..(size * size) as usize {
-        data[pixel * 4 + 3] = 255;
-    }
 
     let num_stars = 800;
     for i in 0..num_stars {
@@ -229,6 +228,7 @@ pub fn update_star_visibility(
 /// Update sun direction from real wall-clock time and map coordinates.
 pub fn update_sun_position(
     map_state: Res<MapState>,
+    state: Res<View3DState>,
     mut sun_state: ResMut<SunState>,
     mut sun_query: Query<(&mut DirectionalLight, &mut Transform), With<SunLight>>,
     mut ambient: ResMut<GlobalAmbientLight>,
@@ -256,7 +256,79 @@ pub fn update_sun_position(
         light.illuminance = 0.0;
     }
 
-    // Scale ambient light: bright during day, dim at night
+    // Scale ambient light
     let ambient_factor = ((elevation + 12.0) / 24.0).clamp(0.05, 1.0);
-    ambient.brightness = 300.0 * ambient_factor;
+    if state.is_3d_active() {
+        // In 3D mode, atmosphere provides sky irradiance; reduce ambient to avoid double-lighting
+        ambient.brightness = 80.0 * ambient_factor;
+    } else {
+        ambient.brightness = 300.0 * ambient_factor;
+    }
+}
+
+/// Insert or remove atmosphere components on Camera3d based on 3D mode state.
+/// In 3D mode, Camera3d renders first (order=0) with atmosphere painting the sky,
+/// and Camera2d renders on top (order=1) with tiles composited over.
+pub fn manage_atmosphere_camera(
+    mut commands: Commands,
+    state: Res<View3DState>,
+    medium_handle: Option<Res<crate::AtmosphereMediumHandle>>,
+    mut camera_3d: Query<(Entity, &mut Camera, Option<&Atmosphere>), With<Camera3d>>,
+    mut camera_2d: Query<&mut Camera, (With<Camera2d>, Without<Camera3d>)>,
+) {
+    let Some(medium_handle) = medium_handle else {
+        return;
+    };
+    let Ok((cam3d_entity, mut cam3d, has_atmo)) = camera_3d.single_mut() else {
+        return;
+    };
+    let Ok(mut cam2d) = camera_2d.single_mut() else {
+        return;
+    };
+
+    if state.is_3d_active() {
+        if has_atmo.is_none() {
+            let scene_units_to_m = 1000.0 / (super::PIXEL_SCALE * state.altitude_scale);
+            let mut atmo = Atmosphere::earthlike(medium_handle.0.clone());
+            atmo.ground_albedo = Vec3::new(0.05, 0.05, 0.08);
+            commands.entity(cam3d_entity).insert((
+                atmo,
+                AtmosphereSettings {
+                    scene_units_to_m,
+                    ..default()
+                },
+            ));
+        }
+        // Camera3d renders first (order=0), atmosphere paints sky
+        cam3d.order = 0;
+        cam3d.clear_color = ClearColorConfig::Default;
+        // Camera2d renders on top (order=1), tiles composite over atmosphere
+        cam2d.order = 1;
+        cam2d.clear_color = ClearColorConfig::Custom(Color::NONE);
+    } else {
+        if has_atmo.is_some() {
+            commands.entity(cam3d_entity)
+                .remove::<Atmosphere>()
+                .remove::<AtmosphereSettings>();
+        }
+        // Restore original camera order
+        cam2d.order = 0;
+        cam2d.clear_color = ClearColorConfig::Default;
+        cam3d.order = 1;
+        cam3d.clear_color = ClearColorConfig::Custom(Color::NONE);
+    }
+}
+
+/// Update atmosphere scale when View3DState changes (altitude_scale).
+pub fn update_atmosphere_scale(
+    state: Res<View3DState>,
+    mut settings_query: Query<&mut AtmosphereSettings, With<Camera3d>>,
+) {
+    if !state.is_changed() {
+        return;
+    }
+    let Ok(mut settings) = settings_query.single_mut() else {
+        return;
+    };
+    settings.scene_units_to_m = 1000.0 / (super::PIXEL_SCALE * state.altitude_scale);
 }
