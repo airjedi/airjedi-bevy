@@ -23,7 +23,7 @@ const MAX_CAMERA_ALTITUDE: f32 = 60000.0;
 const ALTITUDE_EXAGGERATION: f32 = 2.0;
 
 /// Scale factor to convert altitude/distance values to pixel-space.
-const PIXEL_SCALE: f32 = 20.0;
+pub(crate) const PIXEL_SCALE: f32 = 20.0;
 
 /// View mode for the application
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -650,7 +650,10 @@ impl Plugin for View3DPlugin {
             .add_systems(Update, sky::update_sky_visibility)
             .add_systems(Update, sky::sync_sky_camera.after(update_3d_camera))
             .add_systems(Update, sky::update_sun_position)
-            .add_systems(Update, sky::update_star_visibility);
+            .add_systems(Update, sky::update_star_visibility)
+            .add_systems(Update, sky::manage_atmosphere_camera
+                .after(animate_view_transition))
+            .add_systems(Update, sky::update_atmosphere_scale);
         // 3D view settings panel is rendered via the consolidated Tools window (tools_window.rs)
     }
 }

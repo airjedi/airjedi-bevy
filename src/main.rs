@@ -1,4 +1,4 @@
-use bevy::{prelude::*, camera::visibility::RenderLayers, gizmos::config::{DefaultGizmoConfigGroup, GizmoConfigStore}, input::mouse::MouseWheel, input::gestures::PinchGesture, ecs::schedule::ApplyDeferred, light::SunDisk};
+use bevy::{prelude::*, camera::visibility::RenderLayers, gizmos::config::{DefaultGizmoConfigGroup, GizmoConfigStore}, input::mouse::MouseWheel, input::gestures::PinchGesture, ecs::schedule::ApplyDeferred, light::SunDisk, pbr::ScatteringMedium};
 use bevy_slippy_tiles::*;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
@@ -395,6 +395,11 @@ struct DragState {
     last_tile_request_coords: Option<(f64, f64)>,
 }
 
+/// Holds the shared Handle<ScatteringMedium> used by Atmosphere components.
+/// Created at startup with ScatteringMedium::earthlike() defaults.
+#[derive(Resource)]
+pub struct AtmosphereMediumHandle(pub Handle<ScatteringMedium>);
+
 // Resource to hold debug log file handle
 #[derive(Resource, Clone)]
 struct ZoomDebugLogger {
@@ -500,6 +505,7 @@ pub(crate) fn setup_map(
     mut download_events: MessageWriter<DownloadSlippyTilesMessage>,
     mut tile_settings: ResMut<SlippyTilesSettings>,
     app_config: Res<config::AppConfig>,
+    mut scattering_mediums: ResMut<Assets<ScatteringMedium>>,
 ) {
     // Set up 2D camera for map tiles and labels.
     // Layer 0 = default content (tiles, sprites, text).
@@ -538,6 +544,12 @@ pub(crate) fn setup_map(
         view3d::sky::SunLight,
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -1.0, 0.3, 0.0)),
     ));
+
+    // Create an earthlike scattering medium for atmospheric rendering.
+    // The handle is stored as a resource so sky.rs can attach Atmosphere
+    // components to cameras when 3D mode is activated.
+    let medium = scattering_mediums.add(ScatteringMedium::earthlike(256, 256));
+    commands.insert_resource(AtmosphereMediumHandle(medium));
 
     // Set up centralized tile cache (creates cache dir + symlink into assets/)
     tile_cache::setup_tile_cache();
