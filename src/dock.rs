@@ -119,7 +119,6 @@ const BOTTOM_PANES: &[DockPane] = &[
     DockPane::DataSources,
     DockPane::Export,
     DockPane::Recording,
-    DockPane::View3D,
 ];
 
 /// Panes grouped in the right tab container.
@@ -129,6 +128,7 @@ const RIGHT_PANES: &[DockPane] = &[
     DockPane::Bookmarks,
     DockPane::Stats,
     DockPane::Settings,
+    DockPane::View3D,
 ];
 
 impl Default for DockTreeState {
@@ -158,7 +158,7 @@ impl Default for DockTreeState {
             pane_tile_ids.insert(pane, id);
         }
 
-        // Bottom tabs: Debug, Coverage, Airspace, DataSources, Export, Recording, View3D
+        // Bottom tabs: Debug, Coverage, Airspace, DataSources, Export, Recording
         let bottom_tabs_id = tiles.insert_tab_tile(vec![
             pane_tile_ids[&DockPane::Debug],
             pane_tile_ids[&DockPane::Coverage],
@@ -166,16 +166,16 @@ impl Default for DockTreeState {
             pane_tile_ids[&DockPane::DataSources],
             pane_tile_ids[&DockPane::Export],
             pane_tile_ids[&DockPane::Recording],
-            pane_tile_ids[&DockPane::View3D],
         ]);
 
-        // Right tabs: AircraftList, AircraftDetail, Bookmarks, Stats, Settings
+        // Right tabs: AircraftList, AircraftDetail, Bookmarks, Stats, Settings, View3D
         let right_tabs_id = tiles.insert_tab_tile(vec![
             pane_tile_ids[&DockPane::AircraftList],
             pane_tile_ids[&DockPane::AircraftDetail],
             pane_tile_ids[&DockPane::Bookmarks],
             pane_tile_ids[&DockPane::Stats],
             pane_tile_ids[&DockPane::Settings],
+            pane_tile_ids[&DockPane::View3D],
         ]);
 
         // Top area: horizontal split - MapViewport (left, ~75%) + right tabs (right, ~25%)
