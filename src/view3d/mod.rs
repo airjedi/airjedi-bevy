@@ -58,6 +58,8 @@ pub struct View3DState {
     pub ground_elevation_ft: i32,
     /// Name of the detected nearest airport (for UI display)
     pub detected_airport_name: Option<String>,
+    /// Distance (world units) before fog reaches full opacity
+    pub visibility_range: f32,
 }
 
 impl Default for View3DState {
@@ -73,6 +75,7 @@ impl Default for View3DState {
             saved_2d_center: Vec2::ZERO,
             ground_elevation_ft: 0,
             detected_airport_name: None,
+            visibility_range: 5000.0,
         }
     }
 }
@@ -630,6 +633,66 @@ pub fn update_aircraft_altitude_z(
     }
 }
 
+/// Fade tile and aircraft sprites based on distance from Camera2d in 3D mode.
+/// This makes tiles transparent at distance, revealing the fogged ground plane beneath.
+pub fn fade_distant_sprites(
+    state: Res<View3DState>,
+    camera_query: Query<&Transform, With<Camera2d>>,
+    mut tile_query: Query<(&Transform, &mut Sprite, &crate::TileFadeState), (With<bevy_slippy_tiles::MapTile>, Without<Camera2d>)>,
+    mut aircraft_query: Query<(&Transform, &mut Sprite), (With<crate::Aircraft>, Without<bevy_slippy_tiles::MapTile>, Without<Camera2d>)>,
+) {
+    if !state.is_3d_active() {
+        // Reset aircraft alpha when leaving 3D mode
+        for (_, mut sprite) in aircraft_query.iter_mut() {
+            sprite.color = Color::srgba(1.0, 1.0, 1.0, 1.0);
+        }
+        return;
+    }
+
+    let Ok(cam_transform) = camera_query.single() else {
+        return;
+    };
+
+    let cam_pos = cam_transform.translation;
+
+    // Fade range matches the fog: starts at 40% of visibility_range, fully gone at 100%
+    let fade_start = state.visibility_range * 0.4;
+    let fade_end = state.visibility_range;
+    let fade_range = fade_end - fade_start;
+
+    if fade_range <= 0.0 {
+        return;
+    }
+
+    // Fade tiles
+    for (transform, mut sprite, fade_state) in tile_query.iter_mut() {
+        let dist = cam_pos.distance(transform.translation);
+        let distance_alpha = if dist <= fade_start {
+            1.0
+        } else if dist >= fade_end {
+            0.0
+        } else {
+            1.0 - ((dist - fade_start) / fade_range)
+        };
+        // Combine with tile's own fade alpha (from zoom transitions)
+        let final_alpha = fade_state.alpha * distance_alpha;
+        sprite.color = Color::srgba(1.0, 1.0, 1.0, final_alpha);
+    }
+
+    // Fade aircraft
+    for (transform, mut sprite) in aircraft_query.iter_mut() {
+        let dist = cam_pos.distance(transform.translation);
+        let alpha = if dist <= fade_start {
+            1.0
+        } else if dist >= fade_end {
+            0.0
+        } else {
+            1.0 - ((dist - fade_start) / fade_range)
+        };
+        sprite.color = Color::srgba(1.0, 1.0, 1.0, alpha);
+    }
+}
+
 /// Plugin for 3D view functionality
 pub struct View3DPlugin;
 
@@ -653,7 +716,12 @@ impl Plugin for View3DPlugin {
             .add_systems(Update, sky::update_star_visibility)
             .add_systems(Update, sky::manage_atmosphere_camera
                 .after(animate_view_transition))
-            .add_systems(Update, sky::update_atmosphere_scale);
+            .add_systems(Update, sky::update_atmosphere_scale)
+            .add_systems(Update, sky::sync_ground_plane.after(update_3d_camera))
+            .add_systems(Update, sky::update_fog_parameters.after(sky::update_sun_position))
+            .add_systems(Update, fade_distant_sprites
+                .after(update_3d_camera)
+                .after(update_tile_elevation));
         // 3D view settings panel is rendered via the consolidated Tools window (tools_window.rs)
     }
 }

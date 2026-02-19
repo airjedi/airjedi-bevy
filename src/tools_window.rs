@@ -375,6 +375,16 @@ pub fn render_view3d_tab(ui: &mut egui::Ui, state: &mut View3DState) {
             state.ground_elevation_ft = elev as i32;
         }
     });
+
+    ui.separator();
+    ui.label("Atmosphere:");
+
+    ui.horizontal(|ui| {
+        ui.label("Visibility:");
+        ui.add(egui::Slider::new(&mut state.visibility_range, 1000.0..=20000.0)
+            .suffix(" units")
+            .logarithmic(true));
+    });
 }
 
 pub fn render_recording_tab(

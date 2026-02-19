@@ -146,6 +146,55 @@ pub fn clear_legacy_tiles() {
     }
 }
 
+/// Remove cached tiles that aren't valid PNG files (e.g. JPEG returned by the tile
+/// server). Invalid tiles cause Bevy's asset loader to log errors every frame.
+pub fn remove_invalid_tiles() {
+    let cache_dir = tile_cache_dir();
+    if !cache_dir.exists() {
+        return;
+    }
+
+    let png_signature: [u8; 4] = [0x89, 0x50, 0x4E, 0x47]; // \x89PNG
+    let mut removed = 0;
+
+    if let Ok(entries) = fs::read_dir(&cache_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let Some(filename) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            if !filename.ends_with(".tile.png") {
+                continue;
+            }
+            // Read the first 4 bytes and check for PNG magic
+            match fs::read(&path) {
+                Ok(bytes) if bytes.len() >= 4 && bytes[..4] == png_signature => {}
+                Ok(bytes) => {
+                    let sig = if bytes.len() >= 4 {
+                        format!("{:02x}{:02x}{:02x}{:02x}", bytes[0], bytes[1], bytes[2], bytes[3])
+                    } else {
+                        format!("({} bytes)", bytes.len())
+                    };
+                    warn!("Removing invalid tile {} (signature: {})", filename, sig);
+                    let _ = fs::remove_file(&path);
+                    removed += 1;
+                }
+                Err(_) => {
+                    let _ = fs::remove_file(&path);
+                    removed += 1;
+                }
+            }
+        }
+    }
+
+    if removed > 0 {
+        info!("Removed {} invalid tile(s) from cache", removed);
+    }
+}
+
 fn assets_tiles_path() -> PathBuf {
     std::env::current_dir()
         .map(|path| path.join("assets").join("tiles"))
