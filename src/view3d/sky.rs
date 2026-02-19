@@ -1,25 +1,22 @@
-//! Sky rendering with atmospheric scattering and day/night cycle.
+//! Sky rendering with star field and day/night cycle.
 //!
-//! Dynamically adds Atmosphere/HDR/Bloom to the Camera2d entity when
-//! entering 3D mode, and removes them when returning to 2D.
+//! The star field is rendered as a large 2D sprite on Camera2d at a low
+//! z-depth (behind map tiles). This avoids multi-camera compositing
+//! issues while ensuring stars never bleed through opaque tiles.
 //! Sun position is computed from real wall-clock time and the map's
 //! geographic coordinates.
 
 use bevy::prelude::*;
-use bevy::pbr::{Atmosphere, ScatteringMedium};
-use bevy::post_process::bloom::Bloom;
-use bevy::render::view::Hdr;
 
 use super::View3DState;
 use crate::map::MapState;
 
-/// Marker component for the star field sphere
+/// Z-depth for the star field sprite (behind tiles at z=0.1)
+const STAR_Z: f32 = -1.0;
+
+/// Marker component for the star field sprite
 #[derive(Component)]
 pub struct StarField;
-
-/// Resource holding the ScatteringMedium handle for dynamic Atmosphere creation
-#[derive(Resource)]
-pub struct SkyMediumHandle(pub Handle<ScatteringMedium>);
 
 /// Resource tracking current sun position
 #[derive(Resource)]
@@ -93,91 +90,81 @@ pub fn compute_sun_position(latitude: f64, longitude: f64) -> (f32, f32) {
 #[derive(Component)]
 pub struct SunLight;
 
-/// Dynamically add/remove Hdr, Atmosphere, and Bloom on the Camera2d entity
-/// based on whether 3D mode is active.
+/// No-op: sky visibility is handled entirely through star field sprite visibility.
+/// Kept as a system entry point for future atmospheric effects.
 pub fn update_sky_visibility(
-    state: Res<View3DState>,
-    medium_handle: Res<SkyMediumHandle>,
-    camera2d_query: Query<(Entity, Has<Hdr>), With<Camera2d>>,
-    mut commands: Commands,
+    _state: Res<View3DState>,
 ) {
-    let should_show = state.is_3d_active();
-
-    let Ok((camera_entity, has_hdr)) = camera2d_query.single() else {
-        return;
-    };
-
-    if should_show && !has_hdr {
-        commands.entity(camera_entity).insert((
-            Hdr,
-            Atmosphere::earthlike(medium_handle.0.clone()),
-            Bloom::default(),
-        ));
-    } else if !should_show && has_hdr {
-        commands.entity(camera_entity).remove::<(Hdr, Atmosphere, Bloom)>();
-    }
 }
 
-/// Keep star field sphere centered on the Camera2d position.
+/// Keep star field sprite centered on Camera2d and scaled to fill the viewport.
 pub fn sync_sky_camera(
     state: Res<View3DState>,
-    main_camera: Query<&Transform, (With<Camera2d>, Without<StarField>)>,
+    main_camera: Query<(&Transform, &Projection), (With<Camera2d>, Without<StarField>)>,
+    window_query: Query<&Window>,
+    zoom_state: Res<crate::ZoomState>,
     mut star_query: Query<&mut Transform, (With<StarField>, Without<Camera2d>)>,
 ) {
     if !state.is_3d_active() {
         return;
     }
 
-    let Ok(main_tf) = main_camera.single() else {
+    let Ok((main_tf, _main_proj)) = main_camera.single() else {
         return;
     };
 
-    if let Ok(mut star_tf) = star_query.single_mut() {
-        star_tf.translation = main_tf.translation;
+    let Ok(mut star_tf) = star_query.single_mut() else {
+        return;
+    };
+
+    // Position star field at camera XY but behind tiles
+    star_tf.translation.x = main_tf.translation.x;
+    star_tf.translation.y = main_tf.translation.y;
+    star_tf.translation.z = STAR_Z;
+
+    // Scale to fill viewport (account for camera zoom)
+    if let Ok(window) = window_query.single() {
+        let scale_factor = 1.0 / zoom_state.camera_zoom;
+        // Scale sprite to cover viewport with some margin for panning
+        let sx = (window.width() * scale_factor * 2.0) / 2048.0;
+        let sy = (window.height() * scale_factor * 2.0) / 2048.0;
+        let s = sx.max(sy);
+        star_tf.scale = Vec3::new(s, s, 1.0);
     }
 }
 
-/// Spawn the star field. Starts hidden (2D mode is default).
-/// The ScatteringMedium handle is stored as a resource for dynamic Atmosphere creation.
+/// Spawn the star field as a 2D sprite.
 pub fn setup_sky(
     mut commands: Commands,
-    mut media: ResMut<Assets<ScatteringMedium>>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
     mut images: ResMut<Assets<Image>>,
 ) {
-    let medium = media.add(ScatteringMedium::default());
-    commands.insert_resource(SkyMediumHandle(medium));
-
     // Generate procedural star texture
     let star_image = generate_star_texture(2048);
     let star_texture = images.add(star_image);
 
-    // Spawn inverted sphere for star field
-    let star_mesh = meshes.add(Sphere::new(900.0).mesh().uv(64, 32));
-    let star_material = materials.add(StandardMaterial {
-        base_color_texture: Some(star_texture),
-        unlit: true,
-        cull_mode: None,
-        alpha_mode: AlphaMode::Blend,
-        ..default()
-    });
-
     commands.spawn((
         Name::new("Star Field"),
         StarField,
-        Mesh3d(star_mesh),
-        MeshMaterial3d(star_material),
-        Transform::from_scale(Vec3::new(-1.0, -1.0, -1.0)),
+        Sprite {
+            image: star_texture,
+            ..default()
+        },
+        Transform::from_xyz(0.0, 0.0, STAR_Z),
         Visibility::Hidden,
     ));
 }
 
 /// Generate a procedural star texture as an Image.
+/// Black background with scattered white dots.
 fn generate_star_texture(size: u32) -> Image {
     use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
     let mut data = vec![0u8; (size * size * 4) as usize];
+
+    // Set alpha to 255 for all pixels (opaque black background)
+    for pixel in 0..(size * size) as usize {
+        data[pixel * 4 + 3] = 255;
+    }
 
     let num_stars = 800;
     for i in 0..num_stars {
