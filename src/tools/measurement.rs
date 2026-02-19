@@ -110,7 +110,7 @@ pub fn handle_measurement_clicks(
     mut state: ResMut<MeasurementState>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     window_query: Query<&Window>,
-    camera_query: Query<(&Camera, &GlobalTransform), With<Camera2d>>,
+    camera_query: Query<(&Camera, &GlobalTransform), With<crate::MapCamera>>,
     map_state: Res<MapState>,
     zoom_state: Res<ZoomState>,
     mut commands: Commands,

@@ -1393,7 +1393,8 @@ dependencies = [
 [[package]]
 name = "bevy_slippy_tiles"
 version = "0.11.0"
-source = "git+https://github.com/ccustine/bevy_slippy_tiles?branch=bevy-0.18#5a4d6aac161972b64fda873e538e3c5908a95278"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b63f95a0e26ad5c3d543103332969e3a4535d51dfdf6a610412eeed27ea7fc78"
 dependencies = [
  "async-lock",
  "bevy",

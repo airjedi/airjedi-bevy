@@ -129,7 +129,7 @@ pub fn toggle_3d_view(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut state: ResMut<View3DState>,
     mut contexts: EguiContexts,
-    camera_query: Query<&Transform, With<Camera2d>>,
+    camera_query: Query<&Transform, With<crate::MapCamera>>,
     map_state: Res<crate::MapState>,
     aviation_data: Res<crate::aviation::AviationData>,
 ) {
@@ -332,7 +332,7 @@ pub fn animate_view_transition(
 /// Works entirely in pixel-coordinate space so tiles, trails, and aircraft all align.
 pub fn update_3d_camera(
     mut state: ResMut<View3DState>,
-    mut camera_query: Query<(&mut Transform, &mut Projection), With<Camera2d>>,
+    mut camera_query: Query<(&mut Transform, &mut Projection), With<crate::MapCamera>>,
     window_query: Query<&Window>,
     zoom_state: Res<crate::ZoomState>,
 ) {
@@ -637,9 +637,9 @@ pub fn update_aircraft_altitude_z(
 /// This makes tiles transparent at distance, revealing the fogged ground plane beneath.
 pub fn fade_distant_sprites(
     state: Res<View3DState>,
-    camera_query: Query<&Transform, With<Camera2d>>,
-    mut tile_query: Query<(&Transform, &mut Sprite, &crate::TileFadeState), (With<bevy_slippy_tiles::MapTile>, Without<Camera2d>)>,
-    mut aircraft_query: Query<(&Transform, &mut Sprite), (With<crate::Aircraft>, Without<bevy_slippy_tiles::MapTile>, Without<Camera2d>)>,
+    camera_query: Query<&Transform, With<crate::MapCamera>>,
+    mut tile_query: Query<(&Transform, &mut Sprite, &crate::TileFadeState), (With<bevy_slippy_tiles::MapTile>, Without<crate::MapCamera>)>,
+    mut aircraft_query: Query<(&Transform, &mut Sprite), (With<crate::Aircraft>, Without<bevy_slippy_tiles::MapTile>, Without<crate::MapCamera>)>,
 ) {
     if !state.is_3d_active() {
         // Reset aircraft alpha when leaving 3D mode
