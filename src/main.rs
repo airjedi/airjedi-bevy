@@ -874,6 +874,14 @@ fn handle_zoom(
     if view3d_state.is_3d_active() || view3d_state.is_transitioning() {
         return;
     }
+
+    // Shift+scroll in 2D mode: do nothing (pitch control is only in 3D mode).
+    // Read shift from egui since bevy_egui absorbs modifier keys from ButtonInput.
+    if let Ok(ctx) = contexts.ctx_mut() {
+        if ctx.input(|i| i.modifiers.shift) {
+            return;
+        }
+    }
     // Don't zoom the map when pointer is over a dock panel (but allow zoom over the map viewport)
     if let Ok(ctx) = contexts.ctx_mut() {
         if ctx.is_pointer_over_area() {

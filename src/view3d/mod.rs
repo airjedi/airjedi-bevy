@@ -449,12 +449,10 @@ pub fn handle_3d_camera_controls(
         return;
     }
 
-    if state.is_transitioning() {
-        mouse_motion.clear();
-        scroll_events.clear();
-        pinch_events.clear();
-        return;
-    }
+    // Read shift state from egui's input (bevy_egui absorbs modifier keys from ButtonInput)
+    let shift_held = contexts.ctx_mut()
+        .map(|ctx| ctx.input(|i| i.modifiers.shift))
+        .unwrap_or(false);
 
     // Don't process input when pointer is over UI panels (allow over map viewport)
     if let Ok(ctx) = contexts.ctx_mut() {
@@ -472,8 +470,6 @@ pub fn handle_3d_camera_controls(
             }
         }
     }
-
-    let shift_held = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
 
     // Mouse drag handling
     if mouse_button.pressed(MouseButton::Left) {
@@ -518,17 +514,30 @@ pub fn handle_3d_camera_controls(
         mouse_motion.clear();
     }
 
-    // Scroll = altitude (zoom), Shift+Scroll = pitch
-    for event in scroll_events.read() {
-        let scroll_y = match event.unit {
-            bevy::input::mouse::MouseScrollUnit::Line => event.y,
-            bevy::input::mouse::MouseScrollUnit::Pixel => event.y * 0.01,
-        };
-
-        if shift_held {
-            state.camera_pitch = (state.camera_pitch + scroll_y * PITCH_SCROLL_SENSITIVITY)
-                .clamp(MIN_PITCH, MAX_PITCH);
-        } else {
+    // Scroll = altitude (zoom), Shift+Scroll = pitch.
+    // On macOS, shift+scroll is converted to horizontal scroll by the OS and absorbed
+    // by bevy_egui, so we read shift+scroll from egui's input directly.
+    if shift_held {
+        if let Ok(ctx) = contexts.ctx_mut() {
+            let scroll_delta = ctx.input(|i| i.smooth_scroll_delta);
+            // macOS shift+scroll arrives as horizontal delta
+            let scroll_y = if scroll_delta.y.abs() > scroll_delta.x.abs() {
+                scroll_delta.y
+            } else {
+                scroll_delta.x
+            };
+            if scroll_y.abs() > 0.1 {
+                let pitch_delta = scroll_y * 0.05;
+                state.camera_pitch = (state.camera_pitch + pitch_delta)
+                    .clamp(MIN_PITCH, MAX_PITCH);
+            }
+        }
+    } else {
+        for event in scroll_events.read() {
+            let scroll_y = match event.unit {
+                bevy::input::mouse::MouseScrollUnit::Line => event.y,
+                bevy::input::mouse::MouseScrollUnit::Pixel => event.y * 0.01,
+            };
             state.camera_altitude = (state.camera_altitude - scroll_y * ALTITUDE_SCROLL_SENSITIVITY)
                 .clamp(MIN_CAMERA_ALTITUDE, MAX_CAMERA_ALTITUDE);
         }
