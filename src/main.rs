@@ -374,10 +374,10 @@ struct AircraftCamera;
 
 // Component to track tile fade state for smooth zoom transitions
 #[derive(Component)]
-struct TileFadeState {
-    alpha: f32,
+pub(crate) struct TileFadeState {
+    pub(crate) alpha: f32,
     /// The zoom level this tile was spawned for
-    tile_zoom: u8,
+    pub(crate) tile_zoom: u8,
 }
 
 /// Tracks which tile positions have been spawned to prevent duplicate entities.
@@ -554,6 +554,7 @@ pub(crate) fn setup_map(
     // Set up centralized tile cache (creates cache dir + symlink into assets/)
     tile_cache::setup_tile_cache();
     tile_cache::clear_legacy_tiles();
+    tile_cache::remove_invalid_tiles();
 
     // Update SlippyTilesSettings from config
     tile_settings.endpoint = app_config.map.basemap_style.endpoint_url().to_string();
