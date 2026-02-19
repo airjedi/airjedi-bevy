@@ -90,7 +90,7 @@ pub fn open_detail_on_selection(
 pub fn detect_aircraft_click(
     mouse_button: Res<ButtonInput<MouseButton>>,
     window_query: Query<&Window>,
-    camera_query: Query<(&Camera, &GlobalTransform), With<Camera2d>>,
+    camera_query: Query<(&Camera, &GlobalTransform), With<crate::MapCamera>>,
     aircraft_query: Query<(&crate::Aircraft, &Transform)>,
     mut list_state: ResMut<AircraftListState>,
     zoom_state: Res<ZoomState>,

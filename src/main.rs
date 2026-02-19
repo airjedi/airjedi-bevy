@@ -36,7 +36,7 @@ pub(crate) use aircraft::components::{Aircraft, AircraftLabel};
 pub(crate) use map::{MapState, ZoomState};
 use config::ConfigPlugin;
 use keyboard::{HelpOverlayState, handle_keyboard_shortcuts, toggle_overlays_keyboard, update_help_overlay, sync_panel_manager_to_resources, sync_resources_to_panel_manager};
-use bevy_egui::EguiContexts;
+use bevy_egui::{EguiContexts, EguiGlobalSettings, PrimaryEguiContext};
 
 // ADS-B client types
 
@@ -372,6 +372,10 @@ fn main() {
 #[derive(Component)]
 struct AircraftCamera;
 
+/// Marker for the primary 2D map camera (distinguishes it from the egui UI camera)
+#[derive(Component)]
+pub(crate) struct MapCamera;
+
 // Component to track tile fade state for smooth zoom transitions
 #[derive(Component)]
 pub(crate) struct TileFadeState {
@@ -506,12 +510,17 @@ pub(crate) fn setup_map(
     mut tile_settings: ResMut<SlippyTilesSettings>,
     app_config: Res<config::AppConfig>,
     mut scattering_mediums: ResMut<Assets<ScatteringMedium>>,
+    mut egui_settings: ResMut<EguiGlobalSettings>,
 ) {
+    // Prevent bevy_egui from auto-attaching to Camera2d. We use a dedicated UI
+    // camera so egui stays visible when Camera2d switches to perspective in 3D mode.
+    egui_settings.auto_create_primary_context = false;
+
     // Set up 2D camera for map tiles and labels.
     // Layer 0 = default content (tiles, sprites, text).
     // Layer 2 = gizmos (trails, navaids, runways) — kept off Camera3d to prevent
     //           double-rendering during 2D↔3D transitions.
-    commands.spawn((Camera2d, RenderLayers::from_layers(&[0, 2])));
+    commands.spawn((Camera2d, MapCamera, RenderLayers::from_layers(&[0, 2])));
 
     // Set up 3D camera for aircraft models (renders on top of 2D, with transparent clear).
     // Stays on default layer 0 so it sees 3D meshes (SceneRoot children inherit layer 0)
@@ -526,6 +535,21 @@ pub(crate) fn setup_map(
         },
         Projection::Orthographic(OrthographicProjection::default_2d()),
         Transform::default(),
+    ));
+
+    // Dedicated UI camera for egui. Renders last (order 100) with no clear so it
+    // composites the UI on top of everything. Uses an empty render layer (11) to
+    // avoid re-rendering any scene content. PrimaryEguiContext tells bevy_egui to
+    // attach the egui context here instead of on Camera2d.
+    commands.spawn((
+        Camera2d,
+        PrimaryEguiContext,
+        Camera {
+            order: 100,
+            clear_color: ClearColorConfig::None,
+            ..default()
+        },
+        RenderLayers::layer(11),
     ));
 
     // Lighting for 3D aircraft models
@@ -821,7 +845,7 @@ fn follow_aircraft(
 fn update_camera_position(
     map_state: Res<MapState>,
     tile_settings: Res<SlippyTilesSettings>,
-    mut camera_query: Query<&mut Transform, With<Camera2d>>,
+    mut camera_query: Query<&mut Transform, With<MapCamera>>,
     logger: Option<Res<ZoomDebugLogger>>,
     view3d_state: Res<view3d::View3DState>,
 ) {
@@ -1163,7 +1187,7 @@ fn handle_pinch_zoom(
 // Apply the camera zoom to the actual camera projection
 fn apply_camera_zoom(
     zoom_state: Res<ZoomState>,
-    mut camera_query: Query<&mut Projection, With<Camera2d>>,
+    mut camera_query: Query<&mut Projection, With<MapCamera>>,
 ) {
     if let Ok(mut projection) = camera_query.single_mut() {
         // Access the OrthographicProjection within Projection
@@ -1182,7 +1206,7 @@ fn apply_camera_zoom(
 /// canvas each frame. Its rendered content alpha-composites on top of
 /// Camera2d's output (tiles, sky, gizmos) without accumulating old frames.
 fn sync_aircraft_camera(
-    camera_2d: Query<(&Transform, &Projection), (With<Camera2d>, Without<AircraftCamera>)>,
+    camera_2d: Query<(&Transform, &Projection), (With<MapCamera>, Without<AircraftCamera>)>,
     mut camera_3d: Query<(&mut Transform, &mut Projection), (With<AircraftCamera>, Without<Camera2d>)>,
 ) {
     let (Ok((t2, p2)), Ok((mut t3, mut p3))) = (camera_2d.single(), camera_3d.single_mut()) else {
@@ -1380,7 +1404,7 @@ const MAX_TILE_ENTITIES: usize = 400;
 
 fn cull_offscreen_tiles(
     mut commands: Commands,
-    camera_query: Query<(&Transform, &Projection), With<Camera2d>>,
+    camera_query: Query<(&Transform, &Projection), With<MapCamera>>,
     tile_query: Query<(Entity, &Transform, &TileFadeState), With<MapTile>>,
     window_query: Query<&Window>,
     mut spawned_tiles: ResMut<SpawnedTiles>,

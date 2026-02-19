@@ -105,10 +105,10 @@ pub fn update_sky_visibility(
 /// Keep star field sprite centered on Camera2d and scaled to fill the viewport.
 pub fn sync_sky_camera(
     state: Res<View3DState>,
-    main_camera: Query<(&Transform, &Projection), (With<Camera2d>, Without<StarField>)>,
+    main_camera: Query<(&Transform, &Projection), (With<crate::MapCamera>, Without<StarField>)>,
     window_query: Query<&Window>,
     zoom_state: Res<crate::ZoomState>,
-    mut star_query: Query<&mut Transform, (With<StarField>, Without<Camera2d>)>,
+    mut star_query: Query<&mut Transform, (With<StarField>, Without<crate::MapCamera>)>,
 ) {
     if !state.is_3d_active() {
         return;
@@ -299,7 +299,7 @@ pub fn manage_atmosphere_camera(
     state: Res<View3DState>,
     medium_handle: Option<Res<crate::AtmosphereMediumHandle>>,
     mut camera_3d: Query<(Entity, &mut Camera, Option<&Atmosphere>), With<Camera3d>>,
-    mut camera_2d: Query<&mut Camera, (With<Camera2d>, Without<Camera3d>)>,
+    mut camera_2d: Query<&mut Camera, (With<crate::MapCamera>, Without<Camera3d>)>,
     mut ground_query: Query<(&mut Transform, &mut Visibility), With<GroundPlane>>,
 ) {
     let Some(medium_handle) = medium_handle else {
