@@ -381,6 +381,10 @@ pub fn apply_egui_theme(
         *fonts_loaded = true;
     }
     if theme.is_changed() {
-        ctx.set_style(theme.egui_style());
+        let mut style = theme.egui_style();
+        // Remove default margins so panels sit flush against each other
+        style.spacing.window_margin = egui::Margin::ZERO;
+        style.visuals.clip_rect_margin = 0.0;
+        ctx.set_style(style);
     }
 }

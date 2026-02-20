@@ -60,14 +60,14 @@ pub fn render_statusbar(
     let dim = to_egui_color32(theme.text_dim());
     let primary = to_egui_color32(theme.text_primary());
 
-    let frame = egui::Frame::default()
+    let frame = egui::Frame::NONE
         .fill(panel_bg)
-        .stroke(egui::Stroke::new(1.0, border_color))
         .inner_margin(egui::Margin::symmetric(8, 2));
 
     egui::TopBottomPanel::bottom("statusbar")
         .exact_height(STATUSBAR_HEIGHT)
         .frame(frame)
+        .show_separator_line(false)
         .show(ctx, |ui| {
             ui.horizontal_centered(|ui| {
                 ui.spacing_mut().item_spacing.x = 6.0;

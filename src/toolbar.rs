@@ -32,17 +32,16 @@ pub fn render_toolbar(
     };
 
     let panel_bg = to_egui_color32_alpha(theme.bg_secondary(), 245);
-    let border_color = to_egui_color32(theme.bg_contrast());
 
-    let toolbar_frame = egui::Frame::default()
+    let toolbar_frame = egui::Frame::NONE
         .fill(panel_bg)
-        .stroke(egui::Stroke::new(1.0, border_color))
         .inner_margin(egui::Margin::symmetric(4, 4));
 
-    egui::SidePanel::left("toolbar")
+    let panel_response = egui::SidePanel::left("toolbar")
         .exact_width(TOOLBAR_WIDTH)
         .resizable(false)
         .frame(toolbar_frame)
+        .show_separator_line(false)
         .show(ctx, |ui| {
             ui.vertical_centered(|ui| {
                 ui.spacing_mut().item_spacing.y = 2.0;
@@ -107,6 +106,19 @@ pub fn render_toolbar(
                 }
             });
         });
+
+    // Paint over the egui panel separator gap to the right of the toolbar.
+    // egui's SidePanel reserves ~3px for separator/interaction at the inner
+    // edge. The frame fill stops at TOOLBAR_WIDTH but the panel rect extends
+    // further, leaving a transparent strip. Fill it with the toolbar color.
+    let panel_rect = panel_response.response.rect;
+    let fill_start = panel_rect.right() - 3.0;
+    let gap_rect = egui::Rect::from_min_max(
+        egui::pos2(fill_start, panel_rect.top()),
+        egui::pos2(panel_rect.right(), panel_rect.bottom()),
+    );
+    ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, "toolbar_gap".into()))
+        .rect_filled(gap_rect, 0.0, panel_bg);
 }
 
 /// Render a toolbar toggle button that highlights when its panel is open.
