@@ -640,7 +640,7 @@ pub fn update_aircraft_altitude_z(
 pub fn fade_distant_sprites(
     state: Res<View3DState>,
     camera_query: Query<&Transform, With<crate::MapCamera>>,
-    mut tile_query: Query<(&Transform, &mut Sprite, &crate::TileFadeState), (With<bevy_slippy_tiles::MapTile>, Without<crate::MapCamera>)>,
+    mut tile_query: Query<(&Transform, &mut Sprite, &crate::tiles::TileFadeState), (With<bevy_slippy_tiles::MapTile>, Without<crate::MapCamera>)>,
     mut aircraft_query: Query<(&Transform, &mut Sprite), (With<crate::Aircraft>, Without<bevy_slippy_tiles::MapTile>, Without<crate::MapCamera>)>,
 ) {
     if !state.is_3d_active() {

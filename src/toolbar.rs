@@ -94,7 +94,7 @@ pub fn render_toolbar(
                     crate::clear_tile_cache();
 
                     // Request fresh tiles
-                    crate::request_tiles_at_location(
+                    crate::tiles::request_tiles_at_location(
                         &mut download_events,
                         map_state.latitude,
                         map_state.longitude,

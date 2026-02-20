@@ -4,7 +4,8 @@ use bevy_egui::{egui, EguiContexts};
 use crate::MapState;
 use crate::geo::{haversine_distance_nm, CoordinateConverter};
 use crate::theme::{AppTheme, to_egui_color32, to_egui_color32_alpha};
-use super::{CameraFollowState, DetailPanelState, TrailHistory, SessionClock, format_altitude, format_altitude_with_indicator};
+use super::{CameraFollowState, DetailPanelState, TrailHistory, SessionClock};
+use super::altitude::{format_altitude, format_altitude_with_indicator};
 
 /// Sort criteria for aircraft list
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -191,7 +192,7 @@ pub fn update_aircraft_display_list(
     // Sort
     match list_state.sort_by {
         SortCriteria::Distance => {
-            aircraft.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap());
+            aircraft.sort_by(|a, b| a.distance.total_cmp(&b.distance));
         }
         SortCriteria::Altitude => {
             aircraft.sort_by(|a, b| {
@@ -200,7 +201,7 @@ pub fn update_aircraft_display_list(
         }
         SortCriteria::Speed => {
             aircraft.sort_by(|a, b| {
-                a.velocity.unwrap_or(0.0).partial_cmp(&b.velocity.unwrap_or(0.0)).unwrap()
+                a.velocity.unwrap_or(0.0).total_cmp(&b.velocity.unwrap_or(0.0))
             });
         }
         SortCriteria::Callsign => {
