@@ -832,6 +832,7 @@ impl Plugin for View3DPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<View3DState>()
             .init_resource::<sky::SunState>()
+            .init_resource::<sky::MoonState>()
             .init_resource::<sky::TimeState>()
             .add_systems(Startup, sky::setup_sky)
             .add_systems(Update, (
@@ -848,6 +849,7 @@ impl Plugin for View3DPlugin {
             .add_systems(Update, sky::sync_sky_camera.after(update_3d_camera))
             .add_systems(Update, sky::sync_time_offset)
             .add_systems(Update, sky::update_sun_position.after(sky::sync_time_offset))
+            .add_systems(Update, sky::update_moon_position.after(sky::sync_time_offset))
             .add_systems(Update, sky::update_star_visibility)
             .add_systems(Update, sky::manage_atmosphere_camera
                 .after(animate_view_transition))

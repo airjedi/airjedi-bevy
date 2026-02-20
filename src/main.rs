@@ -358,6 +358,18 @@ pub(crate) fn setup_map(
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -1.0, 0.3, 0.0)),
     ));
 
+    // Moonlight: secondary directional light with cool blue-white color
+    commands.spawn((
+        DirectionalLight {
+            illuminance: 0.0,
+            shadows_enabled: false,
+            color: Color::srgb(0.7, 0.75, 0.9),
+            ..default()
+        },
+        view3d::sky::MoonLight,
+        Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.5, 2.0, 0.0)),
+    ));
+
     // Create an earthlike scattering medium for atmospheric rendering.
     // The handle is stored as a resource so sky.rs can attach Atmosphere
     // components to cameras when 3D mode is activated.
