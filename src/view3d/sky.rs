@@ -131,8 +131,8 @@ pub fn sync_sky_camera(
     if let Ok(window) = window_query.single() {
         let scale_factor = 1.0 / zoom_state.camera_zoom;
         // Scale sprite to cover viewport with some margin for panning
-        let sx = (window.width() * scale_factor * 2.0) / 2048.0;
-        let sy = (window.height() * scale_factor * 2.0) / 2048.0;
+        let sx = (window.width() * scale_factor * 2.0) / 4096.0;
+        let sy = (window.height() * scale_factor * 2.0) / 4096.0;
         let s = sx.max(sy);
         star_tf.scale = Vec3::new(s, s, 1.0);
     }
@@ -146,7 +146,7 @@ pub fn setup_sky(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     // Generate procedural star texture
-    let star_image = generate_star_texture(2048);
+    let star_image = generate_star_texture(4096);
     let star_texture = images.add(star_image);
 
     commands.spawn((
@@ -181,27 +181,69 @@ pub fn setup_sky(
 }
 
 /// Generate a procedural star texture as an Image.
-/// Black background with scattered white dots.
+/// ~3000 main stars with magnitude-based brightness and color variation,
+/// plus a ~2000-star Milky Way band along a diagonal gaussian belt.
 fn generate_star_texture(size: u32) -> Image {
     use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
-    // All pixels start as RGBA(0,0,0,0) — fully transparent.
-    // Only star pixels get alpha=255 so the star field composites
-    // over the atmosphere sky without an opaque black background.
     let mut data = vec![0u8; (size * size * 4) as usize];
 
-    let num_stars = 800;
+    // Main star field: ~3000 stars with magnitude-based brightness
+    let num_stars = 3000u32;
     for i in 0..num_stars {
         let hash = pseudo_hash(i);
         let x = (hash % size) as usize;
         let y = ((hash / size) % size) as usize;
-        let brightness = 128 + (pseudo_hash(i + num_stars) % 128) as u8;
+
+        let mag_hash = pseudo_hash(i + num_stars) % 1000;
+        let mag_factor = mag_hash as f32 / 1000.0;
+        let brightness = (40.0 + 215.0 * mag_factor * mag_factor * mag_factor) as u8;
+
         let idx = (y * size as usize + x) * 4;
         if idx + 3 < data.len() {
-            data[idx] = brightness;
-            data[idx + 1] = brightness;
-            data[idx + 2] = brightness;
+            let color_hash = pseudo_hash(i + num_stars * 2) % 100;
+            let (r, g, b) = if color_hash < 15 {
+                // Blue-white hot stars
+                (brightness.saturating_sub(20), brightness.saturating_sub(10), brightness)
+            } else if color_hash < 25 {
+                // Warm yellow stars
+                (brightness, brightness.saturating_sub(15), brightness.saturating_sub(40))
+            } else {
+                (brightness, brightness, brightness)
+            };
+            data[idx] = r;
+            data[idx + 1] = g;
+            data[idx + 2] = b;
             data[idx + 3] = 255;
+        }
+    }
+
+    // Milky Way band: extra-dim stars concentrated along a diagonal gaussian belt
+    let milky_way_stars = 2000u32;
+    for i in 0..milky_way_stars {
+        let hash = pseudo_hash(i + num_stars * 3);
+        let along = (hash % 10000) as f32 / 10000.0;
+        let offset_hash = pseudo_hash(i + num_stars * 4);
+        let gauss = ((offset_hash % 100) as f32 / 100.0 - 0.5)
+            + ((pseudo_hash(i + num_stars * 5) % 100) as f32 / 100.0 - 0.5);
+        let band_width = 0.08;
+        let perpendicular = gauss * band_width;
+
+        let x = ((along + perpendicular * 0.7) * size as f32) as usize % size as usize;
+        let y = ((along * 0.8 + 0.1 + perpendicular) * size as f32) as usize % size as usize;
+
+        let brightness = 25 + (pseudo_hash(i + num_stars * 6) % 35) as u8;
+
+        let idx = (y * size as usize + x) * 4;
+        if idx + 3 < data.len() {
+            // Additive blending: don't overwrite brighter stars with dimmer Milky Way pixels
+            let existing = data[idx];
+            if brightness > existing {
+                data[idx] = brightness;
+                data[idx + 1] = brightness;
+                data[idx + 2] = brightness + 5;
+                data[idx + 3] = 255;
+            }
         }
     }
 
@@ -227,13 +269,17 @@ fn pseudo_hash(seed: u32) -> u32 {
     h
 }
 
-/// Fade star field visibility based on sun elevation.
+/// Fade star field visibility based on sun elevation with gradual twilight transition.
+/// Civil twilight (0° to -6°): stars fade in to 30% opacity.
+/// Nautical twilight (-6° to -12°): brightens from 30% to 80%.
+/// Full night (<-12°): near-full opacity with subtle sine-based twinkle.
 pub fn update_star_visibility(
     state: Res<View3DState>,
     sun_state: Res<SunState>,
-    mut star_query: Query<&mut Visibility, With<StarField>>,
+    time: Res<Time>,
+    mut star_query: Query<(&mut Visibility, &mut Sprite), With<StarField>>,
 ) {
-    let Ok(mut vis) = star_query.single_mut() else {
+    let Ok((mut vis, mut sprite)) = star_query.single_mut() else {
         return;
     };
 
@@ -242,12 +288,27 @@ pub fn update_star_visibility(
         return;
     }
 
-    // Stars visible when sun is below horizon
-    *vis = if sun_state.elevation < 0.0 {
-        Visibility::Inherited
+    let elevation = sun_state.elevation;
+
+    if elevation > 0.0 {
+        *vis = Visibility::Hidden;
+    } else if elevation > -6.0 {
+        // Civil twilight: fade in from 0% to 30%
+        *vis = Visibility::Inherited;
+        let alpha = ((0.0 - elevation) / 6.0) * 0.3;
+        sprite.color = Color::srgba(1.0, 1.0, 1.0, alpha);
+    } else if elevation > -12.0 {
+        // Nautical twilight: brighten from 30% to 80%
+        *vis = Visibility::Inherited;
+        let t = ((elevation + 6.0).abs()) / 6.0;
+        let alpha = 0.3 + t * 0.5;
+        sprite.color = Color::srgba(1.0, 1.0, 1.0, alpha);
     } else {
-        Visibility::Hidden
-    };
+        // Full night: subtle twinkle oscillation
+        *vis = Visibility::Inherited;
+        let twinkle = 0.925 + 0.075 * (time.elapsed_secs() * 0.3).sin();
+        sprite.color = Color::srgba(1.0, 1.0, 1.0, twinkle);
+    }
 }
 
 /// Update sun direction from real wall-clock time and map coordinates.
