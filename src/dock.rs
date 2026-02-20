@@ -23,6 +23,7 @@ use crate::theme::{AppTheme, ThemeRegistry, to_egui_color32, to_egui_color32_alp
 use crate::tools_window;
 use crate::ui_panels::{PanelId, UiPanelManager};
 use crate::view3d::View3DState;
+use crate::view3d::sky::{TimeState, SunState};
 use crate::{Aircraft, MapState, ZoomState};
 
 // =============================================================================
@@ -53,6 +54,8 @@ pub struct DockToolResources<'w> {
     pub recording: ResMut<'w, RecordingState>,
     pub playback: ResMut<'w, PlaybackState>,
     pub view3d_state: ResMut<'w, View3DState>,
+    pub time_state: ResMut<'w, TimeState>,
+    pub sun_state: Res<'w, SunState>,
 }
 
 // =============================================================================
@@ -265,6 +268,8 @@ pub struct DockBehavior<'a, 'w, 's> {
     pub recording: &'a mut RecordingState,
     pub playback: &'a mut PlaybackState,
     pub view3d_state: &'a mut View3DState,
+    pub time_state: &'a mut TimeState,
+    pub sun_state: &'a SunState,
 }
 
 impl<'a, 'w, 's> Behavior<DockPane> for DockBehavior<'a, 'w, 's> {
@@ -378,7 +383,7 @@ impl<'a, 'w, 's> Behavior<DockPane> for DockBehavior<'a, 'w, 's> {
             }
             DockPane::View3D => {
                 self.render_with_bg(ui, |ui, this| {
-                    tools_window::render_view3d_tab(ui, this.view3d_state);
+                    tools_window::render_view3d_tab(ui, this.view3d_state, this.time_state, this.sun_state);
                 });
             }
         }
@@ -558,6 +563,8 @@ pub fn render_dock_tree(
         recording: &mut tool_res.recording,
         playback: &mut tool_res.playback,
         view3d_state: &mut tool_res.view3d_state,
+        time_state: &mut tool_res.time_state,
+        sun_state: &tool_res.sun_state,
     };
 
     egui::CentralPanel::default()
