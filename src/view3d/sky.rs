@@ -24,6 +24,10 @@ pub struct StarField;
 #[derive(Component)]
 pub struct GroundPlane;
 
+/// Marker for the 2D mode day/night color overlay sprite.
+#[derive(Component)]
+pub struct DayNightTint;
+
 /// Resource tracking current sun position
 #[derive(Resource)]
 pub struct SunState {
@@ -211,6 +215,20 @@ pub fn setup_sky(
         Mesh3d(ground_mesh),
         MeshMaterial3d(ground_material),
         Transform::from_xyz(0.0, 0.0, 0.0),
+        Visibility::Hidden,
+    ));
+
+    // Full-screen tint overlay for 2D mode day/night effect.
+    // Between tiles (z=0) and aircraft (z=10) at z=5.
+    commands.spawn((
+        Name::new("Day Night Tint"),
+        DayNightTint,
+        Sprite {
+            color: Color::srgba(0.0, 0.0, 0.0, 0.0),
+            custom_size: Some(Vec2::new(100_000.0, 100_000.0)),
+            ..default()
+        },
+        Transform::from_xyz(0.0, 0.0, 5.0),
         Visibility::Hidden,
     ));
 }
@@ -573,5 +591,60 @@ pub fn update_fog_parameters(
         fog.directional_light_color = Color::srgba(1.0, 0.85, 0.6, glow_intensity);
     } else {
         fog.directional_light_color = Color::srgba(0.0, 0.0, 0.0, 0.0);
+    }
+}
+
+/// Apply subtle time-of-day color tinting in 2D map mode.
+pub fn update_2d_tint(
+    state: Res<View3DState>,
+    sun_state: Res<SunState>,
+    main_camera: Query<&Transform, (With<crate::MapCamera>, Without<DayNightTint>)>,
+    mut tint_query: Query<(&mut Transform, &mut Sprite, &mut Visibility), With<DayNightTint>>,
+) {
+    let Ok((mut tint_tf, mut sprite, mut vis)) = tint_query.single_mut() else {
+        return;
+    };
+
+    if state.is_3d_active() {
+        *vis = Visibility::Hidden;
+        return;
+    }
+
+    let elevation = sun_state.elevation;
+
+    let (r, g, b, a) = if elevation > 10.0 {
+        // Full daylight: no tint
+        (0.0, 0.0, 0.0, 0.0)
+    } else if elevation > 0.0 {
+        // Low sun / golden hour: warm orange tint
+        let t = 1.0 - (elevation / 10.0);
+        (0.9, 0.6, 0.2, t * 0.08)
+    } else if elevation > -6.0 {
+        // Civil twilight: transition from warm to cool blue
+        let t = (-elevation) / 6.0;
+        let r = 0.9 * (1.0 - t) + 0.1 * t;
+        let g = 0.6 * (1.0 - t) + 0.1 * t;
+        let b = 0.2 * (1.0 - t) + 0.3 * t;
+        (r, g, b, 0.08 + t * 0.12)
+    } else if elevation > -18.0 {
+        // Nautical/astronomical twilight: deepening blue
+        let t = ((-elevation) - 6.0) / 12.0;
+        (0.05, 0.05, 0.15 + 0.1 * (1.0 - t), 0.2 + t * 0.15)
+    } else {
+        // Full night: dark blue overlay
+        (0.02, 0.02, 0.08, 0.3)
+    };
+
+    if a < 0.001 {
+        *vis = Visibility::Hidden;
+    } else {
+        *vis = Visibility::Inherited;
+        sprite.color = Color::srgba(r, g, b, a);
+    }
+
+    // Keep tint centered on camera so it covers the viewport during panning
+    if let Ok(cam_tf) = main_camera.single() {
+        tint_tf.translation.x = cam_tf.translation.x;
+        tint_tf.translation.y = cam_tf.translation.y;
     }
 }
