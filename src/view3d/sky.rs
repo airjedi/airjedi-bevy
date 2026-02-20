@@ -135,6 +135,83 @@ pub fn compute_sun_position_at(
 #[derive(Component)]
 pub struct SunLight;
 
+/// Marker for the directional light used as moonlight.
+#[derive(Component)]
+pub struct MoonLight;
+
+/// Resource tracking current moon position and phase.
+#[derive(Resource)]
+pub struct MoonState {
+    pub elevation: f32,
+    pub azimuth: f32,
+    /// 0.0 = new moon, 0.5 = full moon, 1.0 = new moon again
+    pub phase: f32,
+}
+
+impl Default for MoonState {
+    fn default() -> Self {
+        Self { elevation: -10.0, azimuth: 0.0, phase: 0.5 }
+    }
+}
+
+/// Simplified moon position using J2000.0 epoch (~2-5 degree accuracy).
+fn compute_moon_position(
+    latitude: f64,
+    longitude: f64,
+    datetime: &chrono::DateTime<chrono::FixedOffset>,
+) -> (f32, f32, f32) {
+    let timestamp = datetime.timestamp() as f64;
+    let j2000_epoch = 946728000.0_f64;
+    let days = (timestamp - j2000_epoch) / 86400.0;
+
+    let l = (218.316 + 13.176396 * days) % 360.0;
+    let m = (134.963 + 13.064993 * days) % 360.0;
+    let f = (93.272 + 13.229350 * days) % 360.0;
+
+    let m_rad = m.to_radians();
+    let f_rad = f.to_radians();
+
+    let ecl_lon = (l + 6.289 * m_rad.sin()).to_radians();
+    let ecl_lat = (5.128 * f_rad.sin()).to_radians();
+
+    let obliquity = 23.439_f64.to_radians();
+
+    let sin_ra = ecl_lon.sin() * obliquity.cos() - ecl_lat.tan() * obliquity.sin();
+    let cos_ra = ecl_lon.cos();
+    let declination = (ecl_lat.cos() * obliquity.sin() * ecl_lon.sin()
+        + ecl_lat.sin() * obliquity.cos()).asin();
+
+    let gmst = (280.46061837 + 360.98564736629 * days) % 360.0;
+    let ra = sin_ra.atan2(cos_ra).to_degrees();
+    let local_sidereal = (gmst + longitude) % 360.0;
+    let hour_angle = (local_sidereal - ra).to_radians();
+
+    let lat_rad = latitude.to_radians();
+
+    let sin_alt = lat_rad.sin() * declination.sin()
+        + lat_rad.cos() * declination.cos() * hour_angle.cos();
+    let elevation = sin_alt.asin();
+
+    let cos_az = (declination.sin() - lat_rad.sin() * sin_alt)
+        / (lat_rad.cos() * elevation.cos());
+    let mut azimuth = cos_az.clamp(-1.0, 1.0).acos();
+    if hour_angle.sin() > 0.0 {
+        azimuth = std::f64::consts::TAU - azimuth;
+    }
+
+    // Lunar phase: synodic month = 29.530588853 days
+    // Known new moon: 2000-01-06 18:14 UTC (J2000 + 5.76 days)
+    let synodic_month = 29.530588853;
+    let phase = ((days - 5.76) % synodic_month) / synodic_month;
+    let phase = if phase < 0.0 { phase + 1.0 } else { phase };
+
+    (
+        elevation.to_degrees() as f32,
+        azimuth.to_degrees() as f32,
+        phase as f32,
+    )
+}
+
 /// No-op: sky visibility is handled entirely through star field sprite visibility.
 /// Kept as a system entry point for future atmospheric effects.
 pub fn update_sky_visibility(
@@ -424,6 +501,43 @@ pub fn update_sun_position(
         ambient.brightness = 80.0 * ambient_factor;
     } else {
         ambient.brightness = 300.0 * ambient_factor;
+    }
+}
+
+/// Update moon position and moonlight from time and map coordinates.
+pub fn update_moon_position(
+    map_state: Res<MapState>,
+    time_state: Res<TimeState>,
+    mut moon_state: ResMut<MoonState>,
+    mut moon_query: Query<(&mut DirectionalLight, &mut Transform), With<MoonLight>>,
+) {
+    let datetime = time_state.current_datetime();
+    let (elevation, azimuth, phase) = compute_moon_position(
+        map_state.latitude,
+        map_state.longitude,
+        &datetime,
+    );
+    moon_state.elevation = elevation;
+    moon_state.azimuth = azimuth;
+    moon_state.phase = phase;
+
+    let Ok((mut light, mut transform)) = moon_query.single_mut() else {
+        return;
+    };
+
+    let elev_rad = elevation.to_radians();
+    let azim_rad = azimuth.to_radians();
+    *transform = Transform::from_rotation(
+        Quat::from_euler(EulerRot::YXZ, -azim_rad, -elev_rad, 0.0),
+    );
+
+    // Full moon ~0.25 lux, scaled by phase (sine curve peaks at phase=0.5)
+    let phase_illuminance = (std::f32::consts::PI * phase).sin();
+    if elevation > 0.0 {
+        let elev_factor = (elevation / 90.0).clamp(0.0, 1.0).sqrt();
+        light.illuminance = 0.25 * phase_illuminance * elev_factor;
+    } else {
+        light.illuminance = 0.0;
     }
 }
 
