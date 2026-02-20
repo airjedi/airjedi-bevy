@@ -209,6 +209,8 @@ fn detect_ground_elevation(
 pub fn render_3d_view_panel(
     mut contexts: EguiContexts,
     mut state: ResMut<View3DState>,
+    mut time_state: ResMut<sky::TimeState>,
+    sun_state: Res<sky::SunState>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
@@ -291,12 +293,99 @@ pub fn render_3d_view_panel(
             });
 
             ui.separator();
+            render_time_of_day_section(ui, &mut time_state, &sun_state);
+
+            ui.separator();
             ui.label(
                 egui::RichText::new("Press '3' to toggle view mode")
                     .size(11.0)
                     .color(egui::Color32::GRAY)
             );
         });
+}
+
+/// Render the "Time of Day" UI section (shared between panel and dock tab).
+pub fn render_time_of_day_section(
+    ui: &mut egui::Ui,
+    time_state: &mut sky::TimeState,
+    sun_state: &sky::SunState,
+) {
+    ui.heading("Time of Day");
+
+    let mut manual = time_state.is_manual();
+    if ui.checkbox(&mut manual, "Manual time override").changed() {
+        if manual {
+            // Initialize to current hour
+            use chrono::Timelike;
+            let now = time_state.current_datetime();
+            let hour = now.hour() as f32 + now.minute() as f32 / 60.0;
+            time_state.set_hour(hour);
+        } else {
+            time_state.reset_to_live();
+        }
+    }
+
+    if time_state.is_manual() {
+        use chrono::Timelike;
+        let current = time_state.current_datetime();
+        let mut hour = current.hour() as f32 + current.minute() as f32 / 60.0;
+
+        let h = hour.floor() as u32;
+        let m = ((hour.fract()) * 60.0).floor() as u32;
+        let time_label = format!("{:02}:{:02}", h, m);
+
+        ui.horizontal(|ui| {
+            ui.label("Time:");
+            if ui.add(
+                egui::Slider::new(&mut hour, 0.0..=23.99)
+                    .text(time_label)
+                    .step_by(1.0 / 60.0),
+            ).changed() {
+                time_state.set_hour(hour);
+            }
+        });
+    } else {
+        use chrono::Timelike;
+        let now = time_state.current_datetime();
+        ui.label(
+            egui::RichText::new(format!(
+                "Live: {:02}:{:02}:{:02} UTC{:+.0}",
+                now.hour(),
+                now.minute(),
+                now.second(),
+                time_state.utc_offset_hours,
+            ))
+            .size(11.0)
+            .color(egui::Color32::LIGHT_GREEN),
+        );
+    }
+
+    // Sun elevation display with twilight zone label
+    let elev = sun_state.elevation;
+    let zone = if elev > 0.0 {
+        "Day"
+    } else if elev > -6.0 {
+        "Civil twilight"
+    } else if elev > -12.0 {
+        "Nautical twilight"
+    } else if elev > -18.0 {
+        "Astronomical twilight"
+    } else {
+        "Night"
+    };
+
+    ui.horizontal(|ui| {
+        ui.label("Sun:");
+        ui.label(
+            egui::RichText::new(format!("{:.1}\u{00B0} ({})", elev, zone))
+                .size(11.0)
+                .color(if elev > 0.0 {
+                    egui::Color32::YELLOW
+                } else {
+                    egui::Color32::LIGHT_BLUE
+                }),
+        );
+    });
 }
 
 /// System to animate the view transition
@@ -743,6 +832,7 @@ impl Plugin for View3DPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<View3DState>()
             .init_resource::<sky::SunState>()
+            .init_resource::<sky::TimeState>()
             .add_systems(Startup, sky::setup_sky)
             .add_systems(Update, (
                 toggle_3d_view,
@@ -756,7 +846,8 @@ impl Plugin for View3DPlugin {
             .add_systems(Update, fix_aircraft_model_materials)
             .add_systems(Update, sky::update_sky_visibility)
             .add_systems(Update, sky::sync_sky_camera.after(update_3d_camera))
-            .add_systems(Update, sky::update_sun_position)
+            .add_systems(Update, sky::sync_time_offset)
+            .add_systems(Update, sky::update_sun_position.after(sky::sync_time_offset))
             .add_systems(Update, sky::update_star_visibility)
             .add_systems(Update, sky::manage_atmosphere_camera
                 .after(animate_view_transition))
