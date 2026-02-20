@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiPrimaryContextPass};
-use bevy_slippy_tiles::SlippyTilesSettings;
+use bevy_slippy_tiles::{SlippyTilesSettings, TileFormat};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -38,6 +38,19 @@ impl BasemapStyle {
             BasemapStyle::OpenStreetMap => "OpenStreetMap",
             BasemapStyle::EsriSatellite => "ESRI Satellite",
         }
+    }
+
+    /// Get the tile image format served by this basemap provider
+    pub fn tile_format(&self) -> TileFormat {
+        match self {
+            BasemapStyle::EsriSatellite => TileFormat::Jpg,
+            _ => TileFormat::Png,
+        }
+    }
+
+    /// Whether this basemap uses /{z}/{y}/{x} instead of /{z}/{x}/{y}
+    pub fn reverse_axes(&self) -> bool {
+        matches!(self, BasemapStyle::EsriSatellite)
     }
 
     /// Get all available styles
@@ -681,6 +694,8 @@ pub fn apply_basemap_changes(
         info!("Basemap changed from {:?} to {:?}", current_state.style, new_style);
         current_state.style = new_style;
         tile_settings.endpoint = new_style.endpoint_url().to_string();
+        tile_settings.tile_format = new_style.tile_format();
+        tile_settings.reverse_axes = new_style.reverse_axes();
         // Note: Tile cache clearing happens in main.rs when cache is cleared
     }
 }

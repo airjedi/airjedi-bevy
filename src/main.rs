@@ -595,6 +595,8 @@ pub(crate) fn setup_map(
 
     // Update SlippyTilesSettings from config
     tile_settings.endpoint = app_config.map.basemap_style.endpoint_url().to_string();
+    tile_settings.tile_format = app_config.map.basemap_style.tile_format();
+    tile_settings.reverse_axes = app_config.map.basemap_style.reverse_axes();
     tile_settings.reference_latitude = app_config.map.default_latitude;
     tile_settings.reference_longitude = app_config.map.default_longitude;
 
@@ -753,16 +755,39 @@ fn request_3d_tiles_continuous(
     };
 
     // --- Mid band: zoom_level - 1 ---
-    // Center-forward plus left and right wings to cover horizon corners
     request_band(1, 3.0, 0.0, mid_radius);
-    request_band(1, 2.0, -3.0, mid_radius);  // left wing
-    request_band(1, 2.0, 3.0, mid_radius);   // right wing
+    request_band(1, 2.0, -4.0, mid_radius);
+    request_band(1, 2.0, 4.0, mid_radius);
 
     // --- Far band: zoom_level - 2 ---
-    // Center-forward plus wider left and right wings for full horizon coverage
-    request_band(2, 5.0, 0.0, far_radius);
-    request_band(2, 3.0, -5.0, far_radius);  // far left
-    request_band(2, 3.0, 5.0, far_radius);   // far right
+    request_band(2, 4.0, 0.0, far_radius);
+    request_band(2, 3.0, -5.0, far_radius);
+    request_band(2, 3.0, 5.0, far_radius);
+
+    // --- Horizon bands: zoom_level - 3 and - 4 ---
+    // At the horizon, perspective projection makes the ground span
+    // very far laterally.  Use a fan pattern: for each forward
+    // distance, sweep across the full lateral range so coverage
+    // forms a wide arc matching the frustum shape.
+    let hr = 4 + (3.0 * (1.0 - pitch_factor)) as u8; // 4-7
+
+    // zoom-3: sweep at multiple forward distances
+    for &fwd in &[2.0, 5.0, 8.0] {
+        request_band(3, fwd, 0.0, hr);
+        // Lateral spread increases with forward distance
+        let spread = fwd * 1.5 + 4.0;
+        request_band(3, fwd, -spread, hr);
+        request_band(3, fwd, spread, hr);
+    }
+
+    // zoom-4: coarser tiles for the far horizon, even wider sweep
+    let ur = 4 + (2.0 * (1.0 - pitch_factor)) as u8; // 4-6
+    for &fwd in &[2.0, 5.0, 8.0] {
+        request_band(4, fwd, 0.0, ur);
+        let spread = fwd * 2.0 + 5.0;
+        request_band(4, fwd, -spread, ur);
+        request_band(4, fwd, spread, ur);
+    }
 }
 
 // Aircraft texture setup, sync, label update, and connection status
@@ -1426,11 +1451,11 @@ fn display_tiles_filtered(
     let current_zoom = map_state.zoom_level.to_u8();
 
     for event in tile_events.read() {
-        // In 3D mode, accept tiles within 2 zoom levels below current (multi-resolution bands).
+        // In 3D mode, accept tiles within 4 zoom levels below current (multi-resolution bands).
         // In 2D mode, only accept tiles at the exact current zoom level.
         let event_zoom = event.zoom_level.to_u8();
         if view3d_state.is_3d_active() {
-            if event_zoom > current_zoom || current_zoom - event_zoom > 2 {
+            if event_zoom > current_zoom || current_zoom - event_zoom > 4 {
                 continue;
             }
         } else if event.zoom_level != map_state.zoom_level {
@@ -1554,11 +1579,13 @@ fn cull_offscreen_tiles(
         let far_angle = (pitch_rad - half_vfov).max(0.05);
         let far_ground_dist = camera_height / far_angle.tan();
         let center_ground_dist = effective_distance * pitch_rad.cos();
-        let half_width = center_ground_dist * half_hfov.tan();
+        // Use the far ground distance for width so the culling box covers
+        // the full trapezoid of the perspective frustum on the ground.
+        let half_width_at_horizon = far_ground_dist * half_hfov.tan();
 
-        // 2.0x margin to account for multi-resolution tiles at different zoom levels
-        let margin = 2.0;
-        let hw = half_width * margin;
+        // 2.5x margin to keep multi-resolution horizon tiles alive
+        let margin = 2.5;
+        let hw = half_width_at_horizon * margin;
         let hh = far_ground_dist.max(center_ground_dist) * margin;
 
         // Directional bias: extend forward culling margin by 1.5x, reduce backward to 1.0x

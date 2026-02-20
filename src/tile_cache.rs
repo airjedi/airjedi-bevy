@@ -97,7 +97,7 @@ pub fn clear_tile_cache() {
             let path = entry.path();
             if path.is_file() {
                 if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
-                    if filename.ends_with(".tile.png") {
+                    if filename.contains(".tile.") {
                         if let Err(e) = fs::remove_file(&path) {
                             warn!("Failed to delete tile {:?}: {}", path, e);
                         } else {
@@ -129,7 +129,7 @@ pub fn clear_legacy_tiles() {
             let path = entry.path();
             if path.is_file() {
                 if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
-                    if filename.ends_with(".tile.png") {
+                    if filename.contains(".tile.") {
                         if let Err(e) = fs::remove_file(&path) {
                             warn!("Failed to delete legacy tile {:?}: {}", path, e);
                         } else {
@@ -146,8 +146,8 @@ pub fn clear_legacy_tiles() {
     }
 }
 
-/// Remove cached tiles that aren't valid PNG files (e.g. JPEG returned by the tile
-/// server). Invalid tiles cause Bevy's asset loader to log errors every frame.
+/// Remove cached tiles whose file content doesn't match their extension.
+/// Invalid tiles cause Bevy's asset loader to log errors every frame.
 pub fn remove_invalid_tiles() {
     let cache_dir = tile_cache_dir();
     if !cache_dir.exists() {
@@ -155,6 +155,7 @@ pub fn remove_invalid_tiles() {
     }
 
     let png_signature: [u8; 4] = [0x89, 0x50, 0x4E, 0x47]; // \x89PNG
+    let jpg_signature: [u8; 2] = [0xFF, 0xD8];              // JPEG SOI
     let mut removed = 0;
 
     if let Ok(entries) = fs::read_dir(&cache_dir) {
@@ -166,26 +167,40 @@ pub fn remove_invalid_tiles() {
             let Some(filename) = path.file_name().and_then(|n| n.to_str()) else {
                 continue;
             };
-            if !filename.ends_with(".tile.png") {
+            // Determine expected format from file extension
+            let expected = if filename.ends_with(".tile.png") {
+                "png"
+            } else if filename.ends_with(".tile.jpg") {
+                "jpg"
+            } else if filename.ends_with(".tile.webp") {
+                "webp"
+            } else {
                 continue;
-            }
-            // Read the first 4 bytes and check for PNG magic
-            match fs::read(&path) {
-                Ok(bytes) if bytes.len() >= 4 && bytes[..4] == png_signature => {}
-                Ok(bytes) => {
-                    let sig = if bytes.len() >= 4 {
-                        format!("{:02x}{:02x}{:02x}{:02x}", bytes[0], bytes[1], bytes[2], bytes[3])
-                    } else {
-                        format!("({} bytes)", bytes.len())
-                    };
-                    warn!("Removing invalid tile {} (signature: {})", filename, sig);
-                    let _ = fs::remove_file(&path);
-                    removed += 1;
-                }
+            };
+            // Read first bytes and validate against expected format
+            let bytes = match fs::read(&path) {
+                Ok(b) => b,
                 Err(_) => {
                     let _ = fs::remove_file(&path);
                     removed += 1;
+                    continue;
                 }
+            };
+            let valid = match expected {
+                "png" => bytes.len() >= 4 && bytes[..4] == png_signature,
+                "jpg" => bytes.len() >= 2 && bytes[..2] == jpg_signature,
+                "webp" => bytes.len() >= 4 && &bytes[..4] == b"RIFF",
+                _ => true,
+            };
+            if !valid {
+                let sig = if bytes.len() >= 4 {
+                    format!("{:02x}{:02x}{:02x}{:02x}", bytes[0], bytes[1], bytes[2], bytes[3])
+                } else {
+                    format!("({} bytes)", bytes.len())
+                };
+                warn!("Removing invalid tile {} (signature: {})", filename, sig);
+                let _ = fs::remove_file(&path);
+                removed += 1;
             }
         }
     }
