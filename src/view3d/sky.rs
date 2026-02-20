@@ -3,8 +3,9 @@
 //! The star field is rendered as a large 2D sprite on Camera2d at a low
 //! z-depth (behind map tiles). This avoids multi-camera compositing
 //! issues while ensuring stars never bleed through opaque tiles.
-//! Sun position is computed from real wall-clock time and the map's
-//! geographic coordinates.
+//! Sun position is computed using the NREL Solar Position Algorithm (SPA)
+//! via the `solar-positioning` crate (~0.0003 degree accuracy).
+//! Supports both real-time wall clock and manual time override via TimeState.
 
 use bevy::prelude::*;
 use bevy::pbr::{Atmosphere, AtmosphereSettings, DistanceFog, FogFalloff, StandardMaterial};
@@ -41,54 +42,88 @@ impl Default for SunState {
     }
 }
 
-/// Compute sun elevation and azimuth from current time and geographic position.
-/// Uses a simplified solar position algorithm accurate to ~1 degree.
-pub fn compute_sun_position(latitude: f64, longitude: f64) -> (f32, f32) {
-    use std::time::SystemTime;
+/// Controls whether the app uses real wall-clock time or a manual override.
+#[derive(Resource)]
+pub struct TimeState {
+    pub override_time: Option<chrono::DateTime<chrono::FixedOffset>>,
+    pub utc_offset_hours: f32,
+}
 
-    let now = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default();
-    let total_secs = now.as_secs_f64();
+impl Default for TimeState {
+    fn default() -> Self {
+        Self {
+            override_time: None,
+            utc_offset_hours: 0.0,
+        }
+    }
+}
 
-    // Days since J2000.0 epoch (2000-01-01 12:00 UTC)
-    let j2000_epoch = 946728000.0; // Unix timestamp of J2000.0
-    let days = (total_secs - j2000_epoch) / 86400.0;
-
-    // Solar mean longitude (degrees)
-    let mean_lon = (280.460 + 0.9856474 * days) % 360.0;
-    // Solar mean anomaly (degrees)
-    let mean_anomaly = ((357.528 + 0.9856003 * days) % 360.0).to_radians();
-    // Ecliptic longitude (degrees)
-    let ecliptic_lon =
-        (mean_lon + 1.915 * mean_anomaly.sin() + 0.020 * (2.0 * mean_anomaly).sin()).to_radians();
-    // Obliquity of ecliptic
-    let obliquity = 23.439_f64.to_radians();
-
-    // Solar declination
-    let declination = (obliquity.sin() * ecliptic_lon.sin()).asin();
-
-    // Hour angle
-    let utc_hours = (total_secs % 86400.0) / 3600.0;
-    let solar_noon_offset = longitude / 15.0;
-    let hour_angle = ((utc_hours - 12.0 + solar_noon_offset) * 15.0).to_radians();
-
-    let lat_rad = latitude.to_radians();
-
-    // Solar elevation
-    let sin_elevation =
-        lat_rad.sin() * declination.sin() + lat_rad.cos() * declination.cos() * hour_angle.cos();
-    let elevation = sin_elevation.asin();
-
-    // Solar azimuth
-    let cos_azimuth =
-        (declination.sin() - lat_rad.sin() * sin_elevation) / (lat_rad.cos() * elevation.cos());
-    let mut azimuth = cos_azimuth.clamp(-1.0, 1.0).acos();
-    if hour_angle > 0.0 {
-        azimuth = std::f64::consts::TAU - azimuth;
+impl TimeState {
+    pub fn current_datetime(&self) -> chrono::DateTime<chrono::FixedOffset> {
+        self.override_time
+            .unwrap_or_else(|| chrono::Utc::now().fixed_offset())
     }
 
-    (elevation.to_degrees() as f32, azimuth.to_degrees() as f32)
+    pub fn is_manual(&self) -> bool {
+        self.override_time.is_some()
+    }
+
+    pub fn set_hour(&mut self, hour: f32) {
+        use chrono::Timelike;
+        let now = chrono::Utc::now();
+        let offset_secs = (self.utc_offset_hours * 3600.0) as i32;
+        let offset = chrono::FixedOffset::east_opt(offset_secs)
+            .unwrap_or(chrono::FixedOffset::east_opt(0).unwrap());
+        let local_today = now.with_timezone(&offset);
+
+        let h = hour.floor() as u32;
+        let m = ((hour.fract()) * 60.0).floor() as u32;
+        if let Some(dt) = local_today
+            .with_hour(h.min(23))
+            .and_then(|d| d.with_minute(m.min(59)))
+            .and_then(|d| d.with_second(0))
+        {
+            self.override_time = Some(dt.fixed_offset());
+        }
+    }
+
+    pub fn reset_to_live(&mut self) {
+        self.override_time = None;
+    }
+}
+
+/// Compute sun elevation and azimuth using the NREL Solar Position Algorithm.
+/// Accuracy: ~0.0003 degrees. Handles polar day/night edge cases.
+pub fn compute_sun_position(latitude: f64, longitude: f64) -> (f32, f32) {
+    let now = chrono::Utc::now().fixed_offset();
+    compute_sun_position_at(latitude, longitude, &now)
+}
+
+/// Compute sun position at a specific time (for time slider support).
+pub fn compute_sun_position_at(
+    latitude: f64,
+    longitude: f64,
+    datetime: &chrono::DateTime<chrono::FixedOffset>,
+) -> (f32, f32) {
+    use solar_positioning::{spa, time::DeltaT, RefractionCorrection};
+
+    let delta_t = DeltaT::estimate_from_date_like(*datetime).unwrap_or(69.184);
+
+    match spa::solar_position(
+        *datetime,
+        latitude,
+        longitude,
+        0.0,
+        delta_t,
+        Some(RefractionCorrection::standard()),
+    ) {
+        Ok(position) => {
+            let elevation = position.elevation_angle() as f32;
+            let azimuth = position.azimuth() as f32;
+            (elevation, azimuth)
+        }
+        Err(_) => (45.0, 180.0),
+    }
 }
 
 /// Marker for the directional light used as the sun
@@ -250,15 +285,21 @@ pub fn update_star_visibility(
     };
 }
 
-/// Update sun direction from real wall-clock time and map coordinates.
+/// Update sun direction from time state and map coordinates.
 pub fn update_sun_position(
     map_state: Res<MapState>,
     state: Res<View3DState>,
+    time_state: Res<TimeState>,
     mut sun_state: ResMut<SunState>,
     mut sun_query: Query<(&mut DirectionalLight, &mut Transform), With<SunLight>>,
     mut ambient: ResMut<GlobalAmbientLight>,
 ) {
-    let (elevation, azimuth) = compute_sun_position(map_state.latitude, map_state.longitude);
+    let datetime = time_state.current_datetime();
+    let (elevation, azimuth) = compute_sun_position_at(
+        map_state.latitude,
+        map_state.longitude,
+        &datetime,
+    );
     sun_state.elevation = elevation;
     sun_state.azimuth = azimuth;
 
@@ -273,22 +314,45 @@ pub fn update_sun_position(
         Quat::from_euler(EulerRot::YXZ, -azim_rad, -elev_rad, 0.0),
     );
 
-    // Scale illuminance with sun elevation
+    // Scale illuminance with sun elevation (128,000 lux = raw sunlight pre-scattering)
     if elevation > 0.0 {
         let factor = (elevation / 90.0).clamp(0.0, 1.0);
-        light.illuminance = 5000.0 * factor.sqrt();
+        light.illuminance = 128_000.0 * factor.sqrt();
     } else {
         light.illuminance = 0.0;
     }
 
-    // Scale ambient light
-    let ambient_factor = ((elevation + 12.0) / 24.0).clamp(0.05, 1.0);
+    // Ambient light with civil/nautical/astronomical twilight zones
+    let ambient_factor = if elevation > 0.0 {
+        1.0
+    } else if elevation > -6.0 {
+        // Civil twilight: -6 to 0 degrees
+        ((elevation + 6.0) / 6.0).clamp(0.0, 1.0) * 0.8 + 0.2
+    } else if elevation > -12.0 {
+        // Nautical twilight: -12 to -6 degrees
+        ((elevation + 12.0) / 6.0).clamp(0.0, 1.0) * 0.15 + 0.05
+    } else if elevation > -18.0 {
+        // Astronomical twilight: -18 to -12 degrees
+        ((elevation + 18.0) / 6.0).clamp(0.0, 1.0) * 0.04 + 0.01
+    } else {
+        // Full night
+        0.01
+    };
+
     if state.is_3d_active() {
         // In 3D mode, atmosphere provides sky irradiance; reduce ambient to avoid double-lighting
         ambient.brightness = 80.0 * ambient_factor;
     } else {
         ambient.brightness = 300.0 * ambient_factor;
     }
+}
+
+/// Keep time offset in sync with map longitude.
+pub fn sync_time_offset(
+    map_state: Res<MapState>,
+    mut time_state: ResMut<TimeState>,
+) {
+    time_state.utc_offset_hours = (map_state.longitude / 15.0) as f32;
 }
 
 /// Insert or remove atmosphere components on Camera3d based on 3D mode state.
