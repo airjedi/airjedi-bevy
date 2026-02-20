@@ -172,6 +172,8 @@ fn main() {
             reference_longitude: constants::DEFAULT_LONGITUDE,  // Wichita, KS (matches MapState default)
             z_layer: 0.0,                  // Render tiles at z=0 (behind aircraft at z=10)
             auto_render: false,            // Disable auto-render, we handle tile display ourselves
+            max_concurrent_downloads: 8,   // 3D mode generates many parallel requests across zoom levels
+            rate_limit_requests: 24,       // CartoDB/ESRI CDNs handle this easily; OSM is more restrictive
             ..default()
         })
         .add_plugins((zoom::ZoomPlugin, tiles::TilesPlugin, input::InputPlugin, camera::CameraPlugin))
