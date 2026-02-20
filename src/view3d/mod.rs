@@ -389,13 +389,18 @@ pub fn update_3d_camera(
         return;
     }
 
+    // Use a large far plane to avoid frustum-culling aircraft at high altitude
+    // scales or large distances from the camera.
+    let perspective = PerspectiveProjection {
+        fov: base_fov,
+        far: 100_000.0,
+        ..default()
+    };
+
     if t > 0.999 {
         // Pure 3D mode
         *transform = transform_3d;
-        *projection = Projection::Perspective(PerspectiveProjection {
-            fov: base_fov,
-            ..default()
-        });
+        *projection = Projection::Perspective(perspective);
     } else {
         // Straight-line transition using perspective throughout. The 2D
         // endpoint is placed at matching_z — the altitude where a 60° FOV
@@ -407,10 +412,7 @@ pub fn update_3d_camera(
 
         transform.translation = pos_match.lerp(transform_3d.translation, t);
         transform.rotation = Quat::IDENTITY.slerp(transform_3d.rotation, t);
-        *projection = Projection::Perspective(PerspectiveProjection {
-            fov: base_fov,
-            ..default()
-        });
+        *projection = Projection::Perspective(perspective);
     }
 }
 
@@ -693,6 +695,47 @@ pub fn fade_distant_sprites(
     }
 }
 
+/// Force aircraft model materials to opaque alpha mode.
+///
+/// GLB models may export with transparent or alpha-blended materials. Transparent
+/// meshes render in the transparent pass and don't write to the depth buffer,
+/// causing atmosphere post-processing to treat those pixels as sky and overwrite
+/// them. This system detects non-opaque materials on aircraft mesh children and
+/// forces them to [`AlphaMode::Opaque`] so they write depth and remain visible.
+fn fix_aircraft_model_materials(
+    aircraft_query: Query<&Children, With<crate::Aircraft>>,
+    children_query: Query<&Children>,
+    mesh_query: Query<&MeshMaterial3d<StandardMaterial>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    for children in aircraft_query.iter() {
+        fix_materials_in_hierarchy(children, &children_query, &mesh_query, &mut materials);
+    }
+}
+
+fn fix_materials_in_hierarchy(
+    children: &Children,
+    children_query: &Query<&Children>,
+    mesh_query: &Query<&MeshMaterial3d<StandardMaterial>>,
+    materials: &mut Assets<StandardMaterial>,
+) {
+    for child in children.iter() {
+        if let Ok(mat_handle) = mesh_query.get(child) {
+            let needs_fix = materials
+                .get(mat_handle.id())
+                .is_some_and(|m| !matches!(m.alpha_mode, AlphaMode::Opaque));
+            if needs_fix {
+                if let Some(material) = materials.get_mut(mat_handle.id()) {
+                    material.alpha_mode = AlphaMode::Opaque;
+                }
+            }
+        }
+        if let Ok(grandchildren) = children_query.get(child) {
+            fix_materials_in_hierarchy(grandchildren, children_query, mesh_query, materials);
+        }
+    }
+}
+
 /// Plugin for 3D view functionality
 pub struct View3DPlugin;
 
@@ -710,6 +753,7 @@ impl Plugin for View3DPlugin {
             .add_systems(Update, update_tile_elevation
                 .after(animate_view_transition))
             .add_systems(Update, update_aircraft_altitude_z)
+            .add_systems(Update, fix_aircraft_model_materials)
             .add_systems(Update, sky::update_sky_visibility)
             .add_systems(Update, sky::sync_sky_camera.after(update_3d_camera))
             .add_systems(Update, sky::update_sun_position)
