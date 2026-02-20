@@ -1,7 +1,8 @@
 use bevy::prelude::*;
 use bevy_slippy_tiles::*;
 
-use super::{TrailHistory, TrailConfig, SessionClock, altitude_color, age_opacity};
+use super::{TrailHistory, TrailConfig, SessionClock};
+use super::trails::{altitude_color, age_opacity};
 use crate::MapState;
 use crate::geo::CoordinateConverter;
 use crate::view3d::View3DState;

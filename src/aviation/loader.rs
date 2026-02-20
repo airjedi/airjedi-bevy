@@ -70,7 +70,7 @@ fn load_airports() -> Result<Vec<Airport>, String> {
             Ok(airport) => airports.push(airport),
             Err(e) => {
                 // Log but continue - some rows may have parsing issues
-                eprintln!("Skipping airport row: {}", e);
+                warn!("Skipping airport row: {}", e);
             }
         }
     }
@@ -88,7 +88,7 @@ fn load_runways() -> Result<Vec<Runway>, String> {
         match result {
             Ok(runway) => runways.push(runway),
             Err(e) => {
-                eprintln!("Skipping runway row: {}", e);
+                warn!("Skipping runway row: {}", e);
             }
         }
     }
@@ -106,7 +106,7 @@ fn load_navaids() -> Result<Vec<Navaid>, String> {
         match result {
             Ok(navaid) => navaids.push(navaid),
             Err(e) => {
-                eprintln!("Skipping navaid row: {}", e);
+                warn!("Skipping navaid row: {}", e);
             }
         }
     }
@@ -135,7 +135,10 @@ pub fn start_aviation_data_loading(
         for file in &files {
             if !is_cache_fresh(file.filename()) {
                 if let Err(e) = download_file_blocking(file) {
-                    let mut lock = handle.lock().unwrap();
+                    let Ok(mut lock) = handle.lock() else {
+                        error!("Failed to acquire lock for aviation data loading");
+                        return;
+                    };
                     *lock = Some(Err(format!("Failed to download {}: {}", file.filename(), e)));
                     return;
                 }
@@ -152,7 +155,10 @@ pub fn start_aviation_data_loading(
             (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => Err(e),
         };
 
-        let mut lock = handle.lock().unwrap();
+        let Ok(mut lock) = handle.lock() else {
+            error!("Failed to acquire lock for aviation data result");
+            return;
+        };
         *lock = Some(result);
     });
 
@@ -177,7 +183,10 @@ pub fn poll_aviation_data_loading(
         return;
     };
 
-    let mut lock = handle.0.lock().unwrap();
+    let Ok(mut lock) = handle.0.lock() else {
+        error!("Failed to acquire lock for aviation data poll");
+        return;
+    };
     let Some(result) = lock.take() else {
         // Still loading
         return;

@@ -1,18 +1,17 @@
 use bevy::prelude::*;
 
 use super::{
-    SessionClock,
-    TrailConfig, TrailRecordTimer, draw_trails, prune_trails, record_trail_points,
+    SessionClock, TrailConfig, TrailRecordTimer,
     AircraftListState, AircraftDisplayList,
-    toggle_aircraft_list, update_aircraft_display_list,
-    highlight_selected_aircraft,
     DetailPanelState, CameraFollowState,
-    render_detail_panel, toggle_detail_panel, open_detail_on_selection, detect_aircraft_click,
-    EmergencyAlertState,
-    detect_emergencies, draw_emergency_rings, update_emergency_banner, update_emergency_banner_text,
-    PredictionConfig, draw_predictions,
-    StatsPanelState,
+    EmergencyAlertState, PredictionConfig, StatsPanelState,
 };
+use super::trail_renderer::{draw_trails, prune_trails};
+use super::trails::record_trail_points;
+use super::list_panel::{toggle_aircraft_list, update_aircraft_display_list, highlight_selected_aircraft};
+use super::detail_panel::{render_detail_panel, toggle_detail_panel, open_detail_on_selection, detect_aircraft_click};
+use super::emergency::{detect_emergencies, draw_emergency_rings, update_emergency_banner, update_emergency_banner_text};
+use super::prediction::draw_predictions;
 
 pub struct AircraftPlugin;
 
