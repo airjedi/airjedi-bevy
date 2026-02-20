@@ -310,6 +310,7 @@ fn main() {
         })
         .init_resource::<SpawnedTiles>()
         .init_resource::<DragState>()
+        .init_resource::<Tile3DRefreshTimer>()
         .init_resource::<EguiWantsPointer>()
         .init_resource::<HelpOverlayState>()
         .init_resource::<ui_panels::UiPanelManager>()
@@ -335,6 +336,7 @@ fn main() {
         .add_systems(Update, handle_pinch_zoom)
         .add_systems(Update, handle_window_resize)
         .add_systems(Update, handle_3d_view_tile_refresh)
+        .add_systems(Update, request_3d_tiles_continuous.after(handle_3d_view_tile_refresh))
         // Apply deferred commands (like despawns) before updating camera/tiles
         // This ensures old tiles are gone before new camera position is applied
         .add_systems(Update, ApplyDeferred.after(handle_zoom))
@@ -403,6 +405,17 @@ struct DragState {
 /// Created at startup with ScatteringMedium::earthlike() defaults.
 #[derive(Resource)]
 pub struct AtmosphereMediumHandle(pub Handle<ScatteringMedium>);
+
+/// Timer that triggers periodic tile re-requests in 3D mode so that camera
+/// orbit, pan, and altitude changes continuously fill visible areas.
+#[derive(Resource)]
+struct Tile3DRefreshTimer(Timer);
+
+impl Default for Tile3DRefreshTimer {
+    fn default() -> Self {
+        Self(Timer::from_seconds(0.3, TimerMode::Repeating))
+    }
+}
 
 // Resource to hold debug log file handle
 #[derive(Resource, Clone)]
@@ -657,6 +670,99 @@ fn handle_3d_view_tile_refresh(
         radius: Radius(radius),
         use_cache: true,
     });
+}
+
+/// Continuously request multi-resolution tiles in 3D mode so that camera orbit,
+/// pan, and altitude changes fill the visible area without waiting for explicit
+/// View3DState change events.
+///
+/// Three distance bands load tiles at decreasing zoom levels:
+/// - Near (0-40% of ground extent): current zoom_level
+/// - Mid  (40-70%): zoom_level - 1
+/// - Far  (70-100%): zoom_level - 2
+///
+/// Mid and far bands are offset in the camera look direction so tiles load ahead
+/// of where the user is looking. Band radii adapt to pitch: low pitch (looking
+/// toward horizon) favours far tiles; high pitch (looking down) favours near tiles.
+fn request_3d_tiles_continuous(
+    mut timer: ResMut<Tile3DRefreshTimer>,
+    time: Res<Time>,
+    view3d_state: Res<view3d::View3DState>,
+    map_state: Res<MapState>,
+    mut download_events: MessageWriter<DownloadSlippyTilesMessage>,
+) {
+    if !view3d_state.is_3d_active() {
+        return;
+    }
+
+    timer.0.tick(time.delta());
+    if !timer.0.just_finished() {
+        return;
+    }
+
+    let base_zoom = map_state.zoom_level.to_u8();
+    let lat = map_state.latitude;
+    let lon = map_state.longitude;
+    let yaw_rad = view3d_state.camera_yaw.to_radians();
+    let pitch = view3d_state.camera_pitch;
+
+    // pitch_factor: 0.0 = low pitch (horizon), 1.0 = high pitch (looking down)
+    let pitch_factor = ((pitch - 15.0) / (89.0 - 15.0)).clamp(0.0, 1.0);
+
+    // Adaptive band radii based on pitch
+    let near_radius = 3 + (3.0 * pitch_factor) as u8;          // 3-6
+    let mid_radius  = 3 + (2.0 * (1.0 - pitch_factor)) as u8;  // 3-5
+    let far_radius  = 2 + (3.0 * (1.0 - pitch_factor)) as u8;  // 2-5
+
+    // --- Near band: current zoom level, centered on map position ---
+    download_events.write(DownloadSlippyTilesMessage {
+        tile_size: TileSize::Normal,
+        zoom_level: map_state.zoom_level,
+        coordinates: Coordinates::from_latitude_longitude(lat, lon),
+        radius: Radius(near_radius),
+        use_cache: true,
+    });
+
+    // Helper: send a tile request at a given zoom level, offset from (lat, lon)
+    // by `fwd` tiles forward and `side` tiles sideways relative to the camera yaw.
+    let mut request_band = |zoom_offset: u8, fwd: f64, side: f64, radius: u8| {
+        if base_zoom < zoom_offset {
+            return;
+        }
+        let z = base_zoom - zoom_offset;
+        let Ok(zoom) = ZoomLevel::try_from(z) else {
+            return;
+        };
+        let deg_per_tile_lon = 360.0 / (1u64 << z) as f64;
+        let deg_per_tile_lat = deg_per_tile_lon * lat.to_radians().cos();
+        // Forward = along yaw, sideways = perpendicular (yaw + 90°)
+        let offset_lat = fwd * deg_per_tile_lat * yaw_rad.cos() as f64
+            - side * deg_per_tile_lat * yaw_rad.sin() as f64;
+        let offset_lon = fwd * deg_per_tile_lon * yaw_rad.sin() as f64
+            + side * deg_per_tile_lon * yaw_rad.cos() as f64;
+        download_events.write(DownloadSlippyTilesMessage {
+            tile_size: TileSize::Normal,
+            zoom_level: zoom,
+            coordinates: Coordinates::from_latitude_longitude(
+                clamp_latitude(lat + offset_lat),
+                clamp_longitude(lon + offset_lon),
+            ),
+            radius: Radius(radius),
+            use_cache: true,
+        });
+    };
+
+    // --- Mid band: zoom_level - 1 ---
+    // Center-forward plus left and right wings to cover horizon corners
+    request_band(1, 3.0, 0.0, mid_radius);
+    request_band(1, 2.0, -3.0, mid_radius);  // left wing
+    request_band(1, 2.0, 3.0, mid_radius);   // right wing
+
+    // --- Far band: zoom_level - 2 ---
+    // Center-forward plus wider left and right wings for full horizon coverage
+    request_band(2, 5.0, 0.0, far_radius);
+    request_band(2, 3.0, -5.0, far_radius);  // far left
+    request_band(2, 3.0, 5.0, far_radius);   // far right
 }
 
 // Aircraft texture setup, sync, label update, and connection status
@@ -1320,8 +1426,14 @@ fn display_tiles_filtered(
     let current_zoom = map_state.zoom_level.to_u8();
 
     for event in tile_events.read() {
-        // Only display tiles that match the current zoom level
-        if event.zoom_level != map_state.zoom_level {
+        // In 3D mode, accept tiles within 2 zoom levels below current (multi-resolution bands).
+        // In 2D mode, only accept tiles at the exact current zoom level.
+        let event_zoom = event.zoom_level.to_u8();
+        if view3d_state.is_3d_active() {
+            if event_zoom > current_zoom || current_zoom - event_zoom > 2 {
+                continue;
+            }
+        } else if event.zoom_level != map_state.zoom_level {
             continue;
         }
 
@@ -1354,7 +1466,7 @@ fn display_tiles_filtered(
         let transform_y = (tile_center_y - ref_y) as f32;
 
         // Skip if a tile entity already exists at this position and zoom level
-        let tile_key = (transform_x as i32, transform_y as i32, current_zoom);
+        let tile_key = (transform_x as i32, transform_y as i32, event_zoom);
         if !spawned_tiles.positions.insert(tile_key) {
             continue; // Already spawned
         }
@@ -1382,7 +1494,7 @@ fn display_tiles_filtered(
             MapTile,
             TileFadeState {
                 alpha: 0.0,
-                tile_zoom: current_zoom,
+                tile_zoom: event_zoom,
             },
         ));
 
@@ -1397,10 +1509,18 @@ fn display_tiles_filtered(
 /// Despawn tile entities that are far outside the visible viewport.
 /// Without this, tiles accumulate indefinitely as the user pans, causing
 /// frame time to grow continuously until the app becomes unresponsive.
+
 /// Maximum number of tile entities allowed at any time.
-/// At zoom 10 with 256px tiles, a 1280x720 viewport needs ~35 tiles.
-/// We allow extra margin for smooth panning.
-const MAX_TILE_ENTITIES: usize = 400;
+/// In 3D mode, scales with camera altitude since higher = wider view = more tiles.
+fn max_tile_entities(view3d_state: Option<&view3d::View3DState>) -> usize {
+    if let Some(state) = view3d_state {
+        if state.is_3d_active() {
+            let alt_factor = (state.camera_altitude / 60000.0).clamp(0.0, 1.0);
+            return 300 + (500.0 * alt_factor) as usize; // 300-800 range
+        }
+    }
+    400 // Original 2D limit
+}
 
 fn cull_offscreen_tiles(
     mut commands: Commands,
@@ -1408,6 +1528,7 @@ fn cull_offscreen_tiles(
     tile_query: Query<(Entity, &Transform, &TileFadeState), With<MapTile>>,
     window_query: Query<&Window>,
     mut spawned_tiles: ResMut<SpawnedTiles>,
+    view3d_state: Res<view3d::View3DState>,
 ) {
     let Ok((camera_tf, projection)) = camera_query.single() else {
         return;
@@ -1416,18 +1537,53 @@ fn cull_offscreen_tiles(
         return;
     };
 
-    let ortho_scale = if let Projection::Orthographic(ref ortho) = projection {
-        ortho.scale
-    } else {
-        1.0
-    };
-
-    // Visible half-extents in world space, with 1.5x margin for smooth panning
-    let margin = 1.5;
-    let half_w = (window.width() / 2.0) * ortho_scale * margin;
-    let half_h = (window.height() / 2.0) * ortho_scale * margin;
     let cam_x = camera_tf.translation.x;
     let cam_y = camera_tf.translation.y;
+
+    // Compute culling extents depending on mode
+    let (half_w, half_h, forward_bias_x, forward_bias_y) = if view3d_state.is_3d_active() {
+        // 3D mode: compute ground footprint from frustum geometry
+        let fov = 60.0_f32.to_radians();
+        let aspect = window.width() / window.height();
+        let half_vfov = fov / 2.0;
+        let half_hfov = (aspect * half_vfov.tan()).atan();
+        let pitch_rad = view3d_state.camera_pitch.to_radians();
+        let effective_distance = view3d_state.altitude_to_distance();
+        let camera_height = effective_distance * pitch_rad.sin();
+
+        let far_angle = (pitch_rad - half_vfov).max(0.05);
+        let far_ground_dist = camera_height / far_angle.tan();
+        let center_ground_dist = effective_distance * pitch_rad.cos();
+        let half_width = center_ground_dist * half_hfov.tan();
+
+        // 2.0x margin to account for multi-resolution tiles at different zoom levels
+        let margin = 2.0;
+        let hw = half_width * margin;
+        let hh = far_ground_dist.max(center_ground_dist) * margin;
+
+        // Directional bias: extend forward culling margin by 1.5x, reduce backward to 1.0x
+        let yaw_rad = view3d_state.camera_yaw.to_radians();
+        let bias_magnitude = far_ground_dist * 0.25;
+        let bias_x = bias_magnitude * yaw_rad.sin();
+        let bias_y = bias_magnitude * yaw_rad.cos();
+
+        (hw, hh, bias_x, bias_y)
+    } else {
+        // 2D mode: orthographic viewport extents
+        let ortho_scale = if let Projection::Orthographic(ref ortho) = projection {
+            ortho.scale
+        } else {
+            1.0
+        };
+        let margin = 1.5;
+        let hw = (window.width() / 2.0) * ortho_scale * margin;
+        let hh = (window.height() / 2.0) * ortho_scale * margin;
+        (hw, hh, 0.0, 0.0)
+    };
+
+    // Effective center shifted by forward bias (tiles ahead of camera get extra margin)
+    let center_x = cam_x + forward_bias_x;
+    let center_y = cam_y + forward_bias_y;
 
     // Collect all tiles with their distance from camera for sorting
     let mut tiles: Vec<(Entity, f32, i32, i32, u8)> = tile_query
@@ -1442,10 +1598,10 @@ fn cull_offscreen_tiles(
 
     let mut culled = 0u32;
 
-    // First pass: cull tiles outside the viewport margin
+    // First pass: cull tiles outside the viewport margin (using biased center)
     tiles.retain(|&(entity, _, tx, ty, zoom)| {
-        let dx = (tx as f32 - cam_x).abs();
-        let dy = (ty as f32 - cam_y).abs();
+        let dx = (tx as f32 - center_x).abs();
+        let dy = (ty as f32 - center_y).abs();
         if dx > half_w || dy > half_h {
             spawned_tiles.positions.remove(&(tx, ty, zoom));
             commands.entity(entity).despawn();
@@ -1457,9 +1613,10 @@ fn cull_offscreen_tiles(
     });
 
     // Second pass: if still over budget, cull farthest tiles
-    if tiles.len() > MAX_TILE_ENTITIES {
+    let tile_limit = max_tile_entities(Some(&view3d_state));
+    if tiles.len() > tile_limit {
         tiles.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        for &(entity, _, tx, ty, zoom) in &tiles[..tiles.len() - MAX_TILE_ENTITIES] {
+        for &(entity, _, tx, ty, zoom) in &tiles[..tiles.len() - tile_limit] {
             spawned_tiles.positions.remove(&(tx, ty, zoom));
             commands.entity(entity).despawn();
             culled += 1;
@@ -1467,7 +1624,7 @@ fn cull_offscreen_tiles(
     }
 
     if culled > 0 {
-        debug!("Culled {} tiles (remaining: {})", culled, tiles.len().min(MAX_TILE_ENTITIES));
+        debug!("Culled {} tiles (remaining: {})", culled, tiles.len().min(tile_limit));
     }
 }
 
