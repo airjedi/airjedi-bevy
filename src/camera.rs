@@ -8,6 +8,17 @@ use crate::view3d;
 use crate::{clamp_latitude, clamp_longitude, Aircraft, AircraftLabel, ZoomDebugLogger};
 
 // =============================================================================
+// Constants
+// =============================================================================
+
+/// Base rotation for aircraft GLB models in Y-up 3D space.
+/// GLB model: nose=+Z, top=+Y, right-wing=+X.
+/// Y-up world: north=-Z, up=+Y.
+/// Rotate 180 deg around Y so nose points -Z (north).
+/// Then heading rotation is applied around Y axis.
+pub(crate) const BASE_ROT_YUP: Quat = Quat::from_xyzw(0.0, 1.0, 0.0, 0.0); // 180 deg around Y
+
+// =============================================================================
 // Components and Resources
 // =============================================================================
 

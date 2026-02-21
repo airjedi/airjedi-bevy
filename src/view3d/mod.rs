@@ -732,29 +732,43 @@ pub fn update_tile_elevation(
     }
 }
 
-/// System to adjust aircraft sprite Z positions based on altitude in 3D mode.
-/// In 2D mode, aircraft Z is the fixed layer constant. In 3D mode, Z represents altitude
-/// so aircraft appear at different heights above the map when viewed from a tilted camera.
-pub fn update_aircraft_altitude_z(
+/// Remap aircraft transforms to Y-up space in 3D mode.
+/// In 2D mode, aircraft Z is the fixed layer constant.
+/// In 3D mode, positions are converted from Z-up pixel space (set by
+/// update_aircraft_positions) to Y-up for Camera3d rendering.
+pub fn update_aircraft_3d_transform(
     state: Res<View3DState>,
     mut aircraft_query: Query<(&crate::Aircraft, &mut Transform), Without<crate::AircraftLabel>>,
     mut label_query: Query<(&crate::AircraftLabel, &mut Visibility)>,
 ) {
     if state.is_3d_active() {
         for (aircraft, mut transform) in aircraft_query.iter_mut() {
+            // Read pixel positions set by update_aircraft_positions (Z-up)
+            let px = transform.translation.x;
+            let py = transform.translation.y;
             let alt = aircraft.altitude.unwrap_or(0);
-            transform.translation.z = state.altitude_to_z(alt);
+            let alt_y = state.altitude_to_z(alt); // same scale, now used as Y
+
+            // Remap to Y-up: (px, py, alt_z) -> (px, alt_y, -py)
+            transform.translation = Vec3::new(px, alt_y, -py);
+
+            // Heading rotation around Y axis for Y-up space
+            let base_rot = crate::camera::BASE_ROT_YUP;
+            if let Some(heading) = aircraft.heading {
+                transform.rotation =
+                    Quat::from_rotation_y((-heading).to_radians()) * base_rot;
+            } else {
+                transform.rotation = base_rot;
+            }
         }
-        // Hide labels in 3D mode (they don't position well in perspective)
+        // Hide text labels in 3D mode (they don't position well in perspective)
         for (_label, mut vis) in label_query.iter_mut() {
             *vis = Visibility::Hidden;
         }
     } else if !state.is_transitioning() {
-        // Restore aircraft to fixed Z layer in 2D mode
         for (_aircraft, mut transform) in aircraft_query.iter_mut() {
             transform.translation.z = crate::constants::AIRCRAFT_Z_LAYER;
         }
-        // Restore label visibility
         for (_label, mut vis) in label_query.iter_mut() {
             if *vis == Visibility::Hidden {
                 *vis = Visibility::Inherited;
@@ -882,7 +896,7 @@ impl Plugin for View3DPlugin {
             ))
             .add_systems(Update, update_tile_elevation
                 .after(animate_view_transition))
-            .add_systems(Update, update_aircraft_altitude_z)
+            .add_systems(Update, update_aircraft_3d_transform)
             .add_systems(Update, fix_aircraft_model_materials)
             .add_systems(Update, sky::update_sky_visibility)
             .add_systems(Update, sky::sync_sky_camera.after(update_3d_camera))
