@@ -120,8 +120,9 @@ impl View3DState {
         alt_km * PIXEL_SCALE * self.altitude_scale
     }
 
-    /// Calculate the 3D camera transform orbiting around a center point in pixel space
-    fn calculate_camera_transform(&self, center: Vec3) -> Transform {
+    /// Calculate the 3D camera transform in Y-up space.
+    /// The orbit center is provided in Y-up coordinates.
+    fn calculate_camera_transform_yup(&self, center: Vec3) -> Transform {
         let pitch_rad = self.camera_pitch.to_radians();
         let yaw_rad = self.camera_yaw.to_radians();
 
@@ -129,15 +130,16 @@ impl View3DState {
         let horizontal_dist = effective_distance * pitch_rad.cos();
         let vertical_dist = effective_distance * pitch_rad.sin();
 
-        // Z is "up" (altitude above map plane), orbit in XY plane.
-        // At yaw=0, camera is south of center looking north (so north stays up on screen).
+        // Y is "up" (altitude), orbit in XZ plane.
+        // At yaw=0, camera is south of center (+Z direction in Y-up)
+        // looking north (-Z), so north stays up on screen.
         let camera_pos = Vec3::new(
             center.x - horizontal_dist * yaw_rad.sin(),
-            center.y - horizontal_dist * yaw_rad.cos(),
-            center.z + vertical_dist,
+            center.y + vertical_dist,
+            center.z + horizontal_dist * yaw_rad.cos(),
         );
 
-        Transform::from_translation(camera_pos).looking_at(center, Vec3::Z)
+        Transform::from_translation(camera_pos).looking_at(center, Vec3::Y)
     }
 }
 
@@ -434,59 +436,69 @@ pub fn animate_view_transition(
     }
 }
 
-/// System to update Camera2d for 3D perspective view.
-/// Works entirely in pixel-coordinate space so tiles, trails, and aircraft all align.
+/// System to update cameras for 3D perspective view.
+/// Camera3d is primary in Y-up space; Camera2d derives via rotation for tile rendering.
 pub fn update_3d_camera(
     mut state: ResMut<View3DState>,
-    mut camera_query: Query<(&mut Transform, &mut Projection), With<crate::MapCamera>>,
+    mut camera_2d: Query<
+        (&mut Transform, &mut Projection),
+        (With<crate::MapCamera>, Without<crate::AircraftCamera>),
+    >,
+    mut camera_3d: Query<
+        (&mut Transform, &mut Projection),
+        (With<crate::AircraftCamera>, Without<crate::MapCamera>),
+    >,
     window_query: Query<&Window>,
     zoom_state: Res<crate::ZoomState>,
 ) {
-    // Only run when transitioning or in 3D mode
     if matches!(state.mode, ViewMode::Map2D) && !state.is_transitioning() {
         return;
     }
 
-    let Ok((mut transform, mut projection)) = camera_query.single_mut() else {
+    let Ok((mut tf_2d, mut proj_2d)) = camera_2d.single_mut() else {
+        return;
+    };
+    let Ok((mut tf_3d, mut proj_3d)) = camera_3d.single_mut() else {
         return;
     };
 
-    // Get transition progress (0 = 2D, 1 = 3D)
     let t = match state.transition {
-        TransitionState::Idle => {
-            match state.mode {
-                ViewMode::Map2D => 0.0,
-                ViewMode::Perspective3D => 1.0,
-            }
-        }
+        TransitionState::Idle => match state.mode {
+            ViewMode::Map2D => 0.0,
+            ViewMode::Perspective3D => 1.0,
+        },
         TransitionState::TransitioningTo3D { progress } => smooth_step(progress),
         TransitionState::TransitioningTo2D { progress } => smooth_step(1.0 - progress),
     };
 
-    // Fixed endpoints for interpolation
-    let ground_z = state.altitude_to_z(state.ground_elevation_ft);
-    let pos_2d = Vec3::new(state.saved_2d_center.x, state.saved_2d_center.y, 0.0);
-    let center_3d = Vec3::new(state.saved_2d_center.x, state.saved_2d_center.y, ground_z);
-    let transform_3d = state.calculate_camera_transform(center_3d);
+    // Y-up orbit center: convert saved_2d_center from Z-up pixel space
+    let ground_alt = state.altitude_to_z(state.ground_elevation_ft);
+    let center_yup = zup_to_yup(Vec3::new(
+        state.saved_2d_center.x,
+        state.saved_2d_center.y,
+        ground_alt,
+    ));
+    let orbit_yup = state.calculate_camera_transform_yup(center_yup);
 
-    // Compute the perspective altitude that produces the same visible area as
-    // the current orthographic view. At this height with a 60° FOV looking
-    // straight down, the perspective and orthographic views match exactly,
-    // making the projection switch at the endpoints visually seamless.
+    // Matching height: perspective altitude that shows the same area as orthographic
     let base_fov = 60.0_f32.to_radians();
-    let matching_z = if let Ok(window) = window_query.single() {
+    let matching_height = if let Ok(window) = window_query.single() {
         window.height() / (2.0 * zoom_state.camera_zoom * (base_fov / 2.0).tan())
     } else {
-        transform_3d.translation.z * 0.5
+        orbit_yup.translation.y * 0.5
     };
 
     if t < 0.001 {
-        // Pure 2D mode - restore orthographic projection, position, and rotation
-        *projection = Projection::Orthographic(OrthographicProjection::default_2d());
-        transform.translation = pos_2d;
-        transform.rotation = Quat::IDENTITY;
+        // Pure 2D — restore orthographic, flat position, identity rotation
+        let pos_2d = Vec3::new(state.saved_2d_center.x, state.saved_2d_center.y, 0.0);
+        *proj_2d = Projection::Orthographic(OrthographicProjection::default_2d());
+        tf_2d.translation = pos_2d;
+        tf_2d.rotation = Quat::IDENTITY;
 
-        // Finalize the transition now that the camera has been reset
+        // Camera3d mirrors Camera2d in 2D mode
+        *tf_3d = *tf_2d;
+        *proj_3d = proj_2d.clone();
+
         if matches!(state.transition, TransitionState::TransitioningTo2D { .. }) {
             state.mode = ViewMode::Map2D;
             state.transition = TransitionState::Idle;
@@ -495,8 +507,6 @@ pub fn update_3d_camera(
         return;
     }
 
-    // Use a large far plane to avoid frustum-culling aircraft at high altitude
-    // scales or large distances from the camera.
     let perspective = PerspectiveProjection {
         fov: base_fov,
         far: 100_000.0,
@@ -504,21 +514,33 @@ pub fn update_3d_camera(
     };
 
     if t > 0.999 {
-        // Pure 3D mode
-        *transform = transform_3d;
-        *projection = Projection::Perspective(perspective);
-    } else {
-        // Straight-line transition using perspective throughout. The 2D
-        // endpoint is placed at matching_z — the altitude where a 60° FOV
-        // perspective camera looking straight down shows the same area as the
-        // orthographic view. This makes the ortho↔perspective switch at the
-        // animation boundaries visually seamless, and the camera follows a
-        // natural straight-line path between the overhead and orbit positions.
-        let pos_match = Vec3::new(pos_2d.x, pos_2d.y, matching_z);
+        // Pure 3D — Camera3d at Y-up orbit, Camera2d derived via rotation
+        *tf_3d = orbit_yup;
+        *proj_3d = Projection::Perspective(perspective.clone());
 
-        transform.translation = pos_match.lerp(transform_3d.translation, t);
-        transform.rotation = Quat::IDENTITY.slerp(transform_3d.rotation, t);
-        *projection = Projection::Perspective(perspective);
+        // Derive Camera2d: rotate Y-up transform to Z-up for tile rendering
+        let rotation = zup_to_yup_rotation().inverse(); // Y-up -> Z-up
+        tf_2d.translation = yup_to_zup(tf_3d.translation);
+        tf_2d.rotation = rotation * tf_3d.rotation;
+        *proj_2d = Projection::Perspective(perspective);
+    } else {
+        // Transition: interpolate Camera3d in Y-up, derive Camera2d
+        let overhead_yup = Vec3::new(
+            center_yup.x,
+            center_yup.y + matching_height,
+            center_yup.z,
+        );
+
+        tf_3d.translation = overhead_yup.lerp(orbit_yup.translation, t);
+        tf_3d.rotation = Quat::IDENTITY
+            .slerp(orbit_yup.rotation, t);
+        *proj_3d = Projection::Perspective(perspective.clone());
+
+        // Derive Camera2d from Camera3d
+        let rotation = zup_to_yup_rotation().inverse();
+        tf_2d.translation = yup_to_zup(tf_3d.translation);
+        tf_2d.rotation = rotation * tf_3d.rotation;
+        *proj_2d = Projection::Perspective(perspective);
     }
 }
 
