@@ -38,7 +38,7 @@ pub(crate) mod theme;
 // continue to resolve throughout the codebase.
 pub(crate) use aircraft::components::{Aircraft, AircraftLabel};
 pub(crate) use map::{MapState, ZoomState};
-pub(crate) use camera::{MapCamera, AircraftCamera, AtmosphereMediumHandle};
+pub(crate) use camera::{MapCamera, AircraftCamera};
 use config::ConfigPlugin;
 use keyboard::{HelpOverlayState, handle_keyboard_shortcuts, toggle_overlays_keyboard, update_help_overlay, sync_panel_manager_to_resources, sync_resources_to_panel_manager};
 use bevy_egui::{EguiGlobalSettings, PrimaryEguiContext};
@@ -300,8 +300,8 @@ pub(crate) fn setup_map(
     mut download_events: MessageWriter<DownloadSlippyTilesMessage>,
     mut tile_settings: ResMut<SlippyTilesSettings>,
     app_config: Res<config::AppConfig>,
-    mut scattering_mediums: ResMut<Assets<ScatteringMedium>>,
     mut egui_settings: ResMut<EguiGlobalSettings>,
+    mut scattering_mediums: ResMut<Assets<ScatteringMedium>>,
 ) {
     // Prevent bevy_egui from auto-attaching to Camera2d. We use a dedicated UI
     // camera so egui stays visible when Camera2d switches to perspective in 3D mode.
@@ -372,9 +372,7 @@ pub(crate) fn setup_map(
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.5, 2.0, 0.0)),
     ));
 
-    // Create an earthlike scattering medium for atmospheric rendering.
-    // The handle is stored as a resource so sky.rs can attach Atmosphere
-    // components to cameras when 3D mode is activated.
+    // Create shared ScatteringMedium for Atmosphere components
     let medium = scattering_mediums.add(ScatteringMedium::earthlike(256, 256));
     commands.insert_resource(AtmosphereMediumHandle(medium));
 
@@ -408,6 +406,10 @@ pub(crate) fn setup_map(
 
     commands.insert_resource(map_state);
 }
+
+/// Holds the shared Handle<ScatteringMedium> for Atmosphere components.
+#[derive(Resource)]
+pub struct AtmosphereMediumHandle(pub Handle<ScatteringMedium>);
 
 pub fn clear_tile_cache() {
     tile_cache::clear_tile_cache();
