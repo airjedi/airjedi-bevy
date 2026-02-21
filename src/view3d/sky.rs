@@ -568,7 +568,10 @@ pub fn manage_atmosphere_camera(
             let scene_units_to_m = 1000.0 / (super::PIXEL_SCALE * state.altitude_scale);
             if let Some(ref medium_handle) = medium_handle {
                 let mut atmo = Atmosphere::earthlike(medium_handle.0.clone());
-                atmo.ground_albedo = Vec3::new(0.05, 0.05, 0.08);
+                // Ground albedo affects the atmosphere color below the horizon.
+                // A moderate value blends naturally with the horizon haze rather
+                // than creating a visible dark band.
+                atmo.ground_albedo = Vec3::new(0.3, 0.3, 0.3);
                 commands.entity(cam3d_entity).insert((
                     atmo,
                     AtmosphereSettings {
