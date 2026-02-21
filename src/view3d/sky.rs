@@ -280,10 +280,11 @@ pub fn setup_sky(
     ));
 
     // Spawn ground plane mesh (hidden until 3D mode activates).
-    // Large flat dark surface extends to the horizon beneath tiles.
+    // Color matches dark CartoDB basemap tiles so the transition
+    // from tiles to ground plane is seamless at distance.
     let ground_mesh = meshes.add(Plane3d::new(Vec3::Y, Vec2::splat(250_000.0)));
     let ground_material = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.1, 0.1, 0.12),
+        base_color: Color::srgb(0.15, 0.15, 0.18),
         unlit: false,
         perceptual_roughness: 1.0,
         reflectance: 0.0,
@@ -568,10 +569,10 @@ pub fn manage_atmosphere_camera(
             let scene_units_to_m = 1000.0 / (super::PIXEL_SCALE * state.altitude_scale);
             if let Some(ref medium_handle) = medium_handle {
                 let mut atmo = Atmosphere::earthlike(medium_handle.0.clone());
-                // Ground albedo affects the atmosphere color below the horizon.
-                // A moderate value blends naturally with the horizon haze rather
-                // than creating a visible dark band.
-                atmo.ground_albedo = Vec3::new(0.3, 0.3, 0.3);
+                // High ground albedo makes the atmosphere's below-horizon
+                // rendering match the horizon haze, preventing a dark band
+                // between the sky and the map tiles.
+                atmo.ground_albedo = Vec3::new(0.9, 0.9, 0.9);
                 commands.entity(cam3d_entity).insert((
                     atmo,
                     AtmosphereSettings {
@@ -594,9 +595,10 @@ pub fn manage_atmosphere_camera(
             blend_state: Some(BlendState::ALPHA_BLENDING),
             clear_color: ClearColorConfig::None,
         };
-        // Show ground plane
+        // Ground plane hidden — atmosphere handles below-horizon rendering
+        // and the ground plane mesh creates a visible dark band at the horizon.
         if let Ok((_, mut gp_vis)) = ground_query.single_mut() {
-            *gp_vis = Visibility::Inherited;
+            *gp_vis = Visibility::Hidden;
         }
     } else {
         if has_atmo.is_some() {
