@@ -8,6 +8,23 @@
 pub mod sky;
 
 use bevy::prelude::*;
+
+/// Convert a position from Z-up (X=east, Y=north, Z=up) to
+/// Y-up (X=east, Y=up, Z=south) coordinate space.
+pub(crate) fn zup_to_yup(v: Vec3) -> Vec3 {
+    Vec3::new(v.x, v.z, -v.y)
+}
+
+/// Convert a position from Y-up back to Z-up coordinate space.
+pub(crate) fn yup_to_zup(v: Vec3) -> Vec3 {
+    Vec3::new(v.x, -v.z, v.y)
+}
+
+/// Build the rotation quaternion that transforms Z-up to Y-up.
+/// This is a -90 degree rotation around the X axis.
+pub(crate) fn zup_to_yup_rotation() -> Quat {
+    Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)
+}
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::input::gestures::PinchGesture;
 use bevy_egui::{egui, EguiContexts};
@@ -852,8 +869,8 @@ impl Plugin for View3DPlugin {
             .add_systems(Update, sky::update_moon_position.after(sky::sync_time_offset))
             .add_systems(Update, sky::update_star_visibility)
             .add_systems(Update, sky::manage_atmosphere_camera
-                .after(animate_view_transition))
-            .add_systems(Update, sky::update_atmosphere_scale)
+                .after(animate_view_transition)
+                .after(sky::update_sun_position))
             .add_systems(Update, sky::sync_ground_plane.after(update_3d_camera))
             .add_systems(Update, sky::update_fog_parameters.after(sky::update_sun_position))
             .add_systems(Update, sky::update_2d_tint.after(sky::update_sun_position))
