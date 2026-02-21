@@ -19,11 +19,6 @@ pub(crate) struct AircraftCamera;
 #[derive(Component)]
 pub(crate) struct MapCamera;
 
-/// Holds the shared Handle<bevy::pbr::ScatteringMedium> used by Atmosphere components.
-/// Created at startup with ScatteringMedium::earthlike() defaults.
-#[derive(Resource)]
-pub struct AtmosphereMediumHandle(pub Handle<bevy::pbr::ScatteringMedium>);
-
 // =============================================================================
 // Plugin
 // =============================================================================
@@ -150,16 +145,18 @@ fn update_camera_position(
     }
 }
 
-/// Sync Camera3d transform and projection to match Camera2d each frame.
-/// This ensures 3D aircraft models are rendered with the same view as the 2D map.
-///
-/// Camera3d always clears to transparent (`Color::NONE`) so it gets a fresh
-/// canvas each frame. Its rendered content alpha-composites on top of
-/// Camera2d's output (tiles, sky, gizmos) without accumulating old frames.
+/// Sync Camera3d transform and projection to match Camera2d in 2D mode.
+/// In 3D mode, update_3d_camera handles both cameras directly.
 fn sync_aircraft_camera(
+    view3d_state: Res<view3d::View3DState>,
     camera_2d: Query<(&Transform, &Projection), (With<MapCamera>, Without<AircraftCamera>)>,
     mut camera_3d: Query<(&mut Transform, &mut Projection), (With<AircraftCamera>, Without<Camera2d>)>,
 ) {
+    // In 3D mode or during transitions, update_3d_camera owns both cameras
+    if view3d_state.is_3d_active() || view3d_state.is_transitioning() {
+        return;
+    }
+
     let (Ok((t2, p2)), Ok((mut t3, mut p3))) = (camera_2d.single(), camera_3d.single_mut()) else {
         return;
     };
