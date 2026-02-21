@@ -8,8 +8,10 @@
 //! Supports both real-time wall clock and manual time override via TimeState.
 
 use bevy::prelude::*;
+use bevy::camera::{CameraOutputMode, Exposure};
 use bevy::pbr::{Atmosphere, AtmosphereSettings, StandardMaterial};
 use bevy::light::AtmosphereEnvironmentMapLight;
+use bevy::render::render_resource::BlendState;
 
 use super::View3DState;
 use crate::map::MapState;
@@ -574,15 +576,21 @@ pub fn manage_atmosphere_camera(
                         ..default()
                     },
                     AtmosphereEnvironmentMapLight::default(),
+                    Exposure { ev100: 13.0 },
                 ));
             }
         }
         // Camera3d renders first (order=0), atmosphere paints sky
         cam3d.order = 0;
         cam3d.clear_color = ClearColorConfig::Default;
-        // Camera2d renders on top (order=1), tiles composite over atmosphere
+        // Camera2d renders on top (order=1) with alpha blending so transparent
+        // areas show Camera3d's atmosphere sky through.
         cam2d.order = 1;
         cam2d.clear_color = ClearColorConfig::Custom(Color::NONE);
+        cam2d.output_mode = CameraOutputMode::Write {
+            blend_state: Some(BlendState::ALPHA_BLENDING),
+            clear_color: ClearColorConfig::None,
+        };
         // Show ground plane
         if let Ok((_, mut gp_vis)) = ground_query.single_mut() {
             *gp_vis = Visibility::Inherited;
@@ -592,10 +600,12 @@ pub fn manage_atmosphere_camera(
             commands.entity(cam3d_entity)
                 .remove::<Atmosphere>()
                 .remove::<AtmosphereSettings>()
-                .remove::<AtmosphereEnvironmentMapLight>();
+                .remove::<AtmosphereEnvironmentMapLight>()
+                .remove::<Exposure>();
         }
         cam2d.order = 0;
         cam2d.clear_color = ClearColorConfig::Default;
+        cam2d.output_mode = CameraOutputMode::default();
         cam3d.order = 1;
         cam3d.clear_color = ClearColorConfig::Custom(Color::NONE);
         if let Ok((_, mut gp_vis)) = ground_query.single_mut() {
