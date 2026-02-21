@@ -9,7 +9,7 @@
 
 use bevy::prelude::*;
 use bevy::camera::{CameraOutputMode, Exposure};
-use bevy::pbr::{Atmosphere, AtmosphereSettings, StandardMaterial};
+use bevy::pbr::{Atmosphere, AtmosphereSettings, DistanceFog, FogFalloff, StandardMaterial};
 use bevy::light::AtmosphereEnvironmentMapLight;
 use bevy::render::render_resource::BlendState;
 
@@ -403,46 +403,20 @@ fn pseudo_hash(seed: u32) -> u32 {
     h
 }
 
-/// Fade star field visibility based on sun elevation with gradual twilight transition.
-/// Civil twilight (0° to -6°): stars fade in to 30% opacity.
-/// Nautical twilight (-6° to -12°): brightens from 30% to 80%.
-/// Full night (<-12°): near-full opacity with subtle sine-based twinkle.
+/// Hide star field sprite. The star field is a Camera2d sprite; in 3D mode,
+/// Camera2d composites on top of Camera3d via alpha blending, so visible stars
+/// bleed through onto the mesh quad tiles. The Atmosphere component handles
+/// sky rendering. Night stars would require a Camera3d skybox mesh.
 pub fn update_star_visibility(
-    state: Res<View3DState>,
-    sun_state: Res<SunState>,
-    time: Res<Time>,
-    mut star_query: Query<(&mut Visibility, &mut Sprite), With<StarField>>,
+    _state: Res<View3DState>,
+    _sun_state: Res<SunState>,
+    _time: Res<Time>,
+    mut star_query: Query<&mut Visibility, With<StarField>>,
 ) {
-    let Ok((mut vis, mut sprite)) = star_query.single_mut() else {
+    let Ok(mut vis) = star_query.single_mut() else {
         return;
     };
-
-    if !state.is_3d_active() {
-        *vis = Visibility::Hidden;
-        return;
-    }
-
-    let elevation = sun_state.elevation;
-
-    if elevation > 0.0 {
-        *vis = Visibility::Hidden;
-    } else if elevation > -6.0 {
-        // Civil twilight: fade in from 0% to 30%
-        *vis = Visibility::Inherited;
-        let alpha = ((0.0 - elevation) / 6.0) * 0.3;
-        sprite.color = Color::srgba(1.0, 1.0, 1.0, alpha);
-    } else if elevation > -12.0 {
-        // Nautical twilight: brighten from 30% to 80%
-        *vis = Visibility::Inherited;
-        let t = ((elevation + 6.0).abs()) / 6.0;
-        let alpha = 0.3 + t * 0.5;
-        sprite.color = Color::srgba(1.0, 1.0, 1.0, alpha);
-    } else {
-        // Full night: subtle twinkle oscillation
-        *vis = Visibility::Inherited;
-        let twinkle = 0.925 + 0.075 * (time.elapsed_secs() * 0.3).sin();
-        sprite.color = Color::srgba(1.0, 1.0, 1.0, twinkle);
-    }
+    *vis = Visibility::Hidden;
 }
 
 /// Update sun direction from time state and map coordinates.
@@ -581,6 +555,15 @@ pub fn manage_atmosphere_camera(
                     },
                     AtmosphereEnvironmentMapLight::default(),
                     Exposure { ev100: 13.0 },
+                    DistanceFog {
+                        color: Color::srgba(0.7, 0.75, 0.85, 1.0),
+                        directional_light_color: Color::srgba(1.0, 0.95, 0.85, 0.3),
+                        directional_light_exponent: 30.0,
+                        falloff: FogFalloff::Linear {
+                            start: state.visibility_range * 0.4,
+                            end: state.visibility_range,
+                        },
+                    },
                 ));
             }
         }
@@ -606,7 +589,8 @@ pub fn manage_atmosphere_camera(
                 .remove::<Atmosphere>()
                 .remove::<AtmosphereSettings>()
                 .remove::<AtmosphereEnvironmentMapLight>()
-                .remove::<Exposure>();
+                .remove::<Exposure>()
+                .remove::<DistanceFog>();
         }
         cam2d.order = 0;
         cam2d.clear_color = ClearColorConfig::Default;

@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy::pbr::StandardMaterial;
 use bevy_slippy_tiles::*;
 
 use crate::constants;
@@ -18,6 +19,18 @@ pub(crate) struct TileFadeState {
     /// The zoom level this tile was spawned for
     pub(crate) tile_zoom: u8,
 }
+
+/// Links a tile entity to its 3D mesh quad companion (used in 3D mode only).
+#[derive(Component)]
+pub(crate) struct TileMeshQuad(pub Entity);
+
+/// Marker on 3D mesh quad companion entities so orphans can be detected.
+#[derive(Component)]
+struct TileQuad3d;
+
+/// Shared mesh handle for all 3D tile quads (256x256 world-unit plane).
+#[derive(Resource)]
+pub(crate) struct TileQuadMesh(pub Handle<Mesh>);
 
 /// Tracks which tile positions have been spawned to prevent duplicate entities.
 /// Key is (transform_x rounded, transform_y rounded, zoom_level).
@@ -47,12 +60,18 @@ impl Plugin for TilesPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SpawnedTiles>()
             .init_resource::<Tile3DRefreshTimer>()
+            .add_systems(Startup, setup_tile_quad_mesh)
             .add_systems(Update, handle_window_resize)
             .add_systems(Update, handle_3d_view_tile_refresh)
             .add_systems(Update, request_3d_tiles_continuous.after(handle_3d_view_tile_refresh))
             .add_systems(Update, display_tiles_filtered.after(bevy::ecs::schedule::ApplyDeferred))
             .add_systems(Update, animate_tile_fades.after(display_tiles_filtered))
-            .add_systems(Update, cull_offscreen_tiles.after(display_tiles_filtered));
+            .add_systems(Update, cull_offscreen_tiles.after(display_tiles_filtered))
+            .add_systems(Update, sync_tile_mesh_quads.after(animate_tile_fades))
+            .add_systems(Update, sync_tile_mesh_alpha.after(sync_tile_mesh_quads))
+            .add_systems(Update, sync_tile_mesh_transforms.after(sync_tile_mesh_quads))
+            .add_systems(Update, hide_tile_sprites_in_3d.after(sync_tile_mesh_quads))
+            .add_systems(Update, cleanup_orphaned_tile_quads.after(sync_tile_mesh_quads));
     }
 }
 
@@ -556,6 +575,148 @@ fn animate_tile_fades(
     // Despawn old tiles whose grid cell is covered by a fully-loaded new tile
     for (entity, cx, cy) in old_tiles {
         if loaded_cells.contains(&(cx, cy)) {
+            commands.entity(entity).despawn();
+        }
+    }
+}
+
+// =============================================================================
+// 3D Mesh Quad Systems
+// =============================================================================
+
+/// Create the shared mesh used by all tile 3D quads.
+fn setup_tile_quad_mesh(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
+    let mesh = meshes.add(Plane3d::new(Vec3::Y, Vec2::splat(128.0)));
+    commands.insert_resource(TileQuadMesh(mesh));
+}
+
+/// Spawn or despawn 3D mesh quad companions for tile entities based on view mode.
+///
+/// In 3D mode: for each tile lacking a `TileMeshQuad`, spawn a `StandardMaterial`
+/// mesh entity using the sprite's texture. In 2D mode: despawn all companions.
+fn sync_tile_mesh_quads(
+    mut commands: Commands,
+    view3d_state: Res<view3d::View3DState>,
+    quad_mesh: Option<Res<TileQuadMesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    tiles_without_quad: Query<(Entity, &Sprite, &Transform, &TileFadeState), (With<MapTile>, Without<TileMeshQuad>)>,
+    tiles_with_quad: Query<(Entity, &TileMeshQuad), With<MapTile>>,
+    all_quad_entities: Query<Entity, With<TileQuad3d>>,
+) {
+    let Some(quad_mesh) = quad_mesh else { return };
+
+    if view3d_state.is_3d_active() {
+        // Spawn mesh companions for tiles that don't have one yet
+        for (tile_entity, sprite, transform, fade_state) in tiles_without_quad.iter() {
+            // Always use Opaque so the mesh writes depth. Without depth writes,
+            // the atmosphere post-process treats these pixels as sky and
+            // overwrites them (same issue as aircraft GLB models).
+            let material = materials.add(StandardMaterial {
+                base_color_texture: Some(sprite.image.clone()),
+                base_color: Color::WHITE,
+                unlit: true,
+                alpha_mode: AlphaMode::Opaque,
+                ..default()
+            });
+
+            let pos_yup = view3d::zup_to_yup(transform.translation);
+            let mesh_entity = commands.spawn((
+                TileQuad3d,
+                Mesh3d(quad_mesh.0.clone()),
+                MeshMaterial3d(material),
+                Transform::from_translation(pos_yup)
+                    .with_scale(Vec3::new(transform.scale.x, 1.0, transform.scale.x)),
+            )).id();
+
+            commands.entity(tile_entity).insert(TileMeshQuad(mesh_entity));
+        }
+    } else {
+        // 2D mode: remove TileMeshQuad component from tiles
+        for (tile_entity, _) in tiles_with_quad.iter() {
+            commands.entity(tile_entity).remove::<TileMeshQuad>();
+        }
+        // Despawn all companion mesh entities (referenced + orphans)
+        for quad_entity in all_quad_entities.iter() {
+            commands.entity(quad_entity).despawn();
+        }
+    }
+}
+
+/// Sync mesh companion visibility with the tile's fade state.
+/// Mesh quads are always AlphaMode::Opaque (required for depth writes so the
+/// atmosphere post-process doesn't overwrite them). Tiles that haven't finished
+/// loading (alpha near 0) are hidden entirely to avoid showing placeholder white.
+fn sync_tile_mesh_alpha(
+    view3d_state: Res<view3d::View3DState>,
+    tile_query: Query<(&TileFadeState, &TileMeshQuad), With<MapTile>>,
+    mut vis_query: Query<&mut Visibility>,
+) {
+    if !view3d_state.is_3d_active() {
+        return;
+    }
+
+    for (fade_state, quad) in tile_query.iter() {
+        let Ok(mut vis) = vis_query.get_mut(quad.0) else { continue };
+        // Show the mesh quad once the tile texture has loaded enough to be visible
+        *vis = if fade_state.alpha > 0.1 {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+    }
+}
+
+/// Sync mesh companion transforms with tile sprite transforms.
+fn sync_tile_mesh_transforms(
+    view3d_state: Res<view3d::View3DState>,
+    tile_query: Query<(&Transform, &TileMeshQuad), With<MapTile>>,
+    mut mesh_transforms: Query<&mut Transform, Without<MapTile>>,
+) {
+    if !view3d_state.is_3d_active() {
+        return;
+    }
+
+    for (tile_tf, quad) in tile_query.iter() {
+        let Ok(mut mesh_tf) = mesh_transforms.get_mut(quad.0) else { continue };
+        let pos_yup = view3d::zup_to_yup(tile_tf.translation);
+        mesh_tf.translation = pos_yup;
+        mesh_tf.scale = Vec3::new(tile_tf.scale.x, 1.0, tile_tf.scale.x);
+    }
+}
+
+/// Hide tile sprites in 3D mode so Camera2d shows nothing for tiles.
+/// In 2D mode this is a no-op since sprites already have correct alpha.
+fn hide_tile_sprites_in_3d(
+    view3d_state: Res<view3d::View3DState>,
+    mut tile_query: Query<&mut Sprite, (With<MapTile>, With<TileMeshQuad>)>,
+) {
+    if !view3d_state.is_3d_active() {
+        return;
+    }
+
+    for mut sprite in tile_query.iter_mut() {
+        sprite.color = Color::srgba(1.0, 1.0, 1.0, 0.0);
+    }
+}
+
+/// Despawn companion mesh entities that are no longer referenced by any tile.
+/// This catches orphans created when tiles are culled in the same frame as
+/// companion spawning (deferred commands mean the tile despawn and companion
+/// spawn can race).
+fn cleanup_orphaned_tile_quads(
+    mut commands: Commands,
+    view3d_state: Res<view3d::View3DState>,
+    quad_entities: Query<Entity, With<TileQuad3d>>,
+    tile_quads: Query<&TileMeshQuad, With<MapTile>>,
+) {
+    // In 2D mode, sync_tile_mesh_quads already despawns all companions
+    if !view3d_state.is_3d_active() {
+        return;
+    }
+    let referenced: std::collections::HashSet<Entity> =
+        tile_quads.iter().map(|q| q.0).collect();
+    for entity in quad_entities.iter() {
+        if !referenced.contains(&entity) {
             commands.entity(entity).despawn();
         }
     }

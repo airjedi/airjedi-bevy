@@ -25,6 +25,7 @@ pub(crate) fn yup_to_zup(v: Vec3) -> Vec3 {
 pub(crate) fn zup_to_yup_rotation() -> Quat {
     Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)
 }
+use bevy::pbr::{DistanceFog, FogFalloff};
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::input::gestures::PinchGesture;
 use bevy_egui::{egui, EguiContexts};
@@ -180,7 +181,6 @@ pub fn toggle_3d_view(
                 detect_ground_elevation(&mut state, &map_state, &aviation_data);
 
                 state.transition = TransitionState::TransitioningTo3D { progress: 0.0 };
-                state.show_panel = true;
                 info!("Starting transition to 3D view (ground elevation: {} ft)", state.ground_elevation_ft);
             }
             ViewMode::Perspective3D => {
@@ -777,13 +777,12 @@ pub fn update_aircraft_3d_transform(
     }
 }
 
-/// Fade tile and aircraft sprites based on distance from Camera2d in 3D mode.
-/// This makes tiles transparent at distance, revealing the fogged ground plane beneath.
+/// Fade aircraft sprites based on distance from Camera2d in 3D mode.
+/// Tiles are fogged by DistanceFog via their 3D mesh quad companions.
 pub fn fade_distant_sprites(
     state: Res<View3DState>,
     camera_query: Query<&Transform, With<crate::MapCamera>>,
-    mut tile_query: Query<(&Transform, &mut Sprite, &crate::tiles::TileFadeState), (With<bevy_slippy_tiles::MapTile>, Without<crate::MapCamera>)>,
-    mut aircraft_query: Query<(&Transform, &mut Sprite), (With<crate::Aircraft>, Without<bevy_slippy_tiles::MapTile>, Without<crate::MapCamera>)>,
+    mut aircraft_query: Query<(&Transform, &mut Sprite), (With<crate::Aircraft>, Without<crate::MapCamera>)>,
 ) {
     if !state.is_3d_active() {
         // Reset aircraft alpha when leaving 3D mode
@@ -808,21 +807,6 @@ pub fn fade_distant_sprites(
         return;
     }
 
-    // Fade tiles
-    for (transform, mut sprite, fade_state) in tile_query.iter_mut() {
-        let dist = cam_pos.distance(transform.translation);
-        let distance_alpha = if dist <= fade_start {
-            1.0
-        } else if dist >= fade_end {
-            0.0
-        } else {
-            1.0 - ((dist - fade_start) / fade_range)
-        };
-        // Combine with tile's own fade alpha (from zoom transitions)
-        let final_alpha = fade_state.alpha * distance_alpha;
-        sprite.color = Color::srgba(1.0, 1.0, 1.0, final_alpha);
-    }
-
     // Fade aircraft
     for (transform, mut sprite) in aircraft_query.iter_mut() {
         let dist = cam_pos.distance(transform.translation);
@@ -835,6 +819,23 @@ pub fn fade_distant_sprites(
         };
         sprite.color = Color::srgba(1.0, 1.0, 1.0, alpha);
     }
+}
+
+/// Update DistanceFog falloff when visibility_range changes.
+fn update_distance_fog(
+    state: Res<View3DState>,
+    mut fog_query: Query<&mut DistanceFog, With<Camera3d>>,
+) {
+    if !state.is_changed() || !state.is_3d_active() {
+        return;
+    }
+    let Ok(mut fog) = fog_query.single_mut() else {
+        return;
+    };
+    fog.falloff = FogFalloff::Linear {
+        start: state.visibility_range * 0.4,
+        end: state.visibility_range,
+    };
 }
 
 /// Force aircraft model materials to opaque alpha mode.
@@ -912,7 +913,9 @@ impl Plugin for View3DPlugin {
             .add_systems(Update, sky::update_2d_tint.after(sky::update_sun_position))
             .add_systems(Update, fade_distant_sprites
                 .after(update_3d_camera)
-                .after(update_tile_elevation));
+                .after(update_tile_elevation))
+            .add_systems(Update, update_distance_fog
+                .after(animate_view_transition));
         // 3D view settings panel is rendered via the consolidated Tools window (tools_window.rs)
     }
 }
