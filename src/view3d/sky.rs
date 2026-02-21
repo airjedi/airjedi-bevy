@@ -8,7 +8,8 @@
 //! Supports both real-time wall clock and manual time override via TimeState.
 
 use bevy::prelude::*;
-use bevy::pbr::{DistanceFog, FogFalloff, StandardMaterial};
+use bevy::pbr::{Atmosphere, AtmosphereSettings, StandardMaterial};
+use bevy::light::AtmosphereEnvironmentMapLight;
 
 use super::View3DState;
 use crate::map::MapState;
@@ -444,7 +445,6 @@ pub fn update_star_visibility(
 /// Update sun direction from time state and map coordinates.
 pub fn update_sun_position(
     map_state: Res<MapState>,
-    state: Res<View3DState>,
     time_state: Res<TimeState>,
     mut sun_state: ResMut<SunState>,
     mut sun_query: Query<(&mut DirectionalLight, &mut Transform), With<SunLight>>,
@@ -495,12 +495,7 @@ pub fn update_sun_position(
         0.01
     };
 
-    if state.is_3d_active() {
-        // In 3D mode, atmosphere provides sky irradiance; reduce ambient to avoid double-lighting
-        ambient.brightness = 80.0 * ambient_factor;
-    } else {
-        ambient.brightness = 300.0 * ambient_factor;
-    }
+    ambient.brightness = 300.0 * ambient_factor;
 }
 
 /// Update moon position and moonlight from time and map coordinates.
@@ -548,23 +543,18 @@ pub fn sync_time_offset(
     time_state.utc_offset_hours = (map_state.longitude / 15.0) as f32;
 }
 
-/// Manage Camera3d rendering setup based on 3D mode state.
-/// In 3D mode, Camera3d renders first (order=0) with sky color as clear color
-/// and DistanceFog for atmospheric haze. Camera2d renders on top (order=1)
-/// with tiles composited over the sky.
-///
-/// Note: Bevy's built-in Atmosphere component is not used because it assumes
-/// Y-up coordinates for altitude, but this app uses Z-up. The atmosphere would
-/// misinterpret the camera's horizontal Y offset as altitude, producing a black sky.
+/// Manage Atmosphere component on Camera3d based on 3D mode state.
+/// In 3D mode, Camera3d renders first (order=0) with atmosphere painting the sky.
+/// Camera2d renders on top (order=1) with tiles composited over.
 pub fn manage_atmosphere_camera(
     mut commands: Commands,
     state: Res<View3DState>,
-    sun_state: Res<SunState>,
-    mut camera_3d: Query<(Entity, &mut Camera, Option<&DistanceFog>), With<Camera3d>>,
+    medium_handle: Option<Res<crate::AtmosphereMediumHandle>>,
+    mut camera_3d: Query<(Entity, &mut Camera, Option<&Atmosphere>), With<Camera3d>>,
     mut camera_2d: Query<&mut Camera, (With<crate::MapCamera>, Without<Camera3d>)>,
     mut ground_query: Query<(&mut Transform, &mut Visibility), With<GroundPlane>>,
 ) {
-    let Ok((cam3d_entity, mut cam3d, has_fog)) = camera_3d.single_mut() else {
+    let Ok((cam3d_entity, mut cam3d, has_atmo)) = camera_3d.single_mut() else {
         return;
     };
     let Ok(mut cam2d) = camera_2d.single_mut() else {
@@ -572,101 +562,60 @@ pub fn manage_atmosphere_camera(
     };
 
     if state.is_3d_active() {
-        if has_fog.is_none() {
-            commands.entity(cam3d_entity).insert(
-                DistanceFog {
-                    color: Color::srgba(0.55, 0.62, 0.72, 1.0),
-                    directional_light_color: Color::srgba(1.0, 0.9, 0.7, 0.3),
-                    directional_light_exponent: 20.0,
-                    falloff: FogFalloff::from_visibility_colors(
-                        state.visibility_range,
-                        Color::srgb(0.35, 0.5, 0.66),
-                        Color::srgb(0.55, 0.62, 0.72),
-                    ),
-                },
-            );
+        if has_atmo.is_none() {
+            let scene_units_to_m = 1000.0 / (super::PIXEL_SCALE * state.altitude_scale);
+            if let Some(ref medium_handle) = medium_handle {
+                let mut atmo = Atmosphere::earthlike(medium_handle.0.clone());
+                atmo.ground_albedo = Vec3::new(0.05, 0.05, 0.08);
+                commands.entity(cam3d_entity).insert((
+                    atmo,
+                    AtmosphereSettings {
+                        scene_units_to_m,
+                        ..default()
+                    },
+                    AtmosphereEnvironmentMapLight::default(),
+                ));
+            }
         }
-        // Camera3d renders first (order=0), clear_color paints the sky
+        // Camera3d renders first (order=0), atmosphere paints sky
         cam3d.order = 0;
-        cam3d.clear_color = ClearColorConfig::Custom(compute_sky_color(sun_state.elevation));
-        // Camera2d renders on top (order=1), tiles composite over sky
+        cam3d.clear_color = ClearColorConfig::Default;
+        // Camera2d renders on top (order=1), tiles composite over atmosphere
         cam2d.order = 1;
         cam2d.clear_color = ClearColorConfig::Custom(Color::NONE);
-        // Show ground plane at ground elevation, centered on camera target
-        if let Ok((mut gp_transform, mut gp_vis)) = ground_query.single_mut() {
+        // Show ground plane
+        if let Ok((_, mut gp_vis)) = ground_query.single_mut() {
             *gp_vis = Visibility::Inherited;
-            gp_transform.translation.z = state.altitude_to_z(state.ground_elevation_ft);
-            gp_transform.translation.x = state.saved_2d_center.x;
-            gp_transform.translation.y = state.saved_2d_center.y;
         }
     } else {
-        if has_fog.is_some() {
+        if has_atmo.is_some() {
             commands.entity(cam3d_entity)
-                .remove::<DistanceFog>();
+                .remove::<Atmosphere>()
+                .remove::<AtmosphereSettings>()
+                .remove::<AtmosphereEnvironmentMapLight>();
         }
-        // Restore original camera order
         cam2d.order = 0;
         cam2d.clear_color = ClearColorConfig::Default;
         cam3d.order = 1;
         cam3d.clear_color = ClearColorConfig::Custom(Color::NONE);
-        // Hide ground plane in 2D
         if let Ok((_, mut gp_vis)) = ground_query.single_mut() {
             *gp_vis = Visibility::Hidden;
         }
     }
 }
 
-/// Compute sky clear color (zenith) based on sun elevation.
-/// Returns a color that represents the sky overhead, complementing the fog
-/// system which handles horizon haze and directional light glow.
-fn compute_sky_color(elevation: f32) -> Color {
-    if elevation > 30.0 {
-        // Full daylight: clear blue sky
-        Color::srgb(0.15, 0.35, 0.65)
-    } else if elevation > 5.0 {
-        // Moderate sun: transitioning to deeper blue
-        let t = (elevation - 5.0) / 25.0;
-        Color::srgb(
-            0.25 - 0.10 * t,
-            0.40 - 0.05 * t,
-            0.55 + 0.10 * t,
-        )
-    } else if elevation > 0.0 {
-        // Golden hour: warm tinted sky
-        let t = elevation / 5.0;
-        Color::srgb(
-            0.45 - 0.20 * t,
-            0.30 + 0.10 * t,
-            0.25 + 0.30 * t,
-        )
-    } else if elevation > -6.0 {
-        // Civil twilight: warm orange fading to cool blue
-        let t = (-elevation) / 6.0;
-        Color::srgb(
-            0.45 * (1.0 - t) + 0.06 * t,
-            0.25 * (1.0 - t) + 0.06 * t,
-            0.20 * (1.0 - t) + 0.18 * t,
-        )
-    } else if elevation > -12.0 {
-        // Nautical twilight: deep blue
-        let t = ((-elevation) - 6.0) / 6.0;
-        Color::srgb(
-            0.06 * (1.0 - t) + 0.02 * t,
-            0.06 * (1.0 - t) + 0.02 * t,
-            0.18 * (1.0 - t) + 0.06 * t,
-        )
-    } else if elevation > -18.0 {
-        // Astronomical twilight: nearly black
-        let t = ((-elevation) - 12.0) / 6.0;
-        Color::srgb(
-            0.02 * (1.0 - t),
-            0.02 * (1.0 - t),
-            0.06 * (1.0 - t) + 0.01 * t,
-        )
-    } else {
-        // Full night: very dark with slight blue tint
-        Color::srgb(0.005, 0.005, 0.015)
+/// Update atmosphere scale when altitude_scale changes.
+pub fn update_atmosphere_scale(
+    state: Res<View3DState>,
+    mut settings_query: Query<&mut AtmosphereSettings, With<Camera3d>>,
+) {
+    if !state.is_changed() {
+        return;
     }
+    let Ok(mut settings) = settings_query.single_mut() else {
+        return;
+    };
+    settings.scene_units_to_m = 1000.0 / (super::PIXEL_SCALE * state.altitude_scale);
 }
 
 /// Keep the ground plane centered on the camera target in Y-up space.
@@ -689,75 +638,6 @@ pub fn sync_ground_plane(
         gp_transform.translation = pos_yup;
     } else {
         *gp_vis = Visibility::Hidden;
-    }
-}
-
-/// Update fog color, density, directional light, and sky clear color based on sun position.
-/// Uses civil (-6 deg), nautical (-12 deg), and astronomical (-18 deg) twilight zones.
-pub fn update_fog_parameters(
-    state: Res<View3DState>,
-    sun_state: Res<SunState>,
-    mut camera_query: Query<(&mut Camera, Option<&mut DistanceFog>), With<Camera3d>>,
-) {
-    if !state.is_3d_active() {
-        return;
-    }
-
-    let Ok((mut camera, fog)) = camera_query.single_mut() else {
-        return;
-    };
-
-    // Update sky clear color each frame to track sun position
-    camera.clear_color = ClearColorConfig::Custom(compute_sky_color(sun_state.elevation));
-
-    let Some(mut fog) = fog else {
-        return;
-    };
-
-    let elevation = sun_state.elevation;
-
-    let (extinction, inscattering) = if elevation > 30.0 {
-        (Color::srgb(0.35, 0.5, 0.66), Color::srgb(0.55, 0.62, 0.72))
-    } else if elevation > 5.0 {
-        let t = (elevation - 5.0) / 25.0;
-        (
-            Color::srgb(0.4 - 0.1 * t, 0.4 + 0.1 * t, 0.5 + 0.16 * t),
-            Color::srgb(0.6 - 0.1 * t, 0.55 + 0.07 * t, 0.5 + 0.22 * t),
-        )
-    } else if elevation > 0.0 {
-        let t = elevation / 5.0;
-        (
-            Color::srgb(0.5 - 0.1 * t, 0.3 + 0.1 * t, 0.2 + 0.3 * t),
-            Color::srgb(0.7 - 0.1 * t, 0.45 + 0.1 * t, 0.25 + 0.25 * t),
-        )
-    } else if elevation > -6.0 {
-        let t = (-elevation) / 6.0;
-        (
-            Color::srgb(0.3 * (1.0 - t), 0.15 * (1.0 - t), 0.2),
-            Color::srgb(0.5 * (1.0 - t) + 0.1 * t, 0.3 * (1.0 - t), 0.3 * (1.0 - t) + 0.15 * t),
-        )
-    } else {
-        (Color::srgb(0.02, 0.02, 0.04), Color::srgb(0.03, 0.03, 0.06))
-    };
-
-    fog.falloff = FogFalloff::from_visibility_colors(
-        state.visibility_range,
-        extinction,
-        inscattering,
-    );
-
-    if elevation > -2.0 {
-        let glow_t = ((elevation + 2.0) / 32.0).clamp(0.0, 1.0);
-        let warmth = 1.0 - (elevation / 30.0).clamp(0.0, 1.0);
-        fog.directional_light_color = Color::srgba(
-            1.0,
-            0.85 + 0.15 * (1.0 - warmth),
-            0.6 + 0.4 * (1.0 - warmth),
-            glow_t * 0.5,
-        );
-        fog.directional_light_exponent = 15.0 + 15.0 * warmth;
-    } else {
-        fog.directional_light_color = Color::srgba(0.0, 0.0, 0.0, 0.0);
     }
 }
 
