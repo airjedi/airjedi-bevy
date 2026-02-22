@@ -615,17 +615,22 @@ fn sync_center_to_map_state(
 /// System to raise map tiles to ground elevation in 3D mode.
 /// In 2D mode, tiles sit at TILE_Z_LAYER + 0.1; in 3D mode, they are raised
 /// to match the ground elevation so the map surface appears at terrain height.
+/// Lower-zoom multi-resolution tiles sit slightly below so higher-zoom tiles
+/// win depth tests and render on top.
 pub fn update_tile_elevation(
     state: Res<View3DState>,
-    mut tile_query: Query<&mut Transform, With<bevy_slippy_tiles::MapTile>>,
+    map_state: Res<crate::MapState>,
+    mut tile_query: Query<(&mut Transform, &crate::tiles::TileFadeState), With<bevy_slippy_tiles::MapTile>>,
 ) {
     if state.is_3d_active() {
         let ground_z = state.altitude_to_z(state.ground_elevation_ft);
-        for mut transform in tile_query.iter_mut() {
-            transform.translation.z = ground_z;
+        let current_zoom = map_state.zoom_level.to_u8();
+        for (mut transform, fade_state) in tile_query.iter_mut() {
+            let zoom_diff = current_zoom.saturating_sub(fade_state.tile_zoom);
+            transform.translation.z = ground_z - zoom_diff as f32 * 0.05;
         }
     } else if !state.is_transitioning() {
-        for mut transform in tile_query.iter_mut() {
+        for (mut transform, _) in tile_query.iter_mut() {
             transform.translation.z = crate::constants::TILE_Z_LAYER + 0.1;
         }
     }
