@@ -50,6 +50,25 @@ impl Default for Tile3DRefreshTimer {
     }
 }
 
+/// Tracks the previous camera altitude to detect active altitude changes.
+/// During rapid altitude changes, tile culling is softened to prevent
+/// flashing while new tiles load.
+#[derive(Resource)]
+struct AltitudeChangeTracker {
+    prev_altitude: f32,
+    /// Seconds since the last significant altitude change.
+    idle_secs: f32,
+}
+
+impl Default for AltitudeChangeTracker {
+    fn default() -> Self {
+        Self {
+            prev_altitude: 10000.0,
+            idle_secs: f32::MAX,
+        }
+    }
+}
+
 // =============================================================================
 // Plugin
 // =============================================================================
@@ -60,10 +79,12 @@ impl Plugin for TilesPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SpawnedTiles>()
             .init_resource::<Tile3DRefreshTimer>()
+            .init_resource::<AltitudeChangeTracker>()
             .add_systems(Startup, setup_tile_quad_mesh)
             .add_systems(Update, handle_window_resize)
             .add_systems(Update, handle_3d_view_tile_refresh)
             .add_systems(Update, request_3d_tiles_continuous.after(handle_3d_view_tile_refresh))
+            .add_systems(Update, track_altitude_changes)
             .add_systems(Update, display_tiles_filtered.after(bevy::ecs::schedule::ApplyDeferred))
             .add_systems(Update, animate_tile_fades.after(display_tiles_filtered))
             .add_systems(Update, cull_offscreen_tiles.after(display_tiles_filtered))
@@ -314,6 +335,23 @@ fn request_3d_tiles_continuous(
     }
 }
 
+/// Track camera altitude changes to soften tile culling during rapid zoom.
+fn track_altitude_changes(
+    time: Res<Time>,
+    view3d_state: Res<view3d::View3DState>,
+    mut tracker: ResMut<AltitudeChangeTracker>,
+) {
+    let current = view3d_state.camera_altitude;
+    let delta = (current - tracker.prev_altitude).abs();
+    if delta > 50.0 {
+        // Significant altitude change — reset cooldown
+        tracker.idle_secs = 0.0;
+    } else {
+        tracker.idle_secs += time.delta_secs();
+    }
+    tracker.prev_altitude = current;
+}
+
 /// Custom tile display system that filters tiles by current zoom level.
 /// When new tiles arrive at the current zoom, old tiles from previous zoom levels
 /// are marked for delayed despawn so the screen is never blank.
@@ -367,8 +405,21 @@ fn display_tiles_filtered(
         let tile_center_x = tile_x + half_tile;
         let tile_center_y = tile_y - half_tile;
 
-        let transform_x = (tile_center_x - ref_x) as f32;
-        let transform_y = (tile_center_y - ref_y) as f32;
+        let mut transform_x = (tile_center_x - ref_x) as f32;
+        let mut transform_y = (tile_center_y - ref_y) as f32;
+
+        // In 3D mode, lower-zoom tiles are in a different pixel coordinate
+        // system. Rescale their position and size so they align with the
+        // current zoom level's world space.
+        let zoom_diff = current_zoom.saturating_sub(event_zoom) as u32;
+        let rescale = if view3d_state.is_3d_active() && zoom_diff > 0 {
+            let s = (1u32 << zoom_diff) as f32; // 2, 4, 8, 16
+            transform_x *= s;
+            transform_y *= s;
+            s
+        } else {
+            1.0
+        };
 
         // Skip if a tile entity already exists at this position and zoom level
         let tile_key = (transform_x as i32, transform_y as i32, event_zoom);
@@ -384,8 +435,10 @@ fn display_tiles_filtered(
         // fade in on top, hiding the old zoom level progressively.
         // In 3D mode, spawn at ground elevation so tiles are coplanar with
         // airports, runways, and other ground-level features.
+        // Lower-zoom tiles sit slightly below so higher-zoom tiles win depth.
         let tile_z = if view3d_state.is_3d_active() {
             view3d_state.altitude_to_z(view3d_state.ground_elevation_ft)
+                - zoom_diff as f32 * 0.05
         } else {
             tile_settings.z_layer + 0.1
         };
@@ -395,7 +448,8 @@ fn display_tiles_filtered(
                 color: Color::srgba(1.0, 1.0, 1.0, 0.0),
                 ..default()
             },
-            Transform::from_xyz(transform_x, transform_y, tile_z),
+            Transform::from_xyz(transform_x, transform_y, tile_z)
+                .with_scale(Vec3::splat(rescale)),
             MapTile,
             TileFadeState {
                 alpha: 0.0,
@@ -432,6 +486,7 @@ fn cull_offscreen_tiles(
     window_query: Query<&Window>,
     mut spawned_tiles: ResMut<SpawnedTiles>,
     view3d_state: Res<view3d::View3DState>,
+    alt_tracker: Res<AltitudeChangeTracker>,
 ) {
     let Ok((camera_tf, projection)) = camera_query.single() else {
         return;
@@ -459,8 +514,9 @@ fn cull_offscreen_tiles(
         let center_ground_dist = effective_distance * pitch_rad.cos();
         let half_width_at_horizon = far_ground_dist * half_hfov.tan();
 
-        // 2.5x margin to keep multi-resolution horizon tiles alive
-        let margin = 2.5;
+        // Widen margin during active altitude changes so tiles survive
+        // long enough for replacements to load.  Cooldown of ~0.5s.
+        let margin = if alt_tracker.idle_secs < 0.5 { 4.0 } else { 2.5 };
         let hw = half_width_at_horizon * margin;
         let hh = far_ground_dist.max(center_ground_dist) * margin;
 
@@ -515,8 +571,14 @@ fn cull_offscreen_tiles(
         }
     });
 
-    // Second pass: if still over budget, cull farthest tiles
-    let tile_limit = max_tile_entities(Some(&view3d_state));
+    // Second pass: if still over budget, cull farthest tiles.
+    // Raise the limit during active altitude changes to avoid thrashing.
+    let base_limit = max_tile_entities(Some(&view3d_state));
+    let tile_limit = if view3d_state.is_3d_active() && alt_tracker.idle_secs < 0.5 {
+        base_limit + 200
+    } else {
+        base_limit
+    };
     if tiles.len() > tile_limit {
         tiles.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         for &(entity, _, tx, ty, zoom) in &tiles[..tiles.len() - tile_limit] {
@@ -537,24 +599,37 @@ fn animate_tile_fades(
     time: Res<Time>,
     map_state: Res<MapState>,
     mut tile_query: Query<(Entity, &mut TileFadeState, &mut Sprite, &Transform), With<MapTile>>,
+    mut spawned_tiles: ResMut<SpawnedTiles>,
+    view3d_state: Res<view3d::View3DState>,
 ) {
     let delta = time.delta_secs();
     let current_zoom = map_state.zoom_level.to_u8();
 
+    // In 3D mode, tiles within the multi-resolution band (current_zoom to
+    // current_zoom - 4) are intentional and should NOT be treated as "old."
+    let is_3d = view3d_state.is_3d_active();
+
     // Collect grid cells covered by fully-opaque new tiles.
     // Quantize positions to 256px cells so old (rescaled) tiles can be matched.
     let mut loaded_cells: std::collections::HashSet<(i32, i32)> = std::collections::HashSet::new();
-    let mut old_tiles: Vec<(Entity, i32, i32)> = Vec::new();
+    let mut old_tiles: Vec<(Entity, i32, i32, u8)> = Vec::new();
 
     for (entity, mut fade_state, mut sprite, transform) in tile_query.iter_mut() {
-        if fade_state.tile_zoom == current_zoom {
-            // Fade in new tiles
+        let dominated = if is_3d {
+            // In 3D mode, only tiles outside the multi-resolution band are "old"
+            fade_state.tile_zoom > current_zoom || current_zoom - fade_state.tile_zoom > 4
+        } else {
+            fade_state.tile_zoom != current_zoom
+        };
+
+        if !dominated {
+            // Current / active tile: fade in
             if fade_state.alpha < 1.0 {
                 fade_state.alpha += constants::TILE_FADE_SPEED * delta;
                 fade_state.alpha = fade_state.alpha.min(1.0);
                 sprite.color = Color::srgba(1.0, 1.0, 1.0, fade_state.alpha);
             }
-            // Track fully-opaque new tiles by grid cell
+            // Track fully-opaque tiles by grid cell
             if fade_state.alpha >= 1.0 {
                 let cell = (
                     (transform.translation.x / 256.0).round() as i32,
@@ -568,13 +643,17 @@ fn animate_tile_fades(
                 (transform.translation.x / 256.0).round() as i32,
                 (transform.translation.y / 256.0).round() as i32,
             );
-            old_tiles.push((entity, cell.0, cell.1));
+            old_tiles.push((entity, cell.0, cell.1, fade_state.tile_zoom));
         }
     }
 
-    // Despawn old tiles whose grid cell is covered by a fully-loaded new tile
-    for (entity, cx, cy) in old_tiles {
+    // Despawn old tiles whose grid cell is covered by a fully-loaded new tile.
+    // Remove from spawned_tiles so the position can be re-used.
+    for (entity, cx, cy, zoom) in old_tiles {
         if loaded_cells.contains(&(cx, cy)) {
+            let tx = (cx as f32 * 256.0) as i32;
+            let ty = (cy as f32 * 256.0) as i32;
+            spawned_tiles.positions.remove(&(tx, ty, zoom));
             commands.entity(entity).despawn();
         }
     }
@@ -657,8 +736,11 @@ fn sync_tile_mesh_alpha(
 
     for (fade_state, quad) in tile_query.iter() {
         let Ok(mut vis) = vis_query.get_mut(quad.0) else { continue };
-        // Show the mesh quad once the tile texture has loaded enough to be visible
-        *vis = if fade_state.alpha > 0.1 {
+        // Show the mesh quad once the tile texture has started loading.
+        // A very low threshold (0.01) makes tiles appear within 1 frame of
+        // spawning, reducing the dark-flash gap during rapid zoom.  The mesh
+        // uses AlphaMode::Opaque so any non-zero alpha is fully visible.
+        *vis = if fade_state.alpha > 0.01 {
             Visibility::Inherited
         } else {
             Visibility::Hidden
