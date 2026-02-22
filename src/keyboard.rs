@@ -91,11 +91,6 @@ pub fn handle_keyboard_shortcuts(
         panels.toggle_panel(PanelId::DataSources);
     }
 
-    // 3 - Toggle 3D view
-    if keyboard.just_pressed(KeyCode::Digit3) {
-        panels.toggle_panel(PanelId::View3D);
-    }
-
     // H - Toggle help overlay
     if keyboard.just_pressed(KeyCode::KeyH) {
         panels.toggle_panel(PanelId::Help);
@@ -312,7 +307,7 @@ B     Toggle bookmarks
 M     Measurement mode
 E     Export data panel
 V     Toggle coverage tracking
-3     Toggle 3D view panel
+3     Toggle 3D view mode
 Esc   Deselect / cancel follow
 F     Follow selected aircraft
 C     Center on selected
