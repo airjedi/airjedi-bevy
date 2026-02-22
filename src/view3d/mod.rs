@@ -69,7 +69,6 @@ pub struct View3DState {
     pub camera_altitude: f32,
     pub camera_yaw: f32,
     pub altitude_scale: f32,
-    pub show_panel: bool,
     /// Saved 2D camera position (pixel coords) when entering 3D mode
     pub saved_2d_center: Vec2,
     /// Ground plane elevation in feet ASL (from nearest airport)
@@ -89,7 +88,6 @@ impl Default for View3DState {
             camera_altitude: DEFAULT_CAMERA_ALTITUDE,
             camera_yaw: 0.0,
             altitude_scale: ALTITUDE_EXAGGERATION,
-            show_panel: false,
             saved_2d_center: Vec2::ZERO,
             ground_elevation_ft: 0,
             detected_airport_name: None,
@@ -222,105 +220,6 @@ fn detect_ground_elevation(
         state.ground_elevation_ft = 0;
         state.detected_airport_name = None;
     }
-}
-
-/// System to render 3D view settings panel
-pub fn render_3d_view_panel(
-    mut contexts: EguiContexts,
-    mut state: ResMut<View3DState>,
-    mut time_state: ResMut<sky::TimeState>,
-    sun_state: Res<sky::SunState>,
-) {
-    let Ok(ctx) = contexts.ctx_mut() else {
-        return;
-    };
-
-    if !state.show_panel {
-        return;
-    }
-
-    egui::Window::new("3D View Settings")
-        .collapsible(true)
-        .resizable(false)
-        .default_width(280.0)
-        .show(ctx, |ui| {
-            ui.colored_label(
-                egui::Color32::YELLOW,
-                "3D View - Experimental"
-            );
-
-            ui.separator();
-
-            ui.horizontal(|ui| {
-                ui.label("Mode:");
-                let mode_text = match state.mode {
-                    ViewMode::Map2D => "2D Map",
-                    ViewMode::Perspective3D => "3D Perspective",
-                };
-                ui.strong(mode_text);
-            });
-
-            ui.separator();
-            ui.heading("Camera Settings");
-
-            ui.horizontal(|ui| {
-                ui.label("Pitch:");
-                ui.add(egui::Slider::new(&mut state.camera_pitch, MIN_PITCH..=MAX_PITCH).suffix("°"));
-            });
-
-            ui.horizontal(|ui| {
-                ui.label("Altitude:");
-                ui.add(egui::Slider::new(&mut state.camera_altitude, MIN_CAMERA_ALTITUDE..=MAX_CAMERA_ALTITUDE).suffix(" ft"));
-            });
-
-            ui.horizontal(|ui| {
-                ui.label("Yaw:");
-                ui.add(egui::Slider::new(&mut state.camera_yaw, 0.0..=360.0).suffix("°"));
-            });
-
-            ui.separator();
-            ui.heading("Altitude");
-
-            ui.horizontal(|ui| {
-                ui.label("Exaggeration:");
-                ui.add(egui::Slider::new(&mut state.altitude_scale, 0.5..=50.0).suffix("x"));
-            });
-
-            ui.separator();
-            ui.heading("Ground Elevation");
-
-            if let Some(ref name) = state.detected_airport_name {
-                ui.label(
-                    egui::RichText::new(format!("Nearest: {}", name))
-                        .size(11.0)
-                        .color(egui::Color32::LIGHT_BLUE)
-                );
-            } else {
-                ui.label(
-                    egui::RichText::new("No nearby airport detected")
-                        .size(11.0)
-                        .color(egui::Color32::GRAY)
-                );
-            }
-
-            ui.horizontal(|ui| {
-                ui.label("Elevation:");
-                let mut elev = state.ground_elevation_ft as f32;
-                if ui.add(egui::Slider::new(&mut elev, 0.0..=15000.0).suffix(" ft")).changed() {
-                    state.ground_elevation_ft = elev as i32;
-                }
-            });
-
-            ui.separator();
-            render_time_of_day_section(ui, &mut time_state, &sun_state);
-
-            ui.separator();
-            ui.label(
-                egui::RichText::new("Press '3' to toggle view mode")
-                    .size(11.0)
-                    .color(egui::Color32::GRAY)
-            );
-        });
 }
 
 /// Render the "Time of Day" UI section (shared between panel and dock tab).
