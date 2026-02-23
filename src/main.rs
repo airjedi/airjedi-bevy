@@ -26,6 +26,7 @@ mod toolbar;
 mod tools_window;
 mod debug_panel;
 mod dock;
+mod inspector;
 mod statusbar;
 mod tile_cache;
 mod tiles;
@@ -170,6 +171,7 @@ fn main() {
             view3d::View3DPlugin,
             adsb::AdsbPlugin,
         ))
+        .add_plugins(bevy_inspector_egui::DefaultInspectorConfigPlugin)
         // Full speed when focused; ~4 FPS when unfocused to keep ADS-B data
         // flowing without overwhelming the GPU or triggering macOS throttling.
         .insert_resource(bevy::winit::WinitSettings {
@@ -183,6 +185,7 @@ fn main() {
         .init_resource::<tools_window::ToolsWindowState>()
         .init_resource::<debug_panel::DebugPanelState>()
         .init_resource::<dock::DockTreeState>()
+        .init_resource::<inspector::InspectorState>()
         .init_resource::<statusbar::StatusBarState>()
         .insert_resource(ZoomState::new())
         // SlippyTilesSettings will be updated by setup_slippy_tiles_from_config after config is loaded
@@ -211,6 +214,7 @@ fn main() {
         .add_systems(Update, sync_panel_manager_to_resources.after(sync_resources_to_panel_manager))
         .add_systems(Update, update_help_overlay)
         .add_systems(Update, debug_panel::update_debug_metrics)
+        .add_systems(Update, inspector::render_inspector_window)
         .add_systems(Update, heartbeat_diagnostic)
         .run();
 }
