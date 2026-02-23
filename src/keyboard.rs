@@ -213,6 +213,7 @@ pub fn sync_panel_manager_to_resources(
     mut help_state: ResMut<HelpOverlayState>,
     mut measurement_state: ResMut<crate::tools::MeasurementState>,
     mut debug_state: ResMut<crate::debug_panel::DebugPanelState>,
+    mut inspector_state: ResMut<crate::inspector::InspectorState>,
     app_config: Res<AppConfig>,
 ) {
     if !panels.is_changed() {
@@ -249,7 +250,8 @@ pub fn sync_panel_manager_to_resources(
     let v = panels.is_open(PanelId::Debug);
     if debug_state.open != v { debug_state.open = v; }
 
-    // TODO: add InspectorState sync once inspector module exists
+    let v = panels.is_open(PanelId::Inspector);
+    if inspector_state.open != v { inspector_state.open = v; }
 }
 
 /// Sync per-module resource changes back to UiPanelManager.
