@@ -145,6 +145,7 @@ dependencies = [
  "egui-phosphor",
  "egui_kittest",
  "egui_tiles",
+ "libc",
  "reqwest",
  "serde",
  "serde_json",

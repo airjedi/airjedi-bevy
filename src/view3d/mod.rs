@@ -801,7 +801,8 @@ impl Plugin for View3DPlugin {
             ))
             .add_systems(Update, update_tile_elevation
                 .after(animate_view_transition))
-            .add_systems(Update, update_aircraft_3d_transform)
+            .add_systems(Update, update_aircraft_3d_transform
+                .after(crate::camera::update_aircraft_positions))
             .add_systems(Update, fix_aircraft_model_materials)
             .add_systems(Update, sky::update_sky_visibility)
             .add_systems(Update, sky::sync_sky_camera.after(update_3d_camera))
@@ -814,6 +815,7 @@ impl Plugin for View3DPlugin {
                 .after(sky::update_sun_position))
             .add_systems(Update, sky::sync_ground_plane.after(update_3d_camera))
             .add_systems(Update, sky::update_atmosphere_scale)
+            .add_systems(Update, sky::update_exposure_for_time.after(sky::update_sun_position))
             .add_systems(Update, sky::update_2d_tint.after(sky::update_sun_position))
             .add_systems(Update, fade_distant_sprites
                 .after(update_3d_camera)

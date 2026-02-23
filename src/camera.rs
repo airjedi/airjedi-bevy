@@ -206,7 +206,7 @@ fn scale_aircraft_and_labels(
     }
 }
 
-fn update_aircraft_positions(
+pub(crate) fn update_aircraft_positions(
     map_state: Res<MapState>,
     tile_settings: Res<SlippyTilesSettings>,
     mut aircraft_query: Query<(&Aircraft, &mut Transform)>,
