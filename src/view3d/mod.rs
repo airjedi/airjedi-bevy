@@ -44,7 +44,7 @@ const ALTITUDE_EXAGGERATION: f32 = 2.0;
 pub(crate) const PIXEL_SCALE: f32 = 20.0;
 
 /// View mode for the application
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Reflect)]
 pub enum ViewMode {
     #[default]
     Map2D,
@@ -52,7 +52,7 @@ pub enum ViewMode {
 }
 
 /// Transition state between view modes
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, Reflect)]
 pub enum TransitionState {
     #[default]
     Idle,
@@ -61,7 +61,7 @@ pub enum TransitionState {
 }
 
 /// Resource for 3D view state
-#[derive(Resource)]
+#[derive(Resource, Reflect)]
 pub struct View3DState {
     pub mode: ViewMode,
     pub transition: TransitionState,
