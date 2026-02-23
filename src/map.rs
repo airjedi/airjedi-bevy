@@ -12,8 +12,12 @@ pub struct MapState {
     /// Current map center longitude
     pub longitude: f64,
     /// Current discrete tile zoom level
-    #[reflect(ignore)]
+    #[reflect(ignore, default = "default_zoom_level")]
     pub zoom_level: ZoomLevel,
+}
+
+fn default_zoom_level() -> ZoomLevel {
+    ZoomLevel::L10
 }
 
 impl Default for MapState {

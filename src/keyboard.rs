@@ -101,6 +101,11 @@ pub fn handle_keyboard_shortcuts(
         panels.toggle_panel(PanelId::Debug);
     }
 
+    // F12 - Toggle inspector
+    if keyboard.just_pressed(KeyCode::F12) {
+        panels.toggle_panel(PanelId::Inspector);
+    }
+
     // Ctrl+R - Toggle recording
     if ctrl && keyboard.just_pressed(KeyCode::KeyR) {
         panels.toggle_panel(PanelId::Recording);
@@ -243,6 +248,8 @@ pub fn sync_panel_manager_to_resources(
 
     let v = panels.is_open(PanelId::Debug);
     if debug_state.open != v { debug_state.open = v; }
+
+    // TODO: add InspectorState sync once inspector module exists
 }
 
 /// Sync per-module resource changes back to UiPanelManager.
@@ -314,6 +321,7 @@ C     Center on selected
 +/-   Zoom in / out
 H     Toggle this help
 `     Toggle debug panel
+F12   Toggle inspector
 R     Reset view
 A     Toggle airports
 T     Toggle trails
