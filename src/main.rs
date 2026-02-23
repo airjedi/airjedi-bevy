@@ -119,6 +119,27 @@ pub(crate) fn clamp_longitude(lon: f64) -> f64 {
 }
 
 fn main() {
+    // Raise the open file descriptor limit from the macOS default of 256.
+    // 3D mode loads many tile textures across multiple zoom levels and can
+    // easily exhaust the soft limit.
+    #[cfg(unix)]
+    {
+        use std::io;
+        unsafe {
+            let mut rlim = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+            if libc::getrlimit(libc::RLIMIT_NOFILE, &mut rlim) == 0 {
+                let target = 4096.min(rlim.rlim_max);
+                if rlim.rlim_cur < target {
+                    rlim.rlim_cur = target;
+                    if libc::setrlimit(libc::RLIMIT_NOFILE, &rlim) != 0 {
+                        eprintln!("Warning: failed to raise file descriptor limit: {}",
+                            io::Error::last_os_error());
+                    }
+                }
+            }
+        }
+    }
+
     App::new()
         .add_plugins((
             DefaultPlugins

@@ -285,7 +285,7 @@ pub fn setup_sky(
     let ground_mesh = meshes.add(Plane3d::new(Vec3::Y, Vec2::splat(250_000.0)));
     let ground_material = materials.add(StandardMaterial {
         base_color: Color::srgb(0.15, 0.15, 0.18),
-        unlit: false,
+        unlit: true,
         perceptual_roughness: 1.0,
         reflectance: 0.0,
         ..default()
@@ -433,6 +433,16 @@ pub fn update_sun_position(
         map_state.longitude,
         &datetime,
     );
+
+    // Only update when position changes meaningfully (0.05 degrees ≈ 12 seconds of time).
+    // Avoiding per-frame writes prevents Bevy change detection from triggering
+    // atmosphere/fog recalculation every frame, which causes tile flashing.
+    let elev_changed = (sun_state.elevation - elevation).abs() > 0.05;
+    let azim_changed = (sun_state.azimuth - azimuth).abs() > 0.05;
+    if !elev_changed && !azim_changed {
+        return;
+    }
+
     sun_state.elevation = elevation;
     sun_state.azimuth = azimuth;
 
@@ -488,6 +498,14 @@ pub fn update_moon_position(
         map_state.longitude,
         &datetime,
     );
+
+    // Only update when position changes meaningfully.
+    let elev_changed = (moon_state.elevation - elevation).abs() > 0.05;
+    let azim_changed = (moon_state.azimuth - azimuth).abs() > 0.05;
+    if !elev_changed && !azim_changed {
+        return;
+    }
+
     moon_state.elevation = elevation;
     moon_state.azimuth = azimuth;
     moon_state.phase = phase;
@@ -517,7 +535,10 @@ pub fn sync_time_offset(
     map_state: Res<MapState>,
     mut time_state: ResMut<TimeState>,
 ) {
-    time_state.utc_offset_hours = (map_state.longitude / 15.0) as f32;
+    let new_offset = (map_state.longitude / 15.0) as f32;
+    if (time_state.utc_offset_hours - new_offset).abs() > 0.01 {
+        time_state.utc_offset_hours = new_offset;
+    }
 }
 
 /// Manage Atmosphere component on Camera3d based on 3D mode state.
@@ -526,6 +547,7 @@ pub fn sync_time_offset(
 pub fn manage_atmosphere_camera(
     mut commands: Commands,
     state: Res<View3DState>,
+    sun_state: Res<SunState>,
     medium_handle: Option<Res<crate::AtmosphereMediumHandle>>,
     mut camera_3d: Query<(Entity, &mut Camera, Option<&Atmosphere>), With<Camera3d>>,
     mut camera_2d: Query<&mut Camera, (With<crate::MapCamera>, Without<Camera3d>)>,
@@ -538,15 +560,24 @@ pub fn manage_atmosphere_camera(
         return;
     };
 
+    // Sun must be above -12 degrees (nautical twilight or brighter) for
+    // atmosphere scattering to be visible. Below that, remove the Atmosphere
+    // component so the sky renders as plain black.
+    const ATMO_THRESHOLD: f32 = -12.0;
+
     if state.is_3d_active() {
-        if has_atmo.is_none() {
+        let want_atmo = sun_state.elevation > ATMO_THRESHOLD;
+
+        if want_atmo && has_atmo.is_none() {
             let scene_units_to_m = 1000.0 / (super::PIXEL_SCALE * state.altitude_scale);
             if let Some(ref medium_handle) = medium_handle {
                 let mut atmo = Atmosphere::earthlike(medium_handle.0.clone());
-                // High ground albedo makes the atmosphere's below-horizon
-                // rendering match the horizon haze, preventing a dark band
-                // between the sky and the map tiles.
-                atmo.ground_albedo = Vec3::new(0.9, 0.9, 0.9);
+                // Zero ground albedo hides the below-horizon atmosphere
+                // rendering so only the sky dome is visible.
+                atmo.ground_albedo = Vec3::ZERO;
+                // Thin the atmosphere (default 100km → 30km) to reduce the
+                // bright orange Rayleigh scattering band at the horizon.
+                atmo.top_radius = atmo.bottom_radius + 30_000.0;
                 commands.entity(cam3d_entity).insert((
                     atmo,
                     AtmosphereSettings {
@@ -554,10 +585,10 @@ pub fn manage_atmosphere_camera(
                         ..default()
                     },
                     AtmosphereEnvironmentMapLight::default(),
-                    Exposure { ev100: 13.0 },
+                    Exposure { ev100: 9.0 },
                     DistanceFog {
                         color: Color::srgba(0.7, 0.75, 0.85, 1.0),
-                        directional_light_color: Color::srgba(1.0, 0.95, 0.85, 0.3),
+                        directional_light_color: Color::NONE,
                         directional_light_exponent: 30.0,
                         falloff: FogFalloff::Linear {
                             start: state.visibility_range * 0.4,
@@ -566,6 +597,13 @@ pub fn manage_atmosphere_camera(
                     },
                 ));
             }
+        } else if !want_atmo && has_atmo.is_some() {
+            // Deep night — remove atmosphere and fog so sky is black
+            commands.entity(cam3d_entity)
+                .remove::<Atmosphere>()
+                .remove::<AtmosphereSettings>()
+                .remove::<AtmosphereEnvironmentMapLight>()
+                .remove::<DistanceFog>();
         }
         // Camera3d renders first (order=0), atmosphere paints sky
         cam3d.order = 0;
@@ -578,10 +616,11 @@ pub fn manage_atmosphere_camera(
             blend_state: Some(BlendState::ALPHA_BLENDING),
             clear_color: ClearColorConfig::None,
         };
-        // Ground plane hidden — atmosphere handles below-horizon rendering
-        // and the ground plane mesh creates a visible dark band at the horizon.
+        // Ground plane visible as a depth backstop — it writes depth everywhere
+        // below the horizon so the atmosphere post-process never treats those
+        // pixels as sky. Tile mesh quads render on top of it.
         if let Ok((_, mut gp_vis)) = ground_query.single_mut() {
-            *gp_vis = Visibility::Hidden;
+            *gp_vis = Visibility::Inherited;
         }
     } else {
         if has_atmo.is_some() {
@@ -617,6 +656,52 @@ pub fn update_atmosphere_scale(
     settings.scene_units_to_m = 1000.0 / (super::PIXEL_SCALE * state.altitude_scale);
 }
 
+/// Adapt camera exposure to time of day.
+/// At night, lower the EV100 so faint atmospheric scattering isn't amplified
+/// into a bright horizon glow.
+///
+/// Uses a large dead zone (0.5 EV) to avoid frequent updates that can cause
+/// the atmosphere post-process to re-render and flash tiles near the horizon.
+pub fn update_exposure_for_time(
+    sun_state: Res<SunState>,
+    state: Res<View3DState>,
+    mut camera_query: Query<&mut Exposure, With<Camera3d>>,
+) {
+    if !state.is_3d_active() {
+        return;
+    }
+    let Ok(mut exposure) = camera_query.single_mut() else {
+        return;
+    };
+
+    let elev = sun_state.elevation;
+
+    // EV100: 13.0 at full day, ramp down through twilight to 6.0 at night.
+    let ev = if elev > 10.0 {
+        13.0
+    } else if elev > 0.0 {
+        // Low sun: 11..13
+        11.0 + 2.0 * (elev / 10.0)
+    } else if elev > -6.0 {
+        // Civil twilight: 8..11
+        8.0 + 3.0 * ((elev + 6.0) / 6.0)
+    } else if elev > -12.0 {
+        // Nautical twilight: 7..8
+        7.0 + 1.0 * ((elev + 12.0) / 6.0)
+    } else if elev > -18.0 {
+        // Astronomical twilight: 6..7
+        6.0 + 1.0 * ((elev + 18.0) / 6.0)
+    } else {
+        6.0
+    };
+
+    // Only write when crossing a significant threshold to minimize
+    // atmosphere post-process recalculations that can flash tiles.
+    if (exposure.ev100 - ev).abs() > 0.5 {
+        exposure.ev100 = ev;
+    }
+}
+
 /// Keep the ground plane centered on the camera target in Y-up space.
 pub fn sync_ground_plane(
     state: Res<View3DState>,
@@ -628,7 +713,10 @@ pub fn sync_ground_plane(
 
     if state.is_3d_active() {
         *gp_vis = Visibility::Inherited;
-        let ground_alt = state.altitude_to_z(state.ground_elevation_ft);
+        // Place the ground plane slightly below the tile mesh quads so tiles
+        // always render on top. Lower-zoom tiles can be up to 0.2 units below
+        // the base ground level (zoom_diff * 0.05), so offset by 1.0 to clear all.
+        let ground_alt = state.altitude_to_z(state.ground_elevation_ft) - 1.0;
         let pos_yup = super::zup_to_yup(Vec3::new(
             state.saved_2d_center.x,
             state.saved_2d_center.y,
