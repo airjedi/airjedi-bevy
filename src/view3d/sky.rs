@@ -560,34 +560,48 @@ pub fn manage_atmosphere_camera(
         return;
     };
 
-    // Sun must be above -12 degrees (nautical twilight or brighter) for
-    // atmosphere scattering to be visible. Below that, remove the Atmosphere
-    // component so the sky renders as plain black.
-    const ATMO_THRESHOLD: f32 = -12.0;
-
     if state.is_3d_active() {
-        let want_atmo = sun_state.elevation > ATMO_THRESHOLD;
+        // Atmosphere is kept always-present while in 3D mode. Adding/removing
+        // the Atmosphere component across the day/night threshold disrupts
+        // Bevy's HDR rendering pipeline, causing tiles to go black.
+        // With the thin atmosphere (15km, 0.3x scale), nighttime scattering
+        // is naturally minimal so the sky stays dark without removal.
+        let show_atmo = state.atmosphere_enabled;
 
-        if want_atmo && has_atmo.is_none() {
-            let scene_units_to_m = 1000.0 / (super::PIXEL_SCALE * state.altitude_scale);
+        if show_atmo {
+            cam3d.clear_color = ClearColorConfig::Default;
+        } else {
+            cam3d.clear_color = ClearColorConfig::Custom(Color::BLACK);
+        }
+
+        // Add atmosphere components once when entering 3D (or re-enabling)
+        if show_atmo && has_atmo.is_none() {
+            // Scale factor reduced (0.3x) to shorten effective atmospheric path
+            // lengths, suppressing the bright Mie scattering band at the horizon.
+            let scene_units_to_m = 0.3 * 1000.0 / (super::PIXEL_SCALE * state.altitude_scale);
             if let Some(ref medium_handle) = medium_handle {
                 let mut atmo = Atmosphere::earthlike(medium_handle.0.clone());
                 // Zero ground albedo hides the below-horizon atmosphere
                 // rendering so only the sky dome is visible.
                 atmo.ground_albedo = Vec3::ZERO;
-                // Thin the atmosphere (default 100km → 30km) to reduce the
-                // bright orange Rayleigh scattering band at the horizon.
-                atmo.top_radius = atmo.bottom_radius + 30_000.0;
+                // Use default earthlike top_radius (100km). The 0.3x
+                // scene_units_to_m already reduces effective scattering.
                 commands.entity(cam3d_entity).insert((
                     atmo,
                     AtmosphereSettings {
                         scene_units_to_m,
+                        // Limit aerial perspective range to prevent the
+                        // atmosphere post-process from hazing the ground
+                        // plane into a bright band at the horizon.
+                        aerial_view_lut_max_distance: 500.0,
                         ..default()
                     },
                     AtmosphereEnvironmentMapLight::default(),
                     Exposure { ev100: 9.0 },
                     DistanceFog {
-                        color: Color::srgba(0.7, 0.75, 0.85, 1.0),
+                        // Dark fog color matching CartoDB dark basemap tiles
+                        // to avoid a bright band at the horizon.
+                        color: Color::srgba(0.10, 0.10, 0.12, 1.0),
                         directional_light_color: Color::NONE,
                         directional_light_exponent: 30.0,
                         falloff: FogFalloff::Linear {
@@ -597,17 +611,17 @@ pub fn manage_atmosphere_camera(
                     },
                 ));
             }
-        } else if !want_atmo && has_atmo.is_some() {
-            // Deep night — remove atmosphere and fog so sky is black
+        } else if !show_atmo && has_atmo.is_some() {
+            // User disabled atmosphere via checkbox — remove all components
             commands.entity(cam3d_entity)
                 .remove::<Atmosphere>()
                 .remove::<AtmosphereSettings>()
                 .remove::<AtmosphereEnvironmentMapLight>()
+                .remove::<Exposure>()
                 .remove::<DistanceFog>();
         }
         // Camera3d renders first (order=0), atmosphere paints sky
         cam3d.order = 0;
-        cam3d.clear_color = ClearColorConfig::Default;
         // Camera2d renders on top (order=1) with alpha blending so transparent
         // areas show Camera3d's atmosphere sky through.
         cam2d.order = 1;
@@ -653,7 +667,42 @@ pub fn update_atmosphere_scale(
     let Ok(mut settings) = settings_query.single_mut() else {
         return;
     };
-    settings.scene_units_to_m = 1000.0 / (super::PIXEL_SCALE * state.altitude_scale);
+    settings.scene_units_to_m = 0.3 * 1000.0 / (super::PIXEL_SCALE * state.altitude_scale);
+}
+
+/// Blend DistanceFog color between daytime blue-gray and nighttime dark
+/// based on sun elevation, so the fog matches the scene lighting.
+pub fn update_fog_color_for_time(
+    sun_state: Res<SunState>,
+    state: Res<View3DState>,
+    mut fog_query: Query<&mut DistanceFog, With<Camera3d>>,
+) {
+    if !state.is_3d_active() || !state.atmosphere_enabled {
+        return;
+    }
+    let Ok(mut fog) = fog_query.single_mut() else {
+        return;
+    };
+
+    let elev = sun_state.elevation;
+
+    // Blend factor: 1.0 at full day (sun > 10°), 0.0 at night (sun < -6°)
+    let t = if elev > 10.0 {
+        1.0
+    } else if elev > -6.0 {
+        (elev + 6.0) / 16.0
+    } else {
+        0.0
+    };
+
+    // Day: subtle blue-gray, low opacity. Night: dark, high opacity.
+    // Both color and alpha animate so daytime fog is barely visible
+    // while nighttime fog blends smoothly into the dark scene.
+    let r = 0.10 + 0.30 * t;
+    let g = 0.10 + 0.35 * t;
+    let b = 0.12 + 0.38 * t;
+    let a = 0.8 - 0.5 * t; // Night: 0.8, Day: 0.3
+    fog.color = Color::srgba(r, g, b, a);
 }
 
 /// Adapt camera exposure to time of day.
@@ -667,7 +716,7 @@ pub fn update_exposure_for_time(
     state: Res<View3DState>,
     mut camera_query: Query<&mut Exposure, With<Camera3d>>,
 ) {
-    if !state.is_3d_active() {
+    if !state.is_3d_active() || !state.atmosphere_enabled {
         return;
     }
     let Ok(mut exposure) = camera_query.single_mut() else {
@@ -676,23 +725,25 @@ pub fn update_exposure_for_time(
 
     let elev = sun_state.elevation;
 
-    // EV100: 13.0 at full day, ramp down through twilight to 6.0 at night.
+    // EV100: 13.0 at full day, ramp down through twilight to 2.0 at night.
+    // The low night value crushes residual atmosphere scattering at the
+    // horizon to near-invisible (atmosphere is kept always-present in 3D).
     let ev = if elev > 10.0 {
         13.0
     } else if elev > 0.0 {
         // Low sun: 11..13
         11.0 + 2.0 * (elev / 10.0)
     } else if elev > -6.0 {
-        // Civil twilight: 8..11
-        8.0 + 3.0 * ((elev + 6.0) / 6.0)
+        // Civil twilight: 5..11
+        5.0 + 6.0 * ((elev + 6.0) / 6.0)
     } else if elev > -12.0 {
-        // Nautical twilight: 7..8
-        7.0 + 1.0 * ((elev + 12.0) / 6.0)
+        // Nautical twilight: 3..5
+        3.0 + 2.0 * ((elev + 12.0) / 6.0)
     } else if elev > -18.0 {
-        // Astronomical twilight: 6..7
-        6.0 + 1.0 * ((elev + 18.0) / 6.0)
+        // Astronomical twilight: 2..3
+        2.0 + 1.0 * ((elev + 18.0) / 6.0)
     } else {
-        6.0
+        2.0
     };
 
     // Only write when crossing a significant threshold to minimize
@@ -726,6 +777,37 @@ pub fn sync_ground_plane(
     } else {
         *gp_vis = Visibility::Hidden;
     }
+}
+
+/// Darken the ground plane at night so it doesn't create a gray band
+/// against the black sky at the horizon.
+pub fn update_ground_plane_color(
+    sun_state: Res<SunState>,
+    state: Res<View3DState>,
+    ground_query: Query<&MeshMaterial3d<StandardMaterial>, With<GroundPlane>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    if !state.is_3d_active() {
+        return;
+    }
+    let Ok(mat_handle) = ground_query.single() else {
+        return;
+    };
+    let Some(material) = materials.get_mut(mat_handle.id()) else {
+        return;
+    };
+
+    // Daytime base color matches dark CartoDB tiles (0.15, 0.15, 0.18).
+    // Below the horizon, fade to black.
+    let factor = if sun_state.elevation > 6.0 {
+        1.0
+    } else if sun_state.elevation > 0.0 {
+        sun_state.elevation / 6.0
+    } else {
+        0.0
+    };
+
+    material.base_color = Color::srgb(0.15 * factor, 0.15 * factor, 0.18 * factor);
 }
 
 /// Apply subtle time-of-day color tinting in 2D map mode.

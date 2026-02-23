@@ -381,12 +381,16 @@ pub fn render_view3d_tab(ui: &mut egui::Ui, state: &mut View3DState, time_state:
     ui.separator();
     ui.label("Atmosphere:");
 
-    ui.horizontal(|ui| {
-        ui.label("Visibility:");
-        ui.add(egui::Slider::new(&mut state.visibility_range, 1000.0..=20000.0)
-            .suffix(" units")
-            .logarithmic(true));
-    });
+    ui.checkbox(&mut state.atmosphere_enabled, "Enable atmosphere effects");
+
+    if state.atmosphere_enabled {
+        ui.horizontal(|ui| {
+            ui.label("Visibility:");
+            ui.add(egui::Slider::new(&mut state.visibility_range, 1000.0..=20000.0)
+                .suffix(" units")
+                .logarithmic(true));
+        });
+    }
 
     ui.separator();
     crate::view3d::render_time_of_day_section(ui, time_state, sun_state);

@@ -77,6 +77,8 @@ pub struct View3DState {
     pub detected_airport_name: Option<String>,
     /// Distance (world units) before fog reaches full opacity
     pub visibility_range: f32,
+    /// Whether atmosphere effects (scattering, fog, exposure) are enabled
+    pub atmosphere_enabled: bool,
 }
 
 impl Default for View3DState {
@@ -92,6 +94,7 @@ impl Default for View3DState {
             ground_elevation_ft: 0,
             detected_airport_name: None,
             visibility_range: 5000.0,
+            atmosphere_enabled: true,
         }
     }
 }
@@ -233,11 +236,15 @@ pub fn render_time_of_day_section(
     let mut manual = time_state.is_manual();
     if ui.checkbox(&mut manual, "Manual time override").changed() {
         if manual {
-            // Initialize to current hour
-            use chrono::Timelike;
-            let now = time_state.current_datetime();
-            let hour = now.hour() as f32 + now.minute() as f32 / 60.0;
-            time_state.set_hour(hour);
+            // Initialize override to the current moment in the local timezone
+            // (based on map longitude). Using set_hour() here would cause a
+            // timezone mismatch: current_datetime() returns UTC, but set_hour()
+            // interprets the hour as local time, causing a multi-hour time jump
+            // that changes sun position and breaks rendering.
+            let offset_secs = (time_state.utc_offset_hours * 3600.0) as i32;
+            let offset = chrono::FixedOffset::east_opt(offset_secs)
+                .unwrap_or(chrono::FixedOffset::east_opt(0).unwrap());
+            time_state.override_time = Some(chrono::Utc::now().with_timezone(&offset));
         } else {
             time_state.reset_to_live();
         }
@@ -814,8 +821,10 @@ impl Plugin for View3DPlugin {
                 .after(animate_view_transition)
                 .after(sky::update_sun_position))
             .add_systems(Update, sky::sync_ground_plane.after(update_3d_camera))
+            .add_systems(Update, sky::update_ground_plane_color.after(sky::update_sun_position))
             .add_systems(Update, sky::update_atmosphere_scale)
             .add_systems(Update, sky::update_exposure_for_time.after(sky::update_sun_position))
+            .add_systems(Update, sky::update_fog_color_for_time.after(sky::update_sun_position))
             .add_systems(Update, sky::update_2d_tint.after(sky::update_sun_position))
             .add_systems(Update, fade_distant_sprites
                 .after(update_3d_camera)
