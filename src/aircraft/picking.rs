@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use bevy::picking::prelude::*;
 
+use super::detail_panel::CameraFollowState;
 use super::list_panel::AircraftListState;
 use crate::Aircraft;
 
@@ -58,6 +59,7 @@ pub fn on_aircraft_click(
     event: On<Pointer<Click>>,
     aircraft_query: Query<&Aircraft>,
     mut list_state: ResMut<AircraftListState>,
+    mut follow_state: ResMut<CameraFollowState>,
 ) {
     // The observer is attached to the aircraft entity, so we use observer()
     // to get the entity this observer belongs to.
@@ -66,6 +68,7 @@ pub fn on_aircraft_click(
     if let Ok(aircraft) = aircraft_query.get(aircraft_entity) {
         info!("Aircraft clicked: {}", aircraft.icao);
         list_state.selected_icao = Some(aircraft.icao.clone());
+        follow_state.following_icao = Some(aircraft.icao.clone());
     }
 }
 
@@ -99,10 +102,12 @@ pub fn on_aircraft_out(
 pub fn on_ground_click(
     _event: On<Pointer<Click>>,
     mut list_state: ResMut<AircraftListState>,
+    mut follow_state: ResMut<CameraFollowState>,
 ) {
     if list_state.selected_icao.is_some() {
         info!("Ground clicked, clearing selection");
         list_state.selected_icao = None;
+        follow_state.following_icao = None;
     }
 }
 
@@ -115,6 +120,24 @@ pub fn deselect_on_escape(
         if list_state.selected_icao.is_some() {
             list_state.selected_icao = None;
         }
+    }
+}
+
+/// System that clears selection when the selected aircraft no longer exists.
+pub fn clear_stale_selection(
+    mut list_state: ResMut<AircraftListState>,
+    mut follow_state: ResMut<CameraFollowState>,
+    aircraft_query: Query<&Aircraft>,
+) {
+    let Some(ref selected_icao) = list_state.selected_icao else {
+        return;
+    };
+
+    let still_exists = aircraft_query.iter().any(|a| a.icao == *selected_icao);
+    if !still_exists {
+        info!("Selected aircraft {} no longer exists, clearing selection", selected_icao);
+        list_state.selected_icao = None;
+        follow_state.following_icao = None;
     }
 }
 
