@@ -7,7 +7,7 @@ use bevy_egui::{EguiContext, PrimaryEguiContext, egui};
 use egui_tiles::{Behavior, SimplificationOptions, TabState, TileId, Tiles, UiResponse};
 
 use crate::aircraft::{
-    AircraftDisplayList, AircraftListState, CameraFollowState, DetailPanelState,
+    AircraftDisplayList, AircraftListState, AircraftTypeInfo, CameraFollowState, DetailPanelState,
     SessionClock, StatsPanelState, TrailHistory,
     list_panel::render_aircraft_list_pane_content,
     stats_panel::render_stats_pane_content,
@@ -317,7 +317,7 @@ impl<'a> Behavior<DockPane> for DockBehavior<'a> {
                         Res<AircraftDisplayList>,
                         Res<MapState>,
                         Res<SessionClock>,
-                        Query<(&'static Aircraft, &'static TrailHistory)>,
+                        Query<(&'static Aircraft, &'static TrailHistory, Option<&'static AircraftTypeInfo>)>,
                         Res<AppTheme>,
                     )>::new(world);
                     let (mut list, mut detail, mut follow, display, map, clock, query, theme) =
