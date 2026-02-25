@@ -14,7 +14,7 @@ use super::detail_panel::{render_detail_panel, toggle_detail_panel, open_detail_
 use super::emergency::{detect_emergencies, draw_emergency_rings, update_emergency_banner, update_emergency_banner_text};
 use super::prediction::draw_predictions;
 use super::typeloader::{start_aircraft_type_loading, poll_aircraft_type_loading, attach_aircraft_type_info};
-use super::picking::{setup_outline_materials, manage_selection_outline, swap_outline_materials, deselect_on_escape};
+use super::picking::{setup_outline_materials, manage_selection_outline, swap_outline_materials, deselect_on_escape, clear_stale_selection};
 
 pub struct AircraftPlugin;
 
@@ -55,6 +55,7 @@ impl Plugin for AircraftPlugin {
                 manage_selection_outline,
                 swap_outline_materials.after(manage_selection_outline),
                 deselect_on_escape,
+                clear_stale_selection,
             ));
     }
 }

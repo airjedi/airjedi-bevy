@@ -356,9 +356,28 @@ pub fn update_3d_camera(
     >,
     window_query: Query<&Window>,
     zoom_state: Res<crate::ZoomState>,
+    follow_state: Res<crate::aircraft::CameraFollowState>,
+    aircraft_query: Query<(&crate::Aircraft, &Transform), Without<crate::MapCamera>>,
+    time: Res<Time>,
 ) {
     if matches!(state.mode, ViewMode::Map2D) && !state.is_transitioning() {
         return;
+    }
+
+    // In 3D mode, lerp orbit center toward followed aircraft
+    if state.is_3d_active() {
+        if let Some(ref following_icao) = follow_state.following_icao {
+            if let Some((_, ac_tf)) = aircraft_query.iter().find(|(a, _)| a.icao == *following_icao) {
+                let lerp_speed = 3.0;
+                let t_lerp = (lerp_speed * time.delta_secs()).min(1.0);
+                // Aircraft transform in 3D mode is in Y-up space: (px, alt_y, -py)
+                // saved_2d_center is in Z-up pixel space: (px, py)
+                let target_x = ac_tf.translation.x;
+                let target_y = -ac_tf.translation.z; // Y-up z -> Z-up y
+                state.saved_2d_center.x += (target_x - state.saved_2d_center.x) * t_lerp;
+                state.saved_2d_center.y += (target_y - state.saved_2d_center.y) * t_lerp;
+            }
+        }
     }
 
     let Ok((mut tf_2d, mut proj_2d)) = camera_2d.single_mut() else {
