@@ -79,7 +79,9 @@ pub fn on_aircraft_hover(
     let aircraft_entity = event.observer();
 
     if hover_query.get(aircraft_entity).is_err() {
-        commands.entity(aircraft_entity).insert(HoverOutline);
+        if let Ok(mut ec) = commands.get_entity(aircraft_entity) {
+            ec.insert(HoverOutline);
+        }
     }
 }
 
@@ -92,7 +94,9 @@ pub fn on_aircraft_out(
     let aircraft_entity = event.observer();
 
     if hover_query.get(aircraft_entity).is_ok() {
-        commands.entity(aircraft_entity).remove::<HoverOutline>();
+        if let Ok(mut ec) = commands.get_entity(aircraft_entity) {
+            ec.remove::<HoverOutline>();
+        }
     }
 }
 
@@ -176,14 +180,18 @@ pub fn manage_selection_outline(
 
     // Remove SelectionOutline from all currently selected entities
     for entity in selected_query.iter() {
-        commands.entity(entity).remove::<SelectionOutline>();
+        if let Ok(mut ec) = commands.get_entity(entity) {
+            ec.remove::<SelectionOutline>();
+        }
     }
 
     // Add SelectionOutline to the newly selected aircraft
     if let Some(ref selected_icao) = list_state.selected_icao {
         for (entity, aircraft) in aircraft_query.iter() {
             if aircraft.icao == *selected_icao {
-                commands.entity(entity).insert(SelectionOutline);
+                if let Ok(mut ec) = commands.get_entity(entity) {
+                    ec.insert(SelectionOutline);
+                }
                 break;
             }
         }
@@ -347,14 +355,20 @@ pub fn pick_aircraft_3d(
         if hover_query.get(ac_entity).is_err() {
             // Remove hover from all others first
             for entity in hover_query.iter() {
-                commands.entity(entity).remove::<HoverOutline>();
+                if let Ok(mut ec) = commands.get_entity(entity) {
+                    ec.remove::<HoverOutline>();
+                }
             }
-            commands.entity(ac_entity).insert(HoverOutline);
+            if let Ok(mut ec) = commands.get_entity(ac_entity) {
+                ec.insert(HoverOutline);
+            }
         }
     } else {
         // No aircraft under cursor — remove all hovers
         for entity in hover_query.iter() {
-            commands.entity(entity).remove::<HoverOutline>();
+            if let Ok(mut ec) = commands.get_entity(entity) {
+                ec.remove::<HoverOutline>();
+            }
         }
     }
 
