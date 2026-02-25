@@ -28,6 +28,7 @@ mod debug_panel;
 mod dock;
 mod inspector;
 mod statusbar;
+mod paths;
 mod tile_cache;
 mod tiles;
 mod input;
@@ -264,10 +265,9 @@ fn heartbeat_diagnostic(
     debug!("{}", msg);
 
     // Also write to file with explicit flush
-    let log_path = std::env::current_dir()
-        .ok()
-        .map(|p| p.join("tmp/heartbeat.log"))
-        .unwrap_or_else(|| std::path::PathBuf::from("tmp/heartbeat.log"));
+    let log_dir = paths::log_dir();
+    paths::ensure_dir(&log_dir);
+    let log_path = log_dir.join("heartbeat.log");
     if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&log_path) {
         let _ = writeln!(f, "{}", msg);
         let _ = f.flush();
@@ -280,15 +280,9 @@ fn setup_debug_logger(mut commands: Commands) {
     use std::fs::OpenOptions;
 
     // Create or truncate the debug log file in tmp directory (per project conventions)
-    let log_path = std::env::current_dir()
-        .ok()
-        .map(|path| {
-            let tmp_dir = path.join("tmp");
-            // Ensure tmp directory exists
-            let _ = std::fs::create_dir_all(&tmp_dir);
-            tmp_dir.join("zoom_debug.log")
-        })
-        .unwrap_or_else(|| std::path::PathBuf::from("tmp/zoom_debug.log"));
+    let log_dir = paths::log_dir();
+    paths::ensure_dir(&log_dir);
+    let log_path = log_dir.join("zoom_debug.log");
 
     match OpenOptions::new()
         .create(true)

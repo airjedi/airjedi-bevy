@@ -477,21 +477,19 @@ pub fn render_recording_tab(
     } else {
         if ui.button("Load Recording...").clicked() {
             // List available recordings
-            if let Ok(cwd) = std::env::current_dir() {
-                let tmp_dir = cwd.join("tmp");
-                if tmp_dir.exists() {
-                    if let Ok(entries) = std::fs::read_dir(&tmp_dir) {
-                        let recordings: Vec<_> = entries
-                            .filter_map(|e| e.ok())
-                            .filter(|e| {
-                                e.path().extension().map(|ext| ext == "ndjson").unwrap_or(false)
-                            })
-                            .collect();
+            let data_dir = crate::paths::data_dir();
+            if data_dir.exists() {
+                if let Ok(entries) = std::fs::read_dir(&data_dir) {
+                    let recordings: Vec<_> = entries
+                        .filter_map(|e| e.ok())
+                        .filter(|e| {
+                            e.path().extension().map(|ext| ext == "ndjson").unwrap_or(false)
+                        })
+                        .collect();
 
-                        if let Some(latest) = recordings.last() {
-                            if let Err(e) = playback.load(&latest.path()) {
-                                error!("Failed to load recording: {}", e);
-                            }
+                    if let Some(latest) = recordings.last() {
+                        if let Err(e) = playback.load(&latest.path()) {
+                            error!("Failed to load recording: {}", e);
                         }
                     }
                 }

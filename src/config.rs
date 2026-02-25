@@ -196,9 +196,9 @@ impl Default for AppConfig {
 }
 
 fn config_path() -> PathBuf {
-    std::env::current_dir()
-        .unwrap_or_default()
-        .join(CONFIG_FILE)
+    let dir = crate::paths::config_dir();
+    crate::paths::ensure_dir(&dir);
+    dir.join(CONFIG_FILE)
 }
 
 pub fn load_config() -> AppConfig {

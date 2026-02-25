@@ -30,6 +30,24 @@ cargo doc --open
 
 Note: The project uses custom optimization profiles in Cargo.toml - dev mode has opt-level 1 for the main crate but opt-level 3 for dependencies to improve compile-time performance.
 
+## macOS Application Bundle
+
+```bash
+# Generate app icon from SVG (requires: brew install librsvg)
+cd macos && make icons
+
+# Build AirJedi.app bundle (release mode)
+cd macos && make app
+
+# Build and launch
+cd macos && make run
+
+# Clean build artifacts
+cd macos && make clean
+```
+
+The `macos/` directory contains all macOS-specific build files. Assets are copied into `Contents/MacOS/assets/` inside the bundle (where Bevy's AssetPlugin looks). Tile cache uses `~/Library/Caches/airjedi/tiles/` in both development and bundle modes. The `src/paths.rs` module handles bundle-aware path resolution.
+
 ## Architecture
 
 ### Core Systems
