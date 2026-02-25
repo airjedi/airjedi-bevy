@@ -296,11 +296,12 @@ pub fn setup_sky(
         GroundPlane,
         Mesh3d(ground_mesh),
         MeshMaterial3d(ground_material),
-        Pickable::default(),
+        // Exclude from picking — its huge mesh blocks aircraft raycasts from
+        // Camera2d's rotated transform in 3D mode.
+        Pickable::IGNORE,
         Transform::from_xyz(0.0, 0.0, 0.0),
         Visibility::Hidden,
-    ))
-    .observe(crate::aircraft::picking::on_ground_click);
+    ));
 
     // Full-screen tint overlay for 2D mode day/night effect.
     // Between tiles (z=0) and aircraft (z=10) at z=5.

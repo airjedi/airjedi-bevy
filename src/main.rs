@@ -331,6 +331,16 @@ pub(crate) fn setup_map(
     // camera so egui stays visible when Camera2d switches to perspective in 3D mode.
     egui_settings.auto_create_primary_context = false;
 
+    // Use Visible instead of the default VisibleInView for mesh picking.
+    // Our dual-camera architecture (Camera3d with Atmosphere post-processing,
+    // Camera2d overlay with alpha blending) means ViewVisibility isn't computed
+    // correctly for Camera3d's entities. 3D mode picking is handled by a
+    // manual MeshRayCast system (pick_aircraft_3d) instead.
+    commands.insert_resource(bevy::picking::mesh_picking::MeshPickingSettings {
+        require_markers: false,
+        ray_cast_visibility: RayCastVisibility::Visible,
+    });
+
     // Set up 2D camera for map tiles and labels.
     // Layer 0 = default content (tiles, sprites, text).
     // Layer 2 = gizmos (trails, navaids, runways) — kept off Camera3d to prevent
@@ -354,6 +364,10 @@ pub(crate) fn setup_map(
         },
         Projection::Orthographic(OrthographicProjection::default_2d()),
         Transform::default(),
+        // Explicitly enable mesh picking on this camera so the picking backend
+        // generates rays from it in all modes (2D and 3D). Without this marker,
+        // the backend may skip this camera when its projection/output mode changes.
+        bevy::picking::mesh_picking::MeshPickingCamera,
     ));
 
     // Dedicated UI camera for egui. Renders last (order 100) with no clear so it

@@ -717,6 +717,7 @@ fn sync_tile_mesh_quads(
                 MeshMaterial3d(material),
                 Transform::from_translation(pos_yup)
                     .with_scale(Vec3::new(transform.scale.x, 1.0, transform.scale.x)),
+                Pickable::IGNORE,
             )).id();
 
             commands.entity(tile_entity).insert(TileMeshQuad(mesh_entity));
