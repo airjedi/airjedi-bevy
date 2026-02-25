@@ -18,6 +18,7 @@ const MAX_LOG_MESSAGES: usize = 200;
 #[derive(Resource, Reflect)]
 pub struct DebugPanelState {
     pub open: bool,
+    #[reflect(ignore)]
     pub log_messages: VecDeque<String>,
     // Metrics
     pub aircraft_count: usize,
