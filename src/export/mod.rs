@@ -393,9 +393,7 @@ pub fn render_export_panel(
 
 /// List available recording files
 pub fn list_available_recordings() -> Vec<PathBuf> {
-    let tmp_dir = std::env::current_dir()
-        .map(|p| p.join("tmp"))
-        .unwrap_or_else(|_| PathBuf::from("tmp"));
+    let tmp_dir = crate::paths::data_dir();
 
     if !tmp_dir.exists() {
         return Vec::new();

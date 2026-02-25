@@ -80,15 +80,10 @@ impl RecordingState {
             return Err("Already recording".to_string());
         }
 
-        // Create tmp directory if it doesn't exist
-        let tmp_dir = std::env::current_dir()
-            .map(|p| p.join("tmp"))
-            .unwrap_or_else(|_| PathBuf::from("tmp"));
-
-        if !tmp_dir.exists() {
-            std::fs::create_dir_all(&tmp_dir)
-                .map_err(|e| format!("Failed to create tmp directory: {}", e))?;
-        }
+        // Create data directory if it doesn't exist
+        let tmp_dir = crate::paths::data_dir();
+        std::fs::create_dir_all(&tmp_dir)
+            .map_err(|e| format!("Failed to create data directory: {}", e))?;
 
         // Generate filename with timestamp
         let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
