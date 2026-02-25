@@ -9,43 +9,74 @@ use super::connection::{AdsbAircraftData, ConnectionStatusText};
 
 use crate::theme::AppTheme;
 
-/// Resource to hold the aircraft 3D model handle
+/// Type codes that should use the B737 model
+const B737_TYPES: &[&str] = &[
+    "B731", "B732", "B733", "B734", "B735", "B736", "B737", "B738", "B739",
+    "B37M", "B38M", "B39M",
+];
+
+/// Resource holding aircraft 3D model handles keyed by type code
 #[derive(Resource)]
-pub struct AircraftModel {
-    pub handle: Handle<Scene>,
+pub struct AircraftModelRegistry {
+    pub default_model: Handle<Scene>,
+    pub type_models: HashMap<String, Handle<Scene>>,
 }
 
-/// Load the aircraft 3D model with MAIN_WORLD asset usage so mesh data
+impl AircraftModelRegistry {
+    /// Get the model handle for a given type code, falling back to the default
+    pub fn get_model(&self, type_code: Option<&str>) -> Handle<Scene> {
+        if let Some(code) = type_code {
+            if let Some(handle) = self.type_models.get(code) {
+                return handle.clone();
+            }
+        }
+        self.default_model.clone()
+    }
+}
+
+/// Load aircraft 3D models and build the registry.
+/// The default GLB is loaded with MAIN_WORLD asset usage so mesh data
 /// is retained on the CPU for picking raycasts (not just uploaded to GPU).
-pub fn setup_aircraft_model(mut commands: Commands, asset_server: Res<AssetServer>) {
+pub fn setup_aircraft_models(mut commands: Commands, asset_server: Res<AssetServer>) {
     use bevy::asset::RenderAssetUsages;
     use bevy::gltf::GltfLoaderSettings;
 
-    let handle = asset_server.load_with_settings(
+    let default_model = asset_server.load_with_settings(
         "airplane.glb#Scene0",
         |settings: &mut GltfLoaderSettings| {
             settings.load_meshes = RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD;
         },
     );
-    commands.insert_resource(AircraftModel { handle });
+    let b737_model: Handle<Scene> = asset_server.load("models/b737/78349.obj");
+
+    let mut type_models = HashMap::new();
+    for code in B737_TYPES {
+        type_models.insert(code.to_string(), b737_model.clone());
+    }
+
+    commands.insert_resource(AircraftModelRegistry {
+        default_model,
+        type_models,
+    });
 }
 
 /// Sync aircraft entities from the shared ADS-B data.
 /// This system runs every frame and updates Bevy entities to match the ADS-B client state.
 pub fn sync_aircraft_from_adsb(
     mut commands: Commands,
-    aircraft_model: Option<Res<AircraftModel>>,
+    model_registry: Option<Res<AircraftModelRegistry>>,
     adsb_data: Option<Res<AdsbAircraftData>>,
     mut aircraft_query: Query<(Entity, &mut Aircraft, &mut Transform)>,
     label_query: Query<(Entity, &AircraftLabel)>,
     mut debug: Option<ResMut<DebugPanelState>>,
     theme: Res<AppTheme>,
+    type_db: Option<Res<crate::aircraft::AircraftTypeDatabase>>,
 ) {
     let Some(adsb_data) = adsb_data else {
         return; // ADS-B client not yet initialized
     };
-    let Some(aircraft_model) = aircraft_model else {
-        return; // Aircraft model not yet loaded
+    let Some(model_registry) = model_registry else {
+        return; // Aircraft model registry not yet loaded
     };
 
     // Use try_get to avoid blocking the main thread if the background ADS-B
@@ -95,10 +126,19 @@ pub fn sync_aircraft_from_adsb(
             }
             // Spawn new aircraft with 3D model
             let aircraft_name = adsb_ac.callsign.as_deref().unwrap_or(&adsb_ac.icao);
+
+            // Look up type code for model selection
+            let type_code = type_db
+                .as_ref()
+                .and_then(|db| db.lookup(&adsb_ac.icao))
+                .and_then(|info| info.type_code.clone());
+
+            let model_handle = model_registry.get_model(type_code.as_deref());
+
             let aircraft_entity = commands
                 .spawn((
                     Name::new(format!("Aircraft: {}", aircraft_name)),
-                    SceneRoot(aircraft_model.handle.clone()),
+                    SceneRoot(model_handle),
                     Transform::from_xyz(0.0, 0.0, constants::AIRCRAFT_Z_LAYER),
                     Pickable::default(),
                     Aircraft {
