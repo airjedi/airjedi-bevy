@@ -376,6 +376,16 @@ pub fn apply_egui_theme(
     };
     if !*fonts_loaded {
         let mut fonts = egui::FontDefinitions::default();
+
+        // Use Inter for crisp UI text at small sizes
+        let inter_data = include_bytes!("../assets/fonts/Inter-Regular.ttf");
+        fonts.font_data.insert(
+            "Inter".to_owned(),
+            egui::FontData::from_static(inter_data).into(),
+        );
+        fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap()
+            .insert(0, "Inter".to_owned());
+
         egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
         ctx.set_fonts(fonts);
         *fonts_loaded = true;
