@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use chrono::{DateTime, Utc};
 
 /// Component for aircraft entities
 #[derive(Component)]
@@ -29,6 +30,8 @@ pub struct Aircraft {
     pub emergency: Option<bool>,
     /// SPI (Special Position Identification) flag
     pub spi: Option<bool>,
+    /// Timestamp of the last ADS-B message received for this aircraft
+    pub last_seen: DateTime<Utc>,
 }
 
 /// Component to link aircraft labels to their aircraft

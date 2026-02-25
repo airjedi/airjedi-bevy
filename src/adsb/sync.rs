@@ -163,6 +163,7 @@ pub fn sync_aircraft_from_adsb(
                 aircraft.alert = adsb_ac.alert;
                 aircraft.emergency = adsb_ac.emergency;
                 aircraft.spi = adsb_ac.spi;
+                aircraft.last_seen = adsb_ac.last_seen;
             }
             existing_aircraft.remove(&adsb_ac.icao);
         } else {
@@ -202,6 +203,7 @@ pub fn sync_aircraft_from_adsb(
                         alert: adsb_ac.alert,
                         emergency: adsb_ac.emergency,
                         spi: adsb_ac.spi,
+                        last_seen: adsb_ac.last_seen,
                     },
                     TrailHistory::default(),
                 ));
