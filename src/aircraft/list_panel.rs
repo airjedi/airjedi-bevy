@@ -104,6 +104,7 @@ pub struct AircraftDisplayData {
     pub heading: Option<f32>,
     pub vertical_rate: Option<i32>,
     pub distance: f64,
+    pub squawk: Option<String>,
     pub type_code: Option<String>,
     pub manufacturer_model: Option<String>,
     pub registration: Option<String>,
@@ -191,6 +192,7 @@ pub fn update_aircraft_display_list(
                 heading: a.heading,
                 vertical_rate: a.vertical_rate,
                 distance,
+                squawk: a.squawk.clone(),
                 type_code: type_info.and_then(|ti| ti.type_code.clone()),
                 manufacturer_model: type_info.and_then(|ti| ti.manufacturer_model.clone()),
                 registration: type_info.and_then(|ti| ti.registration.clone()),
@@ -541,6 +543,13 @@ pub fn render_aircraft_list_panel(
                                         .monospace());
                                 }
 
+                                if let Some(ref sq) = aircraft.squawk {
+                                    ui.label(egui::RichText::new(sq)
+                                        .color(metrics_color)
+                                        .size(11.0)
+                                        .monospace());
+                                }
+
                                 ui.label(egui::RichText::new(format!("{:.1}nm", aircraft.distance))
                                     .color(range_color)
                                     .size(11.0)
@@ -853,6 +862,13 @@ pub fn render_aircraft_list_pane_content(
                                 .monospace());
                         }
 
+                        if let Some(ref sq) = aircraft.squawk {
+                            ui.label(egui::RichText::new(sq)
+                                .color(metrics_color)
+                                .size(11.0)
+                                .monospace());
+                        }
+
                         ui.label(egui::RichText::new(format!("{:.1}nm", aircraft.distance))
                             .color(range_color)
                             .size(11.0)
@@ -1006,6 +1022,11 @@ fn render_detail_section(
                         })
                         .unwrap_or_else(|| "---".to_string());
                     ui.label(egui::RichText::new(vr_text).color(value_color).size(11.0).monospace());
+                    ui.end_row();
+
+                    ui.label(egui::RichText::new("Squawk").color(label_color).size(11.0));
+                    let squawk_text = aircraft.squawk.as_deref().unwrap_or("---");
+                    ui.label(egui::RichText::new(squawk_text).color(value_color).size(11.0).monospace());
                     ui.end_row();
 
                     ui.label(egui::RichText::new("Distance").color(label_color).size(11.0));
