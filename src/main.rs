@@ -337,9 +337,12 @@ pub(crate) fn setup_map(
     //           double-rendering during 2D↔3D transitions.
     commands.spawn((Name::new("Map Camera"), Camera2d, MapCamera, RenderLayers::from_layers(&[0, 2])));
 
-    // Set up 3D camera for aircraft models (renders on top of 2D, with transparent clear).
+    // Set up 3D camera for aircraft models (renders on top of 2D).
     // Stays on default layer 0 so it sees 3D meshes (SceneRoot children inherit layer 0)
     // but NOT gizmos (layer 2).
+    // Alpha-blends over Camera2d so only opaque aircraft pixels show;
+    // transparent areas let tiles through. manage_atmosphere_camera
+    // swaps output_mode and order when entering/leaving 3D mode.
     commands.spawn((
         Name::new("Aircraft Camera"),
         Camera3d::default(),
