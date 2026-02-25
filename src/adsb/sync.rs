@@ -3,6 +3,7 @@ use std::collections::HashMap;
 
 use crate::{constants, Aircraft, AircraftLabel};
 use crate::aircraft::TrailHistory;
+use crate::aircraft::picking::{on_aircraft_click, on_aircraft_hover, on_aircraft_out};
 use crate::debug_panel::DebugPanelState;
 use super::connection::{AdsbAircraftData, ConnectionStatusText};
 
@@ -90,6 +91,7 @@ pub fn sync_aircraft_from_adsb(
                     Name::new(format!("Aircraft: {}", aircraft_name)),
                     SceneRoot(aircraft_model.handle.clone()),
                     Transform::from_xyz(0.0, 0.0, constants::AIRCRAFT_Z_LAYER),
+                    Pickable::default(),
                     Aircraft {
                         icao: adsb_ac.icao.clone(),
                         callsign: adsb_ac.callsign.clone(),
@@ -103,6 +105,9 @@ pub fn sync_aircraft_from_adsb(
                     },
                     TrailHistory::default(),
                 ))
+                .observe(on_aircraft_click)
+                .observe(on_aircraft_hover)
+                .observe(on_aircraft_out)
                 .id();
 
             // Spawn label for this aircraft
