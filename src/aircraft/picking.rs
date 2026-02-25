@@ -80,7 +80,7 @@ pub fn on_aircraft_hover(
 
     if hover_query.get(aircraft_entity).is_err() {
         if let Ok(mut ec) = commands.get_entity(aircraft_entity) {
-            ec.insert(HoverOutline);
+            ec.try_insert(HoverOutline);
         }
     }
 }
@@ -95,7 +95,7 @@ pub fn on_aircraft_out(
 
     if hover_query.get(aircraft_entity).is_ok() {
         if let Ok(mut ec) = commands.get_entity(aircraft_entity) {
-            ec.remove::<HoverOutline>();
+            ec.try_remove::<HoverOutline>();
         }
     }
 }
@@ -181,7 +181,7 @@ pub fn manage_selection_outline(
     // Remove SelectionOutline from all currently selected entities
     for entity in selected_query.iter() {
         if let Ok(mut ec) = commands.get_entity(entity) {
-            ec.remove::<SelectionOutline>();
+            ec.try_remove::<SelectionOutline>();
         }
     }
 
@@ -190,7 +190,7 @@ pub fn manage_selection_outline(
         for (entity, aircraft) in aircraft_query.iter() {
             if aircraft.icao == *selected_icao {
                 if let Ok(mut ec) = commands.get_entity(entity) {
-                    ec.insert(SelectionOutline);
+                    ec.try_insert(SelectionOutline);
                 }
                 break;
             }
@@ -356,18 +356,18 @@ pub fn pick_aircraft_3d(
             // Remove hover from all others first
             for entity in hover_query.iter() {
                 if let Ok(mut ec) = commands.get_entity(entity) {
-                    ec.remove::<HoverOutline>();
+                    ec.try_remove::<HoverOutline>();
                 }
             }
             if let Ok(mut ec) = commands.get_entity(ac_entity) {
-                ec.insert(HoverOutline);
+                ec.try_insert(HoverOutline);
             }
         }
     } else {
         // No aircraft under cursor — remove all hovers
         for entity in hover_query.iter() {
             if let Ok(mut ec) = commands.get_entity(entity) {
-                ec.remove::<HoverOutline>();
+                ec.try_remove::<HoverOutline>();
             }
         }
     }
