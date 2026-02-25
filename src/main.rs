@@ -171,7 +171,7 @@ fn main() {
             view3d::View3DPlugin,
             adsb::AdsbPlugin,
         ))
-        .add_plugins(bevy_inspector_egui::DefaultInspectorConfigPlugin)
+        .add_plugins((bevy_obj::ObjPlugin, bevy_inspector_egui::DefaultInspectorConfigPlugin))
         // Full speed when focused; ~4 FPS when unfocused to keep ADS-B data
         // flowing without overwhelming the GPU or triggering macOS throttling.
         .insert_resource(bevy::winit::WinitSettings {

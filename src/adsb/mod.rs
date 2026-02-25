@@ -14,7 +14,7 @@ impl Plugin for AdsbPlugin {
         app.add_systems(
             Startup,
             (
-                setup_aircraft_model,
+                setup_aircraft_models,
                 setup_adsb_client.after(crate::setup_map),
             ),
         )
