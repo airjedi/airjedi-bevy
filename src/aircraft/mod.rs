@@ -6,6 +6,7 @@ pub mod list_panel;
 pub mod detail_panel;
 pub mod emergency;
 pub mod prediction;
+pub mod picking;
 pub mod stats_panel;
 pub mod typeinfo;
 pub mod typeloader;

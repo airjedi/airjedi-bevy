@@ -3,6 +3,7 @@ use std::collections::HashMap;
 
 use crate::{constants, Aircraft, AircraftLabel};
 use crate::aircraft::TrailHistory;
+use crate::aircraft::picking::{on_aircraft_click, on_aircraft_hover, on_aircraft_out};
 use crate::debug_panel::DebugPanelState;
 use super::connection::{AdsbAircraftData, ConnectionStatusText};
 
@@ -14,9 +15,18 @@ pub struct AircraftModel {
     pub handle: Handle<Scene>,
 }
 
-/// Load the aircraft 3D model
+/// Load the aircraft 3D model with MAIN_WORLD asset usage so mesh data
+/// is retained on the CPU for picking raycasts (not just uploaded to GPU).
 pub fn setup_aircraft_model(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let handle = asset_server.load("airplane.glb#Scene0");
+    use bevy::asset::RenderAssetUsages;
+    use bevy::gltf::GltfLoaderSettings;
+
+    let handle = asset_server.load_with_settings(
+        "airplane.glb#Scene0",
+        |settings: &mut GltfLoaderSettings| {
+            settings.load_meshes = RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD;
+        },
+    );
     commands.insert_resource(AircraftModel { handle });
 }
 
@@ -90,6 +100,7 @@ pub fn sync_aircraft_from_adsb(
                     Name::new(format!("Aircraft: {}", aircraft_name)),
                     SceneRoot(aircraft_model.handle.clone()),
                     Transform::from_xyz(0.0, 0.0, constants::AIRCRAFT_Z_LAYER),
+                    Pickable::default(),
                     Aircraft {
                         icao: adsb_ac.icao.clone(),
                         callsign: adsb_ac.callsign.clone(),
@@ -103,6 +114,9 @@ pub fn sync_aircraft_from_adsb(
                     },
                     TrailHistory::default(),
                 ))
+                .observe(on_aircraft_click)
+                .observe(on_aircraft_hover)
+                .observe(on_aircraft_out)
                 .id();
 
             // Spawn label for this aircraft
