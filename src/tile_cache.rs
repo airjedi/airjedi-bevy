@@ -152,7 +152,7 @@ pub fn remove_invalid_tiles() {
         return;
     }
 
-    let png_signature: [u8; 4] = [0x89, 0x50, 0x4E, 0x47]; // \x89PNG
+    let png_signature: [u8; 8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
     let jpg_signature: [u8; 2] = [0xFF, 0xD8];              // JPEG SOI
     let mut removed = 0;
 
@@ -185,7 +185,7 @@ pub fn remove_invalid_tiles() {
                 }
             };
             let valid = match expected {
-                "png" => bytes.len() >= 4 && bytes[..4] == png_signature,
+                "png" => bytes.len() >= 8 && bytes[..8] == png_signature,
                 "jpg" => bytes.len() >= 2 && bytes[..2] == jpg_signature,
                 "webp" => bytes.len() >= 4 && &bytes[..4] == b"RIFF",
                 _ => true,
@@ -205,6 +205,68 @@ pub fn remove_invalid_tiles() {
 
     if removed > 0 {
         info!("Removed {} invalid tile(s) from cache", removed);
+    }
+}
+
+/// Validate a single tile file's header. Returns `true` if the file was corrupt
+/// and was deleted, `false` if the file is valid or doesn't exist.
+pub fn validate_and_remove_if_corrupt(path: &Path) -> bool {
+    if !path.is_file() {
+        return false;
+    }
+
+    let bytes = match fs::read(path) {
+        Ok(b) => b,
+        Err(_) => {
+            // Can't read the file — remove it
+            let _ = fs::remove_file(path);
+            return true;
+        }
+    };
+
+    let filename = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+
+    let png_signature: [u8; 8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+    let jpg_signature: [u8; 2] = [0xFF, 0xD8];
+
+    let valid = if filename.ends_with(".tile.png") || filename.ends_with(".png") {
+        bytes.len() >= 8 && bytes[..8] == png_signature
+    } else if filename.ends_with(".tile.jpg") || filename.ends_with(".jpg") {
+        bytes.len() >= 2 && bytes[..2] == jpg_signature
+    } else if filename.ends_with(".tile.webp") || filename.ends_with(".webp") {
+        bytes.len() >= 4 && &bytes[..4] == b"RIFF"
+    } else {
+        // Unknown format, assume valid
+        true
+    };
+
+    if !valid {
+        warn!("Removing corrupt tile: {:?} ({} bytes)", path, bytes.len());
+        let _ = fs::remove_file(path);
+        true
+    } else {
+        false
+    }
+}
+
+/// Check and remove a corrupt cached tile given its asset path (relative to assets/).
+/// Called when Bevy's asset loader fails to load a tile image.
+/// The asset path is expected to be like `tiles/10.512.340.256.tile.png`.
+pub fn remove_corrupt_cached_tile(asset_path: &Path) {
+    // The asset path is relative to the assets/ directory. Since assets/tiles
+    // is a symlink to the cache directory, resolve to the actual cache path.
+    let cache_dir = tile_cache_dir();
+    // Strip the leading "tiles/" component to get just the filename
+    let filename = asset_path
+        .file_name()
+        .unwrap_or(asset_path.as_os_str());
+    let cache_path = cache_dir.join(filename);
+
+    if validate_and_remove_if_corrupt(&cache_path) {
+        info!("Removed corrupt cached tile {:?}, will re-download on next request", cache_path);
     }
 }
 

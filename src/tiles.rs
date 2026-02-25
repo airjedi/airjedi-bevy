@@ -1,9 +1,11 @@
 use bevy::prelude::*;
+use bevy::asset::AssetLoadFailedEvent;
 use bevy::pbr::StandardMaterial;
 use bevy_slippy_tiles::*;
 
 use crate::constants;
 use crate::map::{MapState, ZoomState};
+use crate::tile_cache;
 use crate::view3d;
 use crate::camera::MapCamera;
 use crate::{clamp_latitude, clamp_longitude, ZoomDebugLogger};
@@ -85,6 +87,7 @@ impl Plugin for TilesPlugin {
             .add_systems(Update, handle_3d_view_tile_refresh)
             .add_systems(Update, request_3d_tiles_continuous.after(handle_3d_view_tile_refresh))
             .add_systems(Update, track_altitude_changes)
+            .add_systems(Update, handle_tile_load_failures)
             .add_systems(Update, display_tiles_filtered.after(bevy::ecs::schedule::ApplyDeferred))
             .add_systems(Update, animate_tile_fades.after(display_tiles_filtered))
             .add_systems(Update, cull_offscreen_tiles.after(display_tiles_filtered))
@@ -168,6 +171,22 @@ pub(crate) fn request_tiles_at_location(
 // =============================================================================
 // Tile Systems
 // =============================================================================
+
+/// When a tile image fails to load, check if the cached file is corrupt and remove it.
+/// The tile will be re-requested automatically by bevy_slippy_tiles on the next frame.
+fn handle_tile_load_failures(
+    mut failed_events: MessageReader<AssetLoadFailedEvent<Image>>,
+) {
+    for event in failed_events.read() {
+        let asset_path = event.path.path();
+        // Only handle tile files
+        let path_str = asset_path.to_string_lossy();
+        if path_str.contains(".tile.") {
+            warn!("Tile asset load failed: {:?} — checking for corrupt cache file", asset_path);
+            tile_cache::remove_corrupt_cached_tile(asset_path);
+        }
+    }
+}
 
 /// Request tiles when the window is resized or maximized so newly exposed areas are filled.
 fn handle_window_resize(
