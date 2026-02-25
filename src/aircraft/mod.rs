@@ -7,6 +7,8 @@ pub mod detail_panel;
 pub mod emergency;
 pub mod prediction;
 pub mod stats_panel;
+pub mod typeinfo;
+pub mod typeloader;
 pub mod plugin;
 
 pub use components::{Aircraft, AircraftLabel};
@@ -16,4 +18,5 @@ pub use detail_panel::{DetailPanelState, CameraFollowState};
 pub use stats_panel::StatsPanelState;
 pub use emergency::EmergencyAlertState;
 pub use prediction::PredictionConfig;
+pub use typeinfo::{AircraftTypeInfo, AircraftTypeDatabase};
 pub use plugin::AircraftPlugin;

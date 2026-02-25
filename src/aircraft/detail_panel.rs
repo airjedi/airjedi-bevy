@@ -32,6 +32,10 @@ pub struct DetailDisplayData {
     pub distance_nm: f64,
     pub track_points: usize,
     pub track_duration_secs: Option<u64>,
+    pub registration: Option<String>,
+    pub manufacturer_model: Option<String>,
+    pub type_code: Option<String>,
+    pub operator: Option<String>,
 }
 
 /// Detail panel rendering is now integrated into the stacked right panel

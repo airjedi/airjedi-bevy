@@ -5,6 +5,7 @@ use super::{
     AircraftListState, AircraftDisplayList,
     DetailPanelState, CameraFollowState,
     EmergencyAlertState, PredictionConfig, StatsPanelState,
+    AircraftTypeDatabase,
 };
 use super::trail_renderer::{draw_trails, prune_trails};
 use super::trails::record_trail_points;
@@ -12,6 +13,7 @@ use super::list_panel::{toggle_aircraft_list, update_aircraft_display_list, high
 use super::detail_panel::{render_detail_panel, toggle_detail_panel, open_detail_on_selection, detect_aircraft_click};
 use super::emergency::{detect_emergencies, draw_emergency_rings, update_emergency_banner, update_emergency_banner_text};
 use super::prediction::draw_predictions;
+use super::typeloader::{start_aircraft_type_loading, poll_aircraft_type_loading, attach_aircraft_type_info};
 
 pub struct AircraftPlugin;
 
@@ -28,6 +30,8 @@ impl Plugin for AircraftPlugin {
             .init_resource::<EmergencyAlertState>()
             .init_resource::<PredictionConfig>()
             .init_resource::<StatsPanelState>()
+            .init_resource::<AircraftTypeDatabase>()
+            .add_systems(Startup, start_aircraft_type_loading)
             .add_systems(Update, (
                 record_trail_points,
                 draw_trails,
@@ -44,6 +48,7 @@ impl Plugin for AircraftPlugin {
                 update_emergency_banner_text,
                 draw_predictions,
             ))
-            .add_systems(Update, render_detail_panel);
+            .add_systems(Update, render_detail_panel)
+            .add_systems(Update, (poll_aircraft_type_loading, attach_aircraft_type_info));
     }
 }

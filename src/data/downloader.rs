@@ -3,13 +3,15 @@ use std::io::Write;
 use std::path::PathBuf;
 
 const OURAIRPORTS_BASE: &str = "https://davidmegginson.github.io/ourairports-data";
+const OPENSKY_AIRCRAFT_DB_URL: &str = "https://opensky-network.org/datasets/metadata/aircraftDatabase.csv";
 
-/// OurAirports data files
+/// Aviation data files from various sources
 #[derive(Debug, Clone, Copy)]
 pub enum DataFile {
     Airports,
     Runways,
     Navaids,
+    AircraftDatabase,
 }
 
 impl DataFile {
@@ -18,11 +20,15 @@ impl DataFile {
             DataFile::Airports => "airports.csv",
             DataFile::Runways => "runways.csv",
             DataFile::Navaids => "navaids.csv",
+            DataFile::AircraftDatabase => "aircraft-database.csv",
         }
     }
 
     pub fn url(&self) -> String {
-        format!("{}/{}", OURAIRPORTS_BASE, self.filename())
+        match self {
+            DataFile::AircraftDatabase => OPENSKY_AIRCRAFT_DB_URL.to_string(),
+            _ => format!("{}/{}", OURAIRPORTS_BASE, self.filename()),
+        }
     }
 }
 
