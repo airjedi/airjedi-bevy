@@ -71,7 +71,7 @@ pub fn toggle_detail_panel(
 
 /// System to open detail panel when aircraft is selected
 pub fn open_detail_on_selection(
-    list_state: Res<AircraftListState>,
+    mut list_state: ResMut<AircraftListState>,
     mut detail_state: ResMut<DetailPanelState>,
 ) {
     // Only trigger on change
@@ -81,6 +81,7 @@ pub fn open_detail_on_selection(
 
     if list_state.selected_icao.is_some() {
         detail_state.open = true;
+        list_state.expanded = true;
         if detail_state.track_start.is_none() {
             detail_state.track_start = Some(Instant::now());
         }
