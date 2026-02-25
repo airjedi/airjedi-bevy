@@ -15,9 +15,10 @@ use crate::{Aircraft, MapState, ZoomState};
 const MAX_LOG_MESSAGES: usize = 200;
 
 /// Resource holding debug panel state, log ring buffer, and live metrics.
-#[derive(Resource)]
+#[derive(Resource, Reflect)]
 pub struct DebugPanelState {
     pub open: bool,
+    #[reflect(ignore)]
     pub log_messages: VecDeque<String>,
     // Metrics
     pub aircraft_count: usize,
@@ -26,7 +27,9 @@ pub struct DebugPanelState {
     pub message_rate: f64,
     pub fps: f32,
     // Rate computation internals
+    #[reflect(ignore)]
     last_rate_time: f64,
+    #[reflect(ignore)]
     last_rate_count: u64,
 }
 

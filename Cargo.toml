@@ -13,6 +13,7 @@ adsb-client = { path = "/Users/ccustine/development/aviation/airjedi-desktop/cra
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
 chrono = { version = "0.4", features = ["serde"] }
 bevy_egui = "0.39"
+bevy-inspector-egui = "0.36"
 egui_tiles = "0.14"
 egui-phosphor = "0.11"
 catppuccin = "2.6"

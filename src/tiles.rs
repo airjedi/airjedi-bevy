@@ -443,6 +443,7 @@ fn display_tiles_filtered(
             tile_settings.z_layer + 0.1
         };
         commands.spawn((
+            Name::new(format!("Map Tile z{}", event_zoom)),
             Sprite {
                 image: tile_handle,
                 color: Color::srgba(1.0, 1.0, 1.0, 0.0),
