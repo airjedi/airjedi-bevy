@@ -9,6 +9,7 @@ use super::{
 };
 use super::trail_renderer::{draw_trails, prune_trails};
 use super::trails::record_trail_points;
+use super::staleness::dim_stale_aircraft;
 use super::list_panel::{toggle_aircraft_list, update_aircraft_display_list, highlight_selected_aircraft};
 use super::detail_panel::{render_detail_panel, toggle_detail_panel, open_detail_on_selection, detect_aircraft_click};
 use super::emergency::{detect_emergencies, draw_emergency_rings, update_emergency_banner, update_emergency_banner_text};
@@ -48,6 +49,7 @@ impl Plugin for AircraftPlugin {
                 update_emergency_banner,
                 update_emergency_banner_text,
                 draw_predictions,
+                dim_stale_aircraft,
             ))
             .add_systems(Update, render_detail_panel)
             .add_systems(Update, (poll_aircraft_type_loading, attach_aircraft_type_info))

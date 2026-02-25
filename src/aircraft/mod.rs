@@ -2,6 +2,7 @@ pub mod altitude;
 pub mod components;
 pub mod trails;
 pub mod trail_renderer;
+pub mod staleness;
 pub mod list_panel;
 pub mod detail_panel;
 pub mod emergency;

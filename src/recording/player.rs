@@ -211,6 +211,7 @@ pub fn playback_frame(
                     alert: None,
                     emergency: None,
                     spi: None,
+                    last_seen: chrono::Utc::now(),
                 },
                 TrailHistory {
                     points: VecDeque::new(),

@@ -3,7 +3,8 @@ use bevy_slippy_tiles::*;
 
 use super::{TrailHistory, TrailConfig, SessionClock};
 use super::trails::{altitude_color, age_opacity};
-use crate::MapState;
+use super::staleness::{staleness_opacity, aircraft_age_secs};
+use crate::{Aircraft, MapState};
 use crate::geo::CoordinateConverter;
 use crate::view3d::View3DState;
 
@@ -16,7 +17,7 @@ pub fn draw_trails(
     tile_settings: Res<SlippyTilesSettings>,
     map_state: Res<MapState>,
     view3d_state: Res<View3DState>,
-    trail_query: Query<&TrailHistory>,
+    trail_query: Query<(&TrailHistory, &Aircraft)>,
 ) {
     if !config.enabled {
         return;
@@ -25,7 +26,9 @@ pub fn draw_trails(
     let converter = CoordinateConverter::new(&tile_settings, map_state.zoom_level);
     let is_3d = view3d_state.is_3d_active();
 
-    for trail in trail_query.iter() {
+    for (trail, aircraft) in trail_query.iter() {
+        let stale_opacity = staleness_opacity(aircraft_age_secs(aircraft));
+
         if trail.points.len() < 2 {
             continue;
         }
@@ -54,7 +57,7 @@ pub fn draw_trails(
             let pos = Vec3::new(xy.x, xy.y, z);
 
             let base_color = altitude_color(point.altitude);
-            let color = base_color.with_alpha(opacity);
+            let color = base_color.with_alpha(opacity * stale_opacity);
 
             if let Some(prev) = prev_pos {
                 let draw_color = prev_color.unwrap_or(color);
