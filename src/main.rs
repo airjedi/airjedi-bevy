@@ -214,7 +214,6 @@ fn main() {
         .add_systems(Update, sync_panel_manager_to_resources.after(sync_resources_to_panel_manager))
         .add_systems(Update, update_help_overlay)
         .add_systems(Update, debug_panel::update_debug_metrics)
-        .add_systems(Update, inspector::render_inspector_window)
         .add_systems(Update, heartbeat_diagnostic)
         .run();
 }
@@ -336,12 +335,13 @@ pub(crate) fn setup_map(
     // Layer 0 = default content (tiles, sprites, text).
     // Layer 2 = gizmos (trails, navaids, runways) — kept off Camera3d to prevent
     //           double-rendering during 2D↔3D transitions.
-    commands.spawn((Camera2d, MapCamera, RenderLayers::from_layers(&[0, 2])));
+    commands.spawn((Name::new("Map Camera"), Camera2d, MapCamera, RenderLayers::from_layers(&[0, 2])));
 
     // Set up 3D camera for aircraft models (renders on top of 2D, with transparent clear).
     // Stays on default layer 0 so it sees 3D meshes (SceneRoot children inherit layer 0)
     // but NOT gizmos (layer 2).
     commands.spawn((
+        Name::new("Aircraft Camera"),
         Camera3d::default(),
         AircraftCamera,
         Camera {
@@ -358,6 +358,7 @@ pub(crate) fn setup_map(
     // avoid re-rendering any scene content. PrimaryEguiContext tells bevy_egui to
     // attach the egui context here instead of on Camera2d.
     commands.spawn((
+        Name::new("UI Camera"),
         Camera2d,
         PrimaryEguiContext,
         Camera {
@@ -375,6 +376,7 @@ pub(crate) fn setup_map(
         affects_lightmapped_meshes: true,
     });
     commands.spawn((
+        Name::new("Sun Light"),
         DirectionalLight {
             illuminance: 5000.0,
             shadows_enabled: false,
@@ -387,6 +389,7 @@ pub(crate) fn setup_map(
 
     // Moonlight: secondary directional light with cool blue-white color
     commands.spawn((
+        Name::new("Moon Light"),
         DirectionalLight {
             illuminance: 0.0,
             shadows_enabled: false,
