@@ -15,9 +15,18 @@ pub struct AircraftModel {
     pub handle: Handle<Scene>,
 }
 
-/// Load the aircraft 3D model
+/// Load the aircraft 3D model with MAIN_WORLD asset usage so mesh data
+/// is retained on the CPU for picking raycasts (not just uploaded to GPU).
 pub fn setup_aircraft_model(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let handle = asset_server.load("airplane.glb#Scene0");
+    use bevy::asset::RenderAssetUsages;
+    use bevy::gltf::GltfLoaderSettings;
+
+    let handle = asset_server.load_with_settings(
+        "airplane.glb#Scene0",
+        |settings: &mut GltfLoaderSettings| {
+            settings.load_meshes = RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD;
+        },
+    );
     commands.insert_resource(AircraftModel { handle });
 }
 

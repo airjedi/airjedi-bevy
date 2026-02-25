@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy::picking::mesh_picking::ray_cast::MeshRayCast;
 
 use super::detail_panel::CameraFollowState;
 use super::list_panel::AircraftListState;
@@ -60,8 +61,6 @@ pub fn on_aircraft_click(
     mut list_state: ResMut<AircraftListState>,
     mut follow_state: ResMut<CameraFollowState>,
 ) {
-    // The observer is attached to the aircraft entity, so we use observer()
-    // to get the entity this observer belongs to.
     let aircraft_entity = event.observer();
 
     if let Ok(aircraft) = aircraft_query.get(aircraft_entity) {
@@ -97,19 +96,6 @@ pub fn on_aircraft_out(
     }
 }
 
-/// Observer for ground plane clicks — clears the current selection.
-pub fn on_ground_click(
-    _event: On<Pointer<Click>>,
-    mut list_state: ResMut<AircraftListState>,
-    mut follow_state: ResMut<CameraFollowState>,
-) {
-    if list_state.selected_icao.is_some() {
-        info!("Ground clicked, clearing selection");
-        list_state.selected_icao = None;
-        follow_state.following_icao = None;
-    }
-}
-
 /// System that clears selection when ESC is pressed.
 pub fn deselect_on_escape(
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -120,6 +106,42 @@ pub fn deselect_on_escape(
             list_state.selected_icao = None;
         }
     }
+}
+
+/// System that lerps the 3D camera orbit center toward the followed aircraft.
+/// Runs as a separate system to avoid adding resource conflicts to update_3d_camera.
+pub fn follow_aircraft_3d(
+    mut view3d_state: ResMut<crate::view3d::View3DState>,
+    follow_state: Res<CameraFollowState>,
+    aircraft_query: Query<&Aircraft>,
+    time: Res<Time>,
+    tile_settings: Res<bevy_slippy_tiles::SlippyTilesSettings>,
+    map_state: Res<crate::MapState>,
+) {
+    use crate::view3d::{ViewMode, TransitionState};
+
+    // Only follow in steady-state 3D (not during transitions)
+    if !matches!(view3d_state.mode, ViewMode::Perspective3D)
+        || !matches!(view3d_state.transition, TransitionState::Idle)
+    {
+        return;
+    }
+
+    let Some(ref following_icao) = follow_state.following_icao else {
+        return;
+    };
+
+    let Some(aircraft) = aircraft_query.iter().find(|a| a.icao == *following_icao) else {
+        return;
+    };
+
+    let converter = crate::geo::CoordinateConverter::new(&tile_settings, map_state.zoom_level);
+    let target_pos = converter.latlon_to_world(aircraft.latitude, aircraft.longitude);
+
+    let lerp_speed = 3.0;
+    let t_lerp = (lerp_speed * time.delta_secs()).min(1.0);
+    view3d_state.saved_2d_center.x += (target_pos.x - view3d_state.saved_2d_center.x) * t_lerp;
+    view3d_state.saved_2d_center.y += (target_pos.y - view3d_state.saved_2d_center.y) * t_lerp;
 }
 
 /// System that clears selection when the selected aircraft no longer exists.
@@ -253,6 +275,111 @@ fn apply_material_to_hierarchy(
                 outline_mat,
                 commands,
             );
+        }
+    }
+}
+
+// =============================================================================
+// Manual 3D Picking (bypasses broken mesh picking backend)
+// =============================================================================
+
+/// Find the aircraft ancestor of an entity by walking up the ChildOf hierarchy.
+fn find_aircraft_ancestor(
+    entity: Entity,
+    aircraft_query: &Query<(Entity, &Aircraft)>,
+    parent_query: &Query<&ChildOf>,
+) -> Option<Entity> {
+    // Check the entity itself
+    if aircraft_query.get(entity).is_ok() {
+        return Some(entity);
+    }
+    let mut current = entity;
+    for _ in 0..10 {
+        if let Ok(parent) = parent_query.get(current) {
+            let pe = parent.parent();
+            if aircraft_query.get(pe).is_ok() {
+                return Some(pe);
+            }
+            current = pe;
+        } else {
+            break;
+        }
+    }
+    None
+}
+
+/// Raycast picking for 3D mode. The standard mesh picking backend uses
+/// ViewVisibility to filter entities, which doesn't work with our dual-camera
+/// architecture (Camera3d with Atmosphere post-processing + Camera2d overlay).
+/// This system uses MeshRayCast directly from Camera3d, giving us full control
+/// over the ray source and entity filtering.
+pub fn pick_aircraft_3d(
+    mouse_button: Res<ButtonInput<MouseButton>>,
+    window_query: Query<&Window>,
+    camera_3d: Query<(&Camera, &GlobalTransform), With<crate::AircraftCamera>>,
+    mut raycast: MeshRayCast,
+    aircraft_query: Query<(Entity, &Aircraft)>,
+    parent_query: Query<&ChildOf>,
+    mut list_state: ResMut<AircraftListState>,
+    mut follow_state: ResMut<CameraFollowState>,
+    view3d_state: Res<crate::view3d::View3DState>,
+    mut commands: Commands,
+    hover_query: Query<Entity, With<HoverOutline>>,
+) {
+    if !view3d_state.is_3d_active() || view3d_state.is_transitioning() {
+        return;
+    }
+
+    let Ok(window) = window_query.single() else { return };
+    let Some(cursor_pos) = window.cursor_position() else { return };
+    let Ok((camera, cam_gtf)) = camera_3d.single() else { return };
+    let Ok(ray) = camera.viewport_to_world(cam_gtf, cursor_pos) else { return };
+
+    let hits = raycast.cast_ray(ray, &default());
+
+    // Find the closest aircraft hit
+    let aircraft_hit = hits.iter().find_map(|(entity, _hit)| {
+        find_aircraft_ancestor(*entity, &aircraft_query, &parent_query)
+    });
+
+    // Handle hover: add/remove HoverOutline based on what's under cursor
+    if let Some(ac_entity) = aircraft_hit {
+        if hover_query.get(ac_entity).is_err() {
+            // Remove hover from all others first
+            for entity in hover_query.iter() {
+                commands.entity(entity).remove::<HoverOutline>();
+            }
+            commands.entity(ac_entity).insert(HoverOutline);
+        }
+    } else {
+        // No aircraft under cursor — remove all hovers
+        for entity in hover_query.iter() {
+            commands.entity(entity).remove::<HoverOutline>();
+        }
+    }
+
+    // Handle click
+    if !mouse_button.just_pressed(MouseButton::Left) {
+        return;
+    }
+
+    // Don't select if this was a drag (handled by drag dead zone in handle_3d_camera_controls)
+    if view3d_state.drag_active {
+        return;
+    }
+
+    if let Some(ac_entity) = aircraft_hit {
+        if let Ok((_, aircraft)) = aircraft_query.get(ac_entity) {
+            info!("3D pick: Aircraft clicked: {}", aircraft.icao);
+            list_state.selected_icao = Some(aircraft.icao.clone());
+            follow_state.following_icao = Some(aircraft.icao.clone());
+        }
+    } else {
+        // Clicked empty space — deselect
+        if list_state.selected_icao.is_some() {
+            info!("3D pick: Ground clicked, clearing selection");
+            list_state.selected_icao = None;
+            follow_state.following_icao = None;
         }
     }
 }
