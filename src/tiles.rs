@@ -196,16 +196,27 @@ fn handle_window_resize(
 
 /// Re-request tiles when 3D view state changes (entering/exiting 3D, orbit, pitch, distance)
 /// so the larger perspective footprint is covered.
+/// When returning to 2D, clears spawned tile tracking so tiles are freshly re-displayed.
 fn handle_3d_view_tile_refresh(
     view3d_state: Res<view3d::View3DState>,
     mut download_events: MessageWriter<DownloadSlippyTilesMessage>,
     map_state: Res<MapState>,
     zoom_state: Res<ZoomState>,
     window_query: Query<&Window>,
+    mut spawned_tiles: ResMut<SpawnedTiles>,
 ) {
     if !view3d_state.is_changed() {
         return;
     }
+
+    // When we've just returned to 2D mode, clear the spawned tiles tracker.
+    // 3D mode uses multi-resolution tiles at different zoom levels and scales;
+    // without clearing, the dedup check in display_tiles_filtered would skip
+    // re-spawning tiles at the current zoom level, leaving a blank map.
+    if matches!(view3d_state.mode, view3d::ViewMode::Map2D) && !view3d_state.is_transitioning() {
+        spawned_tiles.positions.clear();
+    }
+
     let Ok(window) = window_query.single() else {
         return;
     };
