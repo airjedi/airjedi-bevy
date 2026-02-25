@@ -1,5 +1,4 @@
 use bevy::prelude::*;
-use bevy::picking::prelude::*;
 
 use super::detail_panel::CameraFollowState;
 use super::list_panel::AircraftListState;
