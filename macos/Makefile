@@ -5,7 +5,7 @@
 #   make run    - Build and launch the .app
 #   make clean  - Remove build/ directory
 
-.PHONY: icons app run clean
+.PHONY: icons app install run clean
 
 ROOT_DIR := $(shell cd .. && pwd)
 BUILD_DIR := build
@@ -22,6 +22,12 @@ app: icons
 	@echo "Building application bundle..."
 	bash scripts/build-app.sh
 	@echo "Application bundle created at $(BUILD_DIR)/$(APP_NAME).app"
+
+install: app
+	@echo "Installing to /Applications..."
+	rm -rf /Applications/$(APP_NAME).app
+	cp -R $(BUILD_DIR)/$(APP_NAME).app /Applications/$(APP_NAME).app
+	@echo "Installed /Applications/$(APP_NAME).app"
 
 run: app
 	@echo "Launching $(APP_NAME)..."
