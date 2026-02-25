@@ -84,8 +84,10 @@ pub fn sync_aircraft_from_adsb(
                 dbg.push_log(format!("New aircraft: {} ({})", adsb_ac.icao, callsign));
             }
             // Spawn new aircraft with 3D model
+            let aircraft_name = adsb_ac.callsign.as_deref().unwrap_or(&adsb_ac.icao);
             let aircraft_entity = commands
                 .spawn((
+                    Name::new(format!("Aircraft: {}", aircraft_name)),
                     SceneRoot(aircraft_model.handle.clone()),
                     Transform::from_xyz(0.0, 0.0, constants::AIRCRAFT_Z_LAYER),
                     Aircraft {
@@ -112,6 +114,7 @@ pub fn sync_aircraft_from_adsb(
             let label_text = format!("{}\n{}", callsign_display, alt_display);
 
             commands.spawn((
+                Name::new(format!("Label: {}", aircraft_name)),
                 Text2d::new(label_text),
                 TextFont {
                     font_size: constants::BASE_FONT_SIZE,

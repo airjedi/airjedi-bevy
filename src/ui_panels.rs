@@ -22,6 +22,7 @@ pub enum PanelId {
     DataSources,
     View3D,
     Debug,
+    Inspector,
     Help,
 }
 
@@ -42,6 +43,7 @@ impl PanelId {
             PanelId::DataSources => "Shift+D",
             PanelId::View3D => "3",
             PanelId::Debug => "`",
+            PanelId::Inspector => "F12",
             PanelId::Help => "H",
         }
     }
@@ -62,6 +64,7 @@ impl PanelId {
             PanelId::DataSources => "Data Sources",
             PanelId::View3D => "3D View",
             PanelId::Debug => "Debug",
+            PanelId::Inspector => "Inspector",
             PanelId::Help => "Help",
         }
     }
@@ -82,6 +85,7 @@ impl PanelId {
             PanelId::DataSources => "\u{1F5C4}",  // file cabinet
             PanelId::View3D => "\u{1F4E6}",       // package / cube
             PanelId::Debug => "#",
+            PanelId::Inspector => "\u{1F50D}", // magnifying glass
             PanelId::Help => "?",
         }
     }
@@ -249,5 +253,23 @@ mod tests {
     #[test]
     fn shortcut_label_recording() {
         assert_eq!(PanelId::Recording.shortcut_label(), "Ctrl+R");
+    }
+
+    #[test]
+    fn display_name_inspector() {
+        assert_eq!(PanelId::Inspector.display_name(), "Inspector");
+    }
+
+    #[test]
+    fn shortcut_label_inspector() {
+        assert_eq!(PanelId::Inspector.shortcut_label(), "F12");
+    }
+
+    #[test]
+    fn toggle_inspector_panel() {
+        let mut mgr = UiPanelManager::default();
+        assert!(!mgr.is_open(PanelId::Inspector));
+        mgr.toggle_panel(PanelId::Inspector);
+        assert!(mgr.is_open(PanelId::Inspector));
     }
 }
