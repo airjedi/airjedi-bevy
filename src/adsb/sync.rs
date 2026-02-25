@@ -15,11 +15,24 @@ const B737_TYPES: &[&str] = &[
     "B37M", "B38M", "B39M",
 ];
 
+/// Correction transform applied to a model's child mesh entities after scene
+/// loading, to re-center and re-orient models whose origin/axes differ from
+/// the default GLB convention (nose=+Z, up=+Y, centered at origin).
+#[derive(Component, Clone)]
+pub struct ModelCorrection {
+    pub transform: Transform,
+}
+
+/// Marker: correction has been applied to this entity's children.
+#[derive(Component)]
+pub struct ModelCorrectionApplied;
+
 /// Resource holding aircraft 3D model handles keyed by type code
 #[derive(Resource)]
 pub struct AircraftModelRegistry {
     pub default_model: Handle<Scene>,
     pub type_models: HashMap<String, Handle<Scene>>,
+    pub corrections: HashMap<String, ModelCorrection>,
 }
 
 impl AircraftModelRegistry {
@@ -31,6 +44,11 @@ impl AircraftModelRegistry {
             }
         }
         self.default_model.clone()
+    }
+
+    /// Get the model correction for a given type code, if any
+    pub fn get_correction(&self, type_code: Option<&str>) -> Option<ModelCorrection> {
+        type_code.and_then(|code| self.corrections.get(code).cloned())
     }
 }
 
@@ -54,9 +72,34 @@ pub fn setup_aircraft_models(mut commands: Commands, asset_server: Res<AssetServ
         type_models.insert(code.to_string(), b737_model.clone());
     }
 
+    // B737 OBJ correction: mesh center is at ~(0, 69.5, -47.9) in OBJ space,
+    // with nose at -Y direction and height along -Z. The default GLB expects
+    // nose=+Z, up=+Y, centered at origin.
+    //
+    // Axis mapping: R_x(-90°) maps OBJ -Y → GLB +Z (nose forward).
+    // Scale: 0.45 matches the GLB model size (~3.9 unit fuselage).
+    // Translation: T = -(R * (S * mesh_center)) to re-center after rotation
+    // and scale, so the mesh center sits at the entity's transform origin.
+    let scale = 0.45_f32;
+    let mesh_center = Vec3::new(0.0, 69.5, -47.9);
+    let rotation = Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2);
+    let translation = -(rotation * (scale * mesh_center));
+    let b737_correction = ModelCorrection {
+        transform: Transform {
+            translation,
+            rotation,
+            scale: Vec3::splat(scale),
+        },
+    };
+    let mut corrections = HashMap::new();
+    for code in B737_TYPES {
+        corrections.insert(code.to_string(), b737_correction.clone());
+    }
+
     commands.insert_resource(AircraftModelRegistry {
         default_model,
         type_models,
+        corrections,
     });
 }
 
@@ -134,9 +177,9 @@ pub fn sync_aircraft_from_adsb(
                 .and_then(|info| info.type_code.clone());
 
             let model_handle = model_registry.get_model(type_code.as_deref());
+            let correction = model_registry.get_correction(type_code.as_deref());
 
-            let aircraft_entity = commands
-                .spawn((
+            let mut entity_commands = commands.spawn((
                     Name::new(format!("Aircraft: {}", aircraft_name)),
                     SceneRoot(model_handle),
                     Transform::from_xyz(0.0, 0.0, constants::AIRCRAFT_Z_LAYER),
@@ -153,7 +196,11 @@ pub fn sync_aircraft_from_adsb(
                         squawk: None,
                     },
                     TrailHistory::default(),
-                ))
+                ));
+            if let Some(corr) = correction {
+                entity_commands.insert(corr);
+            }
+            let aircraft_entity = entity_commands
                 .observe(on_aircraft_click)
                 .observe(on_aircraft_hover)
                 .observe(on_aircraft_out)
@@ -199,6 +246,32 @@ pub fn sync_aircraft_from_adsb(
         }
         commands.entity(entity).despawn();
         info!("Removed aircraft {} from display", icao);
+    }
+}
+
+/// Apply model corrections to child mesh entities after scene loading.
+/// Runs every frame but only processes uncorrected entities (those with
+/// ModelCorrection but without ModelCorrectionApplied). Once children
+/// are found and corrected, the entity is marked as applied.
+pub fn apply_model_corrections(
+    mut commands: Commands,
+    parent_query: Query<(Entity, &ModelCorrection, &Children), Without<ModelCorrectionApplied>>,
+    mut transform_query: Query<&mut Transform>,
+) {
+    for (entity, correction, children) in parent_query.iter() {
+        let mut applied = false;
+        for child in children.iter() {
+            if let Ok(mut child_transform) = transform_query.get_mut(child) {
+                // Apply the correction: re-center, re-orient, and rescale
+                child_transform.translation += correction.transform.translation;
+                child_transform.rotation = correction.transform.rotation * child_transform.rotation;
+                child_transform.scale *= correction.transform.scale;
+                applied = true;
+            }
+        }
+        if applied {
+            commands.entity(entity).insert(ModelCorrectionApplied);
+        }
     }
 }
 
