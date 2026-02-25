@@ -754,21 +754,26 @@ fn update_distance_fog(
     };
 }
 
-/// Force aircraft model materials to opaque alpha mode.
+/// Fix aircraft model materials for the current view mode.
 ///
-/// GLB models may export with transparent or alpha-blended materials. Transparent
-/// meshes render in the transparent pass and don't write to the depth buffer,
-/// causing atmosphere post-processing to treat those pixels as sky and overwrite
-/// them. This system detects non-opaque materials on aircraft mesh children and
-/// forces them to [`AlphaMode::Opaque`] so they write depth and remain visible.
+/// In 2D mode, materials are set to `unlit = true` so aircraft render at full
+/// brightness regardless of scene lighting (sun position, ambient level, etc.).
+/// In 3D mode, materials are lit normally so they interact with the sun,
+/// atmosphere, and environment lighting.
+///
+/// Also forces `AlphaMode::Opaque` in all modes. GLB models may export with
+/// transparent or alpha-blended materials, which skip depth writes and get
+/// overwritten by the atmosphere post-process.
 fn fix_aircraft_model_materials(
+    state: Res<View3DState>,
     aircraft_query: Query<&Children, With<crate::Aircraft>>,
     children_query: Query<&Children>,
     mesh_query: Query<&MeshMaterial3d<StandardMaterial>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
+    let want_unlit = !state.is_3d_active();
     for children in aircraft_query.iter() {
-        fix_materials_in_hierarchy(children, &children_query, &mesh_query, &mut materials);
+        fix_materials_in_hierarchy(children, &children_query, &mesh_query, &mut materials, want_unlit);
     }
 }
 
@@ -777,20 +782,24 @@ fn fix_materials_in_hierarchy(
     children_query: &Query<&Children>,
     mesh_query: &Query<&MeshMaterial3d<StandardMaterial>>,
     materials: &mut Assets<StandardMaterial>,
+    want_unlit: bool,
 ) {
     for child in children.iter() {
         if let Ok(mat_handle) = mesh_query.get(child) {
             let needs_fix = materials
                 .get(mat_handle.id())
-                .is_some_and(|m| !matches!(m.alpha_mode, AlphaMode::Opaque));
+                .is_some_and(|m| {
+                    !matches!(m.alpha_mode, AlphaMode::Opaque) || m.unlit != want_unlit
+                });
             if needs_fix {
                 if let Some(material) = materials.get_mut(mat_handle.id()) {
                     material.alpha_mode = AlphaMode::Opaque;
+                    material.unlit = want_unlit;
                 }
             }
         }
         if let Ok(grandchildren) = children_query.get(child) {
-            fix_materials_in_hierarchy(grandchildren, children_query, mesh_query, materials);
+            fix_materials_in_hierarchy(grandchildren, children_query, mesh_query, materials, want_unlit);
         }
     }
 }

@@ -12,6 +12,7 @@ use bevy::camera::{CameraOutputMode, Exposure};
 use bevy::pbr::{Atmosphere, AtmosphereSettings, DistanceFog, FogFalloff, StandardMaterial};
 use bevy::light::AtmosphereEnvironmentMapLight;
 use bevy::render::render_resource::BlendState;
+use bevy::render::view::Hdr;
 
 use super::View3DState;
 use crate::map::MapState;
@@ -638,18 +639,25 @@ pub fn manage_atmosphere_camera(
         }
     } else {
         if has_atmo.is_some() {
+            // Remove all 3D atmosphere/rendering components AND the Hdr marker.
+            // Atmosphere has #[require(Hdr)] so adding it auto-inserts Hdr,
+            // but removing Atmosphere does NOT remove Hdr. The leftover Hdr
+            // forces Camera3d into HDR rendering mode, which breaks compositing
+            // with Camera2d's LDR output and makes aircraft invisible.
             commands.entity(cam3d_entity)
                 .remove::<Atmosphere>()
                 .remove::<AtmosphereSettings>()
                 .remove::<AtmosphereEnvironmentMapLight>()
                 .remove::<Exposure>()
-                .remove::<DistanceFog>();
+                .remove::<DistanceFog>()
+                .remove::<Hdr>();
         }
         cam2d.order = 0;
         cam2d.clear_color = ClearColorConfig::Default;
         cam2d.output_mode = CameraOutputMode::default();
         cam3d.order = 1;
         cam3d.clear_color = ClearColorConfig::Custom(Color::NONE);
+        cam3d.output_mode = CameraOutputMode::default();
         if let Ok((_, mut gp_vis)) = ground_query.single_mut() {
             *gp_vis = Visibility::Hidden;
         }
