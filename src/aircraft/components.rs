@@ -21,6 +21,14 @@ pub struct Aircraft {
     pub vertical_rate: Option<i32>,
     /// Squawk code (transponder code)
     pub squawk: Option<String>,
+    /// Whether the aircraft is on the ground
+    pub is_on_ground: Option<bool>,
+    /// Alert flag (squawk change)
+    pub alert: Option<bool>,
+    /// Emergency flag
+    pub emergency: Option<bool>,
+    /// SPI (Special Position Identification) flag
+    pub spi: Option<bool>,
 }
 
 /// Component to link aircraft labels to their aircraft

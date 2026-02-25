@@ -207,6 +207,10 @@ pub fn playback_frame(
                     velocity: state.velocity,
                     vertical_rate: state.vertical_rate,
                     squawk: state.squawk.clone(),
+                    is_on_ground: None,
+                    alert: None,
+                    emergency: None,
+                    spi: None,
                 },
                 TrailHistory {
                     points: VecDeque::new(),

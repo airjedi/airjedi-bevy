@@ -158,7 +158,11 @@ pub fn sync_aircraft_from_adsb(
                 aircraft.velocity = adsb_ac.velocity;
                 aircraft.vertical_rate = adsb_ac.vertical_rate;
                 aircraft.callsign = adsb_ac.callsign.clone();
-                aircraft.squawk = None;
+                aircraft.squawk = adsb_ac.squawk.clone();
+                aircraft.is_on_ground = adsb_ac.is_on_ground;
+                aircraft.alert = adsb_ac.alert;
+                aircraft.emergency = adsb_ac.emergency;
+                aircraft.spi = adsb_ac.spi;
             }
             existing_aircraft.remove(&adsb_ac.icao);
         } else {
@@ -193,7 +197,11 @@ pub fn sync_aircraft_from_adsb(
                         heading: adsb_ac.track.map(|t| t as f32),
                         velocity: adsb_ac.velocity,
                         vertical_rate: adsb_ac.vertical_rate,
-                        squawk: None,
+                        squawk: adsb_ac.squawk.clone(),
+                        is_on_ground: adsb_ac.is_on_ground,
+                        alert: adsb_ac.alert,
+                        emergency: adsb_ac.emergency,
+                        spi: adsb_ac.spi,
                     },
                     TrailHistory::default(),
                 ));
