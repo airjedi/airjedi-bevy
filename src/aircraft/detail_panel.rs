@@ -90,7 +90,8 @@ pub fn open_detail_on_selection(
     }
 }
 
-/// System to detect clicks on aircraft sprites
+/// System to detect clicks on aircraft sprites (2D mode only).
+/// In 3D mode, picking is handled by Bevy's picking system via observers.
 pub fn detect_aircraft_click(
     mouse_button: Res<ButtonInput<MouseButton>>,
     window_query: Query<&Window>,
@@ -98,7 +99,13 @@ pub fn detect_aircraft_click(
     aircraft_query: Query<(&crate::Aircraft, &Transform)>,
     mut list_state: ResMut<AircraftListState>,
     zoom_state: Res<ZoomState>,
+    view3d_state: Res<crate::view3d::View3DState>,
 ) {
+    // Skip in 3D mode — picking observers handle selection there
+    if view3d_state.is_3d_active() || view3d_state.is_transitioning() {
+        return;
+    }
+
     if !mouse_button.just_pressed(MouseButton::Left) {
         return;
     }

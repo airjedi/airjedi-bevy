@@ -296,9 +296,11 @@ pub fn setup_sky(
         GroundPlane,
         Mesh3d(ground_mesh),
         MeshMaterial3d(ground_material),
+        Pickable::default(),
         Transform::from_xyz(0.0, 0.0, 0.0),
         Visibility::Hidden,
-    ));
+    ))
+    .observe(crate::aircraft::picking::on_ground_click);
 
     // Full-screen tint overlay for 2D mode day/night effect.
     // Between tiles (z=0) and aircraft (z=10) at z=5.
