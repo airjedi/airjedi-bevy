@@ -115,9 +115,7 @@ pub fn clear_tile_cache() {
 /// Also clear any legacy tiles sitting directly in `assets/` from before
 /// the centralized cache was introduced.
 pub fn clear_legacy_tiles() {
-    let assets_path = std::env::current_dir()
-        .map(|path| path.join("assets"))
-        .unwrap_or_else(|_| PathBuf::from("assets"));
+    let assets_path = crate::paths::assets_dir();
 
     if !assets_path.exists() {
         return;
@@ -211,9 +209,7 @@ pub fn remove_invalid_tiles() {
 }
 
 fn assets_tiles_path() -> PathBuf {
-    std::env::current_dir()
-        .map(|path| path.join("assets").join("tiles"))
-        .unwrap_or_else(|_| PathBuf::from("assets/tiles"))
+    crate::paths::assets_dir().join("tiles")
 }
 
 /// Move existing tiles from a real `assets/tiles/` directory into the cache,
