@@ -437,9 +437,14 @@ pub fn update_3d_camera(
             center_yup.z,
         );
 
+        // Compute the correct "looking straight down" rotation for overhead position.
+        // Use NEG_Z as up vector (north) since Y (world up) is collinear with the look direction.
+        let overhead_rotation = Transform::from_translation(overhead_yup)
+            .looking_at(center_yup, Vec3::NEG_Z)
+            .rotation;
+
         tf_3d.translation = overhead_yup.lerp(orbit_yup.translation, t);
-        tf_3d.rotation = Quat::IDENTITY
-            .slerp(orbit_yup.rotation, t);
+        tf_3d.rotation = overhead_rotation.slerp(orbit_yup.rotation, t);
         *proj_3d = Projection::Perspective(perspective.clone());
 
         // Derive Camera2d from Camera3d
