@@ -296,6 +296,9 @@ pub fn setup_sky(
         GroundPlane,
         Mesh3d(ground_mesh),
         MeshMaterial3d(ground_material),
+        // Exclude from picking — its huge mesh blocks aircraft raycasts from
+        // Camera2d's rotated transform in 3D mode.
+        Pickable::IGNORE,
         Transform::from_xyz(0.0, 0.0, 0.0),
         Visibility::Hidden,
     ));

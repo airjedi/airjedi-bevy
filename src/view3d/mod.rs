@@ -79,7 +79,17 @@ pub struct View3DState {
     pub visibility_range: f32,
     /// Whether atmosphere effects (scattering, fog, exposure) are enabled
     pub atmosphere_enabled: bool,
+    /// Accumulated drag distance since mouse-down (for click vs drag disambiguation)
+    #[reflect(ignore)]
+    pub drag_accumulated: f32,
+    /// Whether the current drag has exceeded the dead zone threshold
+    #[reflect(ignore)]
+    pub drag_active: bool,
 }
+
+/// Minimum mouse movement (pixels) before a click becomes a drag.
+/// Allows picking to work even with slight mouse movement during click.
+const DRAG_DEAD_ZONE: f32 = 5.0;
 
 impl Default for View3DState {
     fn default() -> Self {
@@ -95,6 +105,8 @@ impl Default for View3DState {
             detected_airport_name: None,
             visibility_range: 5000.0,
             atmosphere_enabled: true,
+            drag_accumulated: 0.0,
+            drag_active: false,
         }
     }
 }
@@ -515,9 +527,23 @@ pub fn handle_3d_camera_controls(
         }
     }
 
-    // Mouse drag handling
+    // Mouse drag handling with dead zone for click vs drag disambiguation.
+    // Small movements (< DRAG_DEAD_ZONE pixels) are ignored so picking can
+    // detect clicks even with slight trackpad movement.
+    if mouse_button.just_pressed(MouseButton::Left) {
+        state.drag_accumulated = 0.0;
+        state.drag_active = false;
+    }
+
     if mouse_button.pressed(MouseButton::Left) {
         for event in mouse_motion.read() {
+            state.drag_accumulated += event.delta.length();
+
+            if !state.drag_active && state.drag_accumulated < DRAG_DEAD_ZONE {
+                continue; // Still in dead zone — let picking handle this as a click
+            }
+            state.drag_active = true;
+
             if shift_held {
                 // Shift+drag = Orbit (rotate around target)
                 state.camera_yaw += event.delta.x * ORBIT_SENSITIVITY;
@@ -527,7 +553,7 @@ pub fn handle_3d_camera_controls(
                     .clamp(MIN_PITCH, MAX_PITCH);
             } else {
                 // Plain drag = Pan (translate XY only, no rotation)
-                if event.delta.length() > 2.0 && follow_state.following_icao.is_some() {
+                if follow_state.following_icao.is_some() {
                     follow_state.following_icao = None;
                 }
 
@@ -542,15 +568,14 @@ pub fn handle_3d_camera_controls(
                 let cam_fwd_x = yaw_rad.sin();
                 let cam_fwd_y = yaw_rad.cos();
 
-                // Negate deltas: dragging right moves the map right (center left)
-                // Y is NOT negated so dragging toward the top moves the view backward
+                // Negate X: dragging right moves the map right (center left).
+                // Y is NOT negated so dragging toward the top moves the view backward.
                 let dx = -event.delta.x * pan_speed;
                 let dy = event.delta.y * pan_speed;
 
                 state.saved_2d_center.x += dx * cam_right_x + dy * cam_fwd_x;
                 state.saved_2d_center.y += dx * cam_right_y + dy * cam_fwd_y;
 
-                // Keep map_state in sync so tiles are loaded for the new position
                 sync_center_to_map_state(&state, &tile_settings, &mut map_state);
             }
         }
@@ -833,6 +858,7 @@ impl Plugin for View3DPlugin {
             .add_systems(Update, sky::update_star_visibility)
             .add_systems(Update, sky::manage_atmosphere_camera
                 .after(animate_view_transition)
+                .after(update_3d_camera)
                 .after(sky::update_sun_position))
             .add_systems(Update, sky::sync_ground_plane.after(update_3d_camera))
             .add_systems(Update, sky::update_ground_plane_color.after(sky::update_sun_position))
