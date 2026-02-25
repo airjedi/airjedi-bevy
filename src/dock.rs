@@ -315,12 +315,12 @@ impl<'a> Behavior<DockPane> for DockBehavior<'a> {
                         ResMut<DetailPanelState>,
                         ResMut<CameraFollowState>,
                         Res<AircraftDisplayList>,
-                        Res<MapState>,
+                        Res<AppConfig>,
                         Res<SessionClock>,
                         Query<(&'static Aircraft, &'static TrailHistory, Option<&'static AircraftTypeInfo>)>,
                         Res<AppTheme>,
                     )>::new(world);
-                    let (mut list, mut detail, mut follow, display, map, clock, query, theme) =
+                    let (mut list, mut detail, mut follow, display, app_config, clock, query, theme) =
                         state.get_mut(world);
                     render_aircraft_list_pane_content(
                         ui,
@@ -328,7 +328,7 @@ impl<'a> Behavior<DockPane> for DockBehavior<'a> {
                         &mut detail,
                         &mut follow,
                         &display,
-                        &map,
+                        &app_config,
                         &clock,
                         &query,
                         &theme,

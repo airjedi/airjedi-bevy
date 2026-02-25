@@ -118,13 +118,13 @@ pub struct AircraftDisplayList {
 
 /// System to populate and sort the aircraft display list
 pub fn update_aircraft_display_list(
-    map_state: Res<MapState>,
     list_state: Res<AircraftListState>,
+    app_config: Res<crate::config::AppConfig>,
     aircraft_query: Query<(&crate::Aircraft, Option<&AircraftTypeInfo>)>,
     mut display_list: ResMut<AircraftDisplayList>,
 ) {
-    let center_lat = map_state.latitude;
-    let center_lon = map_state.longitude;
+    let center_lat = app_config.map.default_latitude;
+    let center_lon = app_config.map.default_longitude;
     let search = list_state.search_text.to_lowercase();
 
     // Get callsign prefix filter (lowercase for comparison)
@@ -261,6 +261,7 @@ pub fn render_aircraft_list_panel(
     mut follow_state: ResMut<CameraFollowState>,
     display_list: Res<AircraftDisplayList>,
     map_state: Res<MapState>,
+    app_config: Res<crate::config::AppConfig>,
     clock: Res<SessionClock>,
     aircraft_query: Query<(&crate::Aircraft, &TrailHistory, Option<&AircraftTypeInfo>)>,
     theme: Res<AppTheme>,
@@ -436,7 +437,7 @@ pub fn render_aircraft_list_panel(
                             selected_icao.as_deref().unwrap(),
                             &mut detail_state,
                             &mut follow_state,
-                            &map_state,
+                            &app_config,
                             &clock,
                             &aircraft_query,
                         );
@@ -613,7 +614,7 @@ pub fn render_aircraft_list_pane_content(
     detail_state: &mut DetailPanelState,
     follow_state: &mut CameraFollowState,
     display_list: &AircraftDisplayList,
-    map_state: &MapState,
+    app_config: &crate::config::AppConfig,
     clock: &SessionClock,
     aircraft_query: &Query<(&crate::Aircraft, &TrailHistory, Option<&AircraftTypeInfo>)>,
     theme: &AppTheme,
@@ -760,7 +761,7 @@ pub fn render_aircraft_list_pane_content(
                     selected_icao.as_deref().unwrap(),
                     detail_state,
                     follow_state,
-                    map_state,
+                    app_config,
                     clock,
                     aircraft_query,
                 );
@@ -926,7 +927,7 @@ fn render_detail_section(
     selected_icao: &str,
     detail_state: &mut DetailPanelState,
     follow_state: &mut CameraFollowState,
-    map_state: &MapState,
+    app_config: &crate::config::AppConfig,
     clock: &SessionClock,
     aircraft_query: &Query<(&crate::Aircraft, &TrailHistory, Option<&AircraftTypeInfo>)>,
 ) {
@@ -943,8 +944,8 @@ fn render_detail_section(
     };
 
     let distance_nm = haversine_distance_nm(
-        map_state.latitude,
-        map_state.longitude,
+        app_config.map.default_latitude,
+        app_config.map.default_longitude,
         aircraft.latitude,
         aircraft.longitude,
     );
