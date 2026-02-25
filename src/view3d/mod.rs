@@ -38,7 +38,7 @@ const MIN_PITCH: f32 = -89.9;
 const MAX_PITCH: f32 = 89.9;
 const MIN_CAMERA_ALTITUDE: f32 = 1000.0;
 const MAX_CAMERA_ALTITUDE: f32 = 60000.0;
-const ALTITUDE_EXAGGERATION: f32 = 2.0;
+const ALTITUDE_EXAGGERATION: f32 = 1.0;
 
 /// Scale factor to convert altitude/distance values to pixel-space.
 pub(crate) const PIXEL_SCALE: f32 = 20.0;
