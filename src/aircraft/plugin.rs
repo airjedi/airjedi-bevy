@@ -14,7 +14,7 @@ use super::detail_panel::{render_detail_panel, toggle_detail_panel, open_detail_
 use super::emergency::{detect_emergencies, draw_emergency_rings, update_emergency_banner, update_emergency_banner_text};
 use super::prediction::draw_predictions;
 use super::typeloader::{start_aircraft_type_loading, poll_aircraft_type_loading, attach_aircraft_type_info};
-use super::picking::setup_outline_materials;
+use super::picking::{setup_outline_materials, manage_selection_outline, swap_outline_materials};
 
 pub struct AircraftPlugin;
 
@@ -50,6 +50,10 @@ impl Plugin for AircraftPlugin {
                 draw_predictions,
             ))
             .add_systems(Update, render_detail_panel)
-            .add_systems(Update, (poll_aircraft_type_loading, attach_aircraft_type_info));
+            .add_systems(Update, (poll_aircraft_type_loading, attach_aircraft_type_info))
+            .add_systems(Update, (
+                manage_selection_outline,
+                swap_outline_materials.after(manage_selection_outline),
+            ));
     }
 }
