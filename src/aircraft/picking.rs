@@ -95,6 +95,29 @@ pub fn on_aircraft_out(
     }
 }
 
+/// Observer for ground plane clicks — clears the current selection.
+pub fn on_ground_click(
+    _event: On<Pointer<Click>>,
+    mut list_state: ResMut<AircraftListState>,
+) {
+    if list_state.selected_icao.is_some() {
+        info!("Ground clicked, clearing selection");
+        list_state.selected_icao = None;
+    }
+}
+
+/// System that clears selection when ESC is pressed.
+pub fn deselect_on_escape(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut list_state: ResMut<AircraftListState>,
+) {
+    if keyboard.just_pressed(KeyCode::Escape) {
+        if list_state.selected_icao.is_some() {
+            list_state.selected_icao = None;
+        }
+    }
+}
+
 /// System that keeps SelectionOutline marker in sync with AircraftListState.
 /// Runs every frame but only does work when selected_icao changes.
 pub fn manage_selection_outline(
