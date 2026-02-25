@@ -357,7 +357,7 @@ pub fn update_3d_camera(
     window_query: Query<&Window>,
     zoom_state: Res<crate::ZoomState>,
     follow_state: Res<crate::aircraft::CameraFollowState>,
-    aircraft_query: Query<(&crate::Aircraft, &Transform), Without<crate::MapCamera>>,
+    aircraft_query: Query<(&crate::Aircraft, &Transform), (Without<crate::MapCamera>, Without<crate::AircraftCamera>)>,
     time: Res<Time>,
 ) {
     if matches!(state.mode, ViewMode::Map2D) && !state.is_transitioning() {
