@@ -94,3 +94,152 @@ pub fn on_aircraft_out(
         commands.entity(aircraft_entity).remove::<HoverOutline>();
     }
 }
+
+/// System that keeps SelectionOutline marker in sync with AircraftListState.
+/// Runs every frame but only does work when selected_icao changes.
+pub fn manage_selection_outline(
+    mut commands: Commands,
+    list_state: Res<AircraftListState>,
+    aircraft_query: Query<(Entity, &Aircraft)>,
+    selected_query: Query<Entity, With<SelectionOutline>>,
+) {
+    if !list_state.is_changed() {
+        return;
+    }
+
+    // Remove SelectionOutline from all currently selected entities
+    for entity in selected_query.iter() {
+        commands.entity(entity).remove::<SelectionOutline>();
+    }
+
+    // Add SelectionOutline to the newly selected aircraft
+    if let Some(ref selected_icao) = list_state.selected_icao {
+        for (entity, aircraft) in aircraft_query.iter() {
+            if aircraft.icao == *selected_icao {
+                commands.entity(entity).insert(SelectionOutline);
+                break;
+            }
+        }
+    }
+}
+
+/// System that swaps materials on child meshes of aircraft with SelectionOutline or HoverOutline.
+/// SelectionOutline takes priority over HoverOutline.
+pub fn swap_outline_materials(
+    mut outline_mats: ResMut<OutlineMaterials>,
+    selected_query: Query<&Children, With<SelectionOutline>>,
+    hover_query: Query<&Children, (With<HoverOutline>, Without<SelectionOutline>)>,
+    normal_query: Query<
+        (Entity, &Children),
+        (With<Aircraft>, Without<SelectionOutline>, Without<HoverOutline>),
+    >,
+    children_query: Query<&Children>,
+    mesh_query: Query<&MeshMaterial3d<StandardMaterial>>,
+    mut commands: Commands,
+) {
+    let selected_mat = outline_mats.selected.clone();
+    let hover_mat = outline_mats.hover.clone();
+
+    // Apply selected material to selected aircraft children
+    for children in selected_query.iter() {
+        apply_material_to_hierarchy(
+            children,
+            &children_query,
+            &mesh_query,
+            &mut outline_mats.originals,
+            &selected_mat,
+            &mut commands,
+        );
+    }
+
+    // Apply hover material to hovered (non-selected) aircraft children
+    for children in hover_query.iter() {
+        apply_material_to_hierarchy(
+            children,
+            &children_query,
+            &mesh_query,
+            &mut outline_mats.originals,
+            &hover_mat,
+            &mut commands,
+        );
+    }
+
+    // Restore original materials for normal (non-selected, non-hovered) aircraft
+    for (entity, children) in normal_query.iter() {
+        restore_materials_in_hierarchy(
+            entity,
+            children,
+            &children_query,
+            &mesh_query,
+            &mut outline_mats.originals,
+            &mut commands,
+        );
+    }
+}
+
+/// Recursively apply outline material to all meshes in the hierarchy.
+fn apply_material_to_hierarchy(
+    children: &Children,
+    children_query: &Query<&Children>,
+    mesh_query: &Query<&MeshMaterial3d<StandardMaterial>>,
+    originals: &mut Vec<(Entity, Handle<StandardMaterial>)>,
+    outline_mat: &Handle<StandardMaterial>,
+    commands: &mut Commands,
+) {
+    for child in children.iter() {
+        if let Ok(mat_handle) = mesh_query.get(child) {
+            // Stash the original material if not already stashed
+            if !originals.iter().any(|(e, _)| *e == child) {
+                originals.push((child, mat_handle.0.clone()));
+            }
+            // Replace with outline material
+            if mat_handle.0 != *outline_mat {
+                commands
+                    .entity(child)
+                    .insert(MeshMaterial3d(outline_mat.clone()));
+            }
+        }
+        if let Ok(grandchildren) = children_query.get(child) {
+            apply_material_to_hierarchy(
+                grandchildren,
+                children_query,
+                mesh_query,
+                originals,
+                outline_mat,
+                commands,
+            );
+        }
+    }
+}
+
+/// Recursively restore original materials for all meshes in the hierarchy.
+fn restore_materials_in_hierarchy(
+    aircraft_entity: Entity,
+    children: &Children,
+    children_query: &Query<&Children>,
+    mesh_query: &Query<&MeshMaterial3d<StandardMaterial>>,
+    originals: &mut Vec<(Entity, Handle<StandardMaterial>)>,
+    commands: &mut Commands,
+) {
+    for child in children.iter() {
+        if mesh_query.get(child).is_ok() {
+            // Find and restore the original material
+            if let Some(pos) = originals.iter().position(|(e, _)| *e == child) {
+                let (_, original_mat) = originals.remove(pos);
+                commands
+                    .entity(child)
+                    .insert(MeshMaterial3d(original_mat));
+            }
+        }
+        if let Ok(grandchildren) = children_query.get(child) {
+            restore_materials_in_hierarchy(
+                aircraft_entity,
+                grandchildren,
+                children_query,
+                mesh_query,
+                originals,
+                commands,
+            );
+        }
+    }
+}
