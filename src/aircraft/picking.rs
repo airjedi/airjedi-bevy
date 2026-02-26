@@ -132,10 +132,12 @@ pub fn follow_aircraft_3d(
     }
 
     let Some(ref following_icao) = follow_state.following_icao else {
+        view3d_state.follow_altitude_ft = None;
         return;
     };
 
     let Some(aircraft) = aircraft_query.iter().find(|a| a.icao == *following_icao) else {
+        view3d_state.follow_altitude_ft = None;
         return;
     };
 
@@ -146,6 +148,9 @@ pub fn follow_aircraft_3d(
     let t_lerp = (lerp_speed * time.delta_secs()).min(1.0);
     view3d_state.saved_2d_center.x += (target_pos.x - view3d_state.saved_2d_center.x) * t_lerp;
     view3d_state.saved_2d_center.y += (target_pos.y - view3d_state.saved_2d_center.y) * t_lerp;
+
+    // Track the followed aircraft's altitude for the orbit center
+    view3d_state.follow_altitude_ft = aircraft.altitude;
 }
 
 /// System that clears selection when the selected aircraft no longer exists.
