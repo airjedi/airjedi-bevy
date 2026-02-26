@@ -37,7 +37,7 @@ const DEFAULT_CAMERA_ALTITUDE: f32 = 10000.0;
 const MIN_PITCH: f32 = -89.9;
 const MAX_PITCH: f32 = 89.9;
 const MIN_CAMERA_ALTITUDE: f32 = 1000.0;
-const MAX_CAMERA_ALTITUDE: f32 = 60000.0;
+const MAX_CAMERA_ALTITUDE: f32 = 120000.0;
 const ALTITUDE_EXAGGERATION: f32 = 1.0;
 
 /// Scale factor to convert altitude/distance values to pixel-space.
@@ -85,6 +85,8 @@ pub struct View3DState {
     /// Whether the current drag has exceeded the dead zone threshold
     #[reflect(ignore)]
     pub drag_active: bool,
+    /// When following an aircraft, its altitude in feet for orbit center
+    pub follow_altitude_ft: Option<i32>,
 }
 
 /// Minimum mouse movement (pixels) before a click becomes a drag.
@@ -107,6 +109,7 @@ impl Default for View3DState {
             atmosphere_enabled: true,
             drag_accumulated: 0.0,
             drag_active: false,
+            follow_altitude_ft: None,
         }
     }
 }
@@ -389,12 +392,14 @@ pub fn update_3d_camera(
         TransitionState::TransitioningTo2D { progress } => smooth_step(1.0 - progress),
     };
 
-    // Y-up orbit center: convert saved_2d_center from Z-up pixel space
-    let ground_alt = state.altitude_to_z(state.ground_elevation_ft);
+    // Y-up orbit center: convert saved_2d_center from Z-up pixel space.
+    // When following an aircraft, orbit around its altitude instead of ground.
+    let orbit_alt_ft = state.follow_altitude_ft.unwrap_or(state.ground_elevation_ft);
+    let orbit_alt = state.altitude_to_z(orbit_alt_ft);
     let center_yup = zup_to_yup(Vec3::new(
         state.saved_2d_center.x,
         state.saved_2d_center.y,
-        ground_alt,
+        orbit_alt,
     ));
     let orbit_yup = state.calculate_camera_transform_yup(center_yup);
 
