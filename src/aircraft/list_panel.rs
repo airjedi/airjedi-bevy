@@ -257,7 +257,7 @@ fn get_altitude_color(altitude: Option<i32>) -> (egui::Color32, &'static str) {
 pub fn render_aircraft_list_panel(
     mut contexts: EguiContexts,
     mut list_state: ResMut<AircraftListState>,
-    mut detail_state: ResMut<DetailPanelState>,
+    _detail_state: ResMut<DetailPanelState>,
     mut follow_state: ResMut<CameraFollowState>,
     display_list: Res<AircraftDisplayList>,
     map_state: Res<MapState>,
@@ -420,31 +420,7 @@ pub fn render_aircraft_list_panel(
 
             ui.add_space(4.0);
 
-            // -- Lower detail section (rendered first to reserve space at the bottom) --
-            // We use TopBottomPanel-style layout: detail at bottom, list fills remaining.
-            let selected_icao = list_state.selected_icao.clone();
-            let detail_open = detail_state.open && selected_icao.is_some();
-
-            if detail_open {
-                // Render detail section at the bottom
-                egui::TopBottomPanel::bottom("aircraft_detail_section")
-                    .resizable(true)
-                    .default_height(220.0)
-                    .frame(egui::Frame::NONE)
-                    .show_inside(ui, |ui| {
-                        render_detail_section(
-                            ui,
-                            selected_icao.as_deref().unwrap(),
-                            &mut detail_state,
-                            &mut follow_state,
-                            &app_config,
-                            &clock,
-                            &aircraft_query,
-                        );
-                    });
-            }
-
-            // -- Upper aircraft list (fills remaining space) --
+            // -- Aircraft list --
             egui::ScrollArea::vertical()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
@@ -453,6 +429,10 @@ pub fn render_aircraft_list_panel(
                     for aircraft in &display_list.aircraft {
                         let is_selected = list_state.selected_icao.as_ref() == Some(&aircraft.icao);
                         let (alt_color, alt_indicator) = get_altitude_color(aircraft.altitude);
+
+                        // Animated expand/collapse
+                        let anim_id = ui.id().with(&aircraft.icao).with("expand");
+                        let expand_t = ui.ctx().animate_bool_with_time(anim_id, is_selected, 0.15);
 
                         // Create card frame with selection highlighting (no outline)
                         let card_frame = if is_selected {
@@ -467,8 +447,14 @@ pub fn render_aircraft_list_panel(
                         let card_response = card_frame.show(ui, |ui| {
                             ui.spacing_mut().item_spacing.y = 2.0;
 
-                            // Row 1: Status + ICAO + Callsign + Altitude + Follow button
+                            // Row 1: Chevron + Status + ICAO + Callsign + Altitude + Follow button
                             ui.horizontal(|ui| {
+                                // Collapse/expand chevron
+                                let chevron = if is_selected { "\u{25BE}" } else { "\u{25B8}" };
+                                ui.label(egui::RichText::new(chevron)
+                                    .color(egui::Color32::from_rgb(120, 120, 120))
+                                    .size(11.0));
+
                                 // Status indicator
                                 ui.label(egui::RichText::new("\u{25CF}")
                                     .color(status_active)
@@ -581,11 +567,28 @@ pub fn render_aircraft_list_panel(
                                     }
                                 });
                             });
+
+                            // Inline expanded detail section (animated)
+                            if expand_t > 0.0 {
+                                render_inline_detail(
+                                    ui,
+                                    &aircraft.icao,
+                                    expand_t,
+                                    &mut follow_state,
+                                    &app_config,
+                                    &clock,
+                                    &aircraft_query,
+                                );
+                            }
                         });
 
-                        // Handle click to select
+                        // Handle click to select/deselect (toggle)
                         if card_response.response.interact(egui::Sense::click()).clicked() {
-                            list_state.selected_icao = Some(aircraft.icao.clone());
+                            if is_selected {
+                                list_state.selected_icao = None;
+                            } else {
+                                list_state.selected_icao = Some(aircraft.icao.clone());
+                            }
                         }
 
                         // Subtle separator line between items
@@ -611,13 +614,13 @@ pub fn render_aircraft_list_panel(
 pub fn render_aircraft_list_pane_content(
     ui: &mut egui::Ui,
     list_state: &mut AircraftListState,
-    detail_state: &mut DetailPanelState,
+    _detail_state: &mut DetailPanelState,
     follow_state: &mut CameraFollowState,
     display_list: &AircraftDisplayList,
     app_config: &crate::config::AppConfig,
     clock: &SessionClock,
     aircraft_query: &Query<(&crate::Aircraft, &TrailHistory, Option<&AircraftTypeInfo>)>,
-    theme: &AppTheme,
+    _theme: &AppTheme,
 ) {
     let selected_bg = egui::Color32::from_rgba_unmultiplied(100, 140, 180, 26);
     let header_color = egui::Color32::from_rgb(150, 150, 150);
@@ -626,7 +629,6 @@ pub fn render_aircraft_list_pane_content(
     let callsign_selected_color = egui::Color32::from_rgb(255, 50, 50);
     let metrics_color = egui::Color32::from_rgb(170, 170, 170);
     let range_color = egui::Color32::from_rgb(100, 200, 255);
-    let status_active = egui::Color32::from_rgb(100, 255, 100);
 
     // Header
     ui.horizontal(|ui| {
@@ -746,29 +748,7 @@ pub fn render_aircraft_list_pane_content(
 
     ui.add_space(4.0);
 
-    // -- Lower detail section (rendered first to reserve space at the bottom) --
-    let selected_icao = list_state.selected_icao.clone();
-    let detail_open = detail_state.open && selected_icao.is_some();
-
-    if detail_open {
-        egui::TopBottomPanel::bottom("aircraft_detail_section")
-            .resizable(true)
-            .default_height(220.0)
-            .frame(egui::Frame::NONE)
-            .show_inside(ui, |ui| {
-                render_detail_section(
-                    ui,
-                    selected_icao.as_deref().unwrap(),
-                    detail_state,
-                    follow_state,
-                    app_config,
-                    clock,
-                    aircraft_query,
-                );
-            });
-    }
-
-    // -- Upper aircraft list (fills remaining space) --
+    // -- Aircraft list --
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
@@ -777,6 +757,10 @@ pub fn render_aircraft_list_pane_content(
             for aircraft in &display_list.aircraft {
                 let is_selected = list_state.selected_icao.as_ref() == Some(&aircraft.icao);
                 let (alt_color, alt_indicator) = get_altitude_color(aircraft.altitude);
+
+                // Animated expand/collapse
+                let anim_id = ui.id().with(&aircraft.icao).with("expand");
+                let expand_t = ui.ctx().animate_bool_with_time(anim_id, is_selected, 0.15);
 
                 let card_frame = if is_selected {
                     egui::Frame::NONE
@@ -790,11 +774,13 @@ pub fn render_aircraft_list_pane_content(
                 let card_response = card_frame.show(ui, |ui| {
                     ui.spacing_mut().item_spacing.y = 2.0;
 
-                    // Row 1: Status + ICAO + Callsign + Altitude + Follow button
+                    // Row 1: Chevron + Status + ICAO + Callsign + Altitude + Follow button
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("\u{25CF}")
-                            .color(status_active)
-                            .size(13.0));
+                        // Collapse/expand chevron
+                        let chevron = if is_selected { "\u{25BE}" } else { "\u{25B8}" };
+                        ui.label(egui::RichText::new(chevron)
+                            .color(egui::Color32::from_rgb(120, 120, 120))
+                            .size(11.0));
 
                         ui.label(egui::RichText::new(&aircraft.icao)
                             .color(icao_color)
@@ -900,11 +886,28 @@ pub fn render_aircraft_list_pane_content(
                             }
                         });
                     });
+
+                    // Inline expanded detail section (animated)
+                    if expand_t > 0.0 {
+                        render_inline_detail(
+                            ui,
+                            &aircraft.icao,
+                            expand_t,
+                            follow_state,
+                            app_config,
+                            clock,
+                            aircraft_query,
+                        );
+                    }
                 });
 
-                // Handle click to select
+                // Handle click to select/deselect (toggle)
                 if card_response.response.interact(egui::Sense::click()).clicked() {
-                    list_state.selected_icao = Some(aircraft.icao.clone());
+                    if is_selected {
+                        list_state.selected_icao = None;
+                    } else {
+                        list_state.selected_icao = Some(aircraft.icao.clone());
+                    }
                 }
 
                 // Subtle separator line between items
@@ -921,7 +924,148 @@ pub fn render_aircraft_list_pane_content(
         });
 }
 
+/// Render inline detail content within an expanded aircraft card.
+///
+/// `expand_t` is 0.0..1.0 animation progress; content is height-clipped accordingly.
+fn render_inline_detail(
+    ui: &mut egui::Ui,
+    selected_icao: &str,
+    expand_t: f32,
+    follow_state: &mut CameraFollowState,
+    app_config: &crate::config::AppConfig,
+    clock: &SessionClock,
+    aircraft_query: &Query<(&crate::Aircraft, &TrailHistory, Option<&AircraftTypeInfo>)>,
+) {
+    let label_color = egui::Color32::from_rgb(150, 150, 150);
+    let value_color = egui::Color32::from_rgb(220, 220, 220);
+    let highlight_color = egui::Color32::from_rgb(100, 200, 255);
+
+    let Some((aircraft, trail, type_info)) = aircraft_query.iter().find(|(a, _, _)| a.icao == selected_icao) else {
+        return;
+    };
+
+    let distance_nm = haversine_distance_nm(
+        app_config.map.default_latitude,
+        app_config.map.default_longitude,
+        aircraft.latitude,
+        aircraft.longitude,
+    );
+
+    let oldest_point_age = trail.points.front().map(|p| clock.age_secs(p.timestamp) as u64);
+
+    // Measure the full detail content height, then clip to expand_t fraction
+    let detail_id = ui.id().with(selected_icao).with("detail_content");
+    let full_height = ui.ctx().memory(|mem| {
+        mem.data.get_temp::<f32>(detail_id).unwrap_or(150.0)
+    });
+    let visible_height = full_height * expand_t;
+
+    ui.add_space(4.0);
+    ui.separator();
+    ui.add_space(2.0);
+
+    // Clip the detail content to the animated height
+    let response = ui.allocate_ui_with_layout(
+        egui::vec2(ui.available_width(), visible_height),
+        egui::Layout::top_down(egui::Align::LEFT),
+        |ui| {
+            ui.set_clip_rect(ui.max_rect());
+
+            // Position row (full width, 2-column)
+            egui::Grid::new(ui.id().with("inline_pos_grid"))
+                .num_columns(2)
+                .spacing([8.0, 2.0])
+                .show(ui, |ui| {
+                    ui.label(egui::RichText::new("Pos").color(label_color).size(10.0));
+                    ui.label(
+                        egui::RichText::new(format!("{:.4}, {:.4}", aircraft.latitude, aircraft.longitude))
+                            .color(value_color).size(10.0).monospace(),
+                    );
+                    ui.end_row();
+                });
+
+            ui.add_space(2.0);
+
+            // Remaining detail fields in a 5-column grid (label, value, spacer, label, value)
+            egui::Grid::new(ui.id().with("inline_detail_grid"))
+                .num_columns(5)
+                .spacing([6.0, 3.0])
+                .show(ui, |ui| {
+                    // Collect detail pairs to arrange two per row
+                    let mut pairs: Vec<(&str, String, egui::Color32)> = Vec::new();
+
+                    pairs.push(("Dist", format!("{:.1}nm", distance_nm), highlight_color));
+
+                    if let Some(ti) = type_info {
+                        if let Some(ref reg) = ti.registration {
+                            pairs.push(("Reg", reg.clone(), value_color));
+                        }
+                        if let Some(ref tc) = ti.type_code {
+                            pairs.push(("Type", tc.clone(), value_color));
+                        }
+                        if let Some(ref op) = ti.operator {
+                            pairs.push(("Oper", op.clone(), value_color));
+                        }
+                    }
+
+                    pairs.push(("Trk", format!("{}", trail.points.len()), value_color));
+
+                    let dur_text = oldest_point_age
+                        .map(|secs| format!("{}:{:02}", secs / 60, secs % 60))
+                        .unwrap_or_else(|| "---".to_string());
+                    pairs.push(("Dur", dur_text, value_color));
+
+                    // Render pairs two per row with a spacer column between them
+                    for chunk in pairs.chunks(2) {
+                        ui.label(egui::RichText::new(chunk[0].0).color(label_color).size(10.0));
+                        ui.label(egui::RichText::new(&chunk[0].1).color(chunk[0].2).size(10.0).monospace());
+                        if let Some(pair) = chunk.get(1) {
+                            ui.add_space(14.0); // gap between left and right pair
+                            ui.label(egui::RichText::new(pair.0).color(label_color).size(10.0));
+                            ui.label(egui::RichText::new(&pair.1).color(pair.2).size(10.0).monospace());
+                        }
+                        ui.end_row();
+                    }
+                });
+
+            ui.add_space(2.0);
+
+            // Follow/Unfollow button in expanded section
+            ui.horizontal(|ui| {
+                let is_following = follow_state.following_icao.as_deref() == Some(selected_icao);
+                let follow_text = if is_following { "Unfollow" } else { "Follow" };
+                let follow_color = if is_following {
+                    egui::Color32::from_rgb(255, 100, 100)
+                } else {
+                    egui::Color32::from_rgb(100, 180, 255)
+                };
+                if ui.add(egui::Button::new(
+                    egui::RichText::new(follow_text)
+                        .color(follow_color)
+                        .size(10.0)
+                ).small()).clicked() {
+                    if is_following {
+                        follow_state.following_icao = None;
+                    } else {
+                        follow_state.following_icao = Some(selected_icao.to_string());
+                    }
+                }
+            });
+        },
+    );
+
+    // Store the actual content height for next frame's animation
+    let actual_height = response.response.rect.height().max(10.0);
+    if expand_t >= 1.0 {
+        ui.ctx().memory_mut(|mem| {
+            mem.data.insert_temp(detail_id, actual_height);
+        });
+    }
+}
+
 /// Render the aircraft detail section inside the stacked right panel.
+/// (Kept for reference; no longer called from the main panel flow.)
+#[allow(dead_code)]
 fn render_detail_section(
     ui: &mut egui::Ui,
     selected_icao: &str,

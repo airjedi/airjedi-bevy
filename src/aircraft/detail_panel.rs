@@ -69,24 +69,24 @@ pub fn toggle_detail_panel(
     }
 }
 
-/// System to open detail panel when aircraft is selected
+/// System to open detail panel when aircraft is selected.
+///
+/// The bottom detail panel has been replaced by inline expandable cards in the
+/// list panel, so this no longer auto-opens the detail pane or forces the list
+/// to expand.  It only keeps the track-start timestamp in sync.
 pub fn open_detail_on_selection(
-    mut list_state: ResMut<AircraftListState>,
+    list_state: Res<AircraftListState>,
     mut detail_state: ResMut<DetailPanelState>,
 ) {
-    // Only trigger on change
     if !list_state.is_changed() {
         return;
     }
 
     if list_state.selected_icao.is_some() {
-        detail_state.open = true;
-        list_state.expanded = true;
         if detail_state.track_start.is_none() {
             detail_state.track_start = Some(Instant::now());
         }
     } else {
-        detail_state.open = false;
         detail_state.track_start = None;
     }
 }
