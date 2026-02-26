@@ -115,16 +115,18 @@ fn raw_altitude_to_zoom(altitude_ft: f32) -> f32 {
 }
 
 /// Compute the adaptive zoom level with hysteresis to prevent flashing.
-/// Only changes zoom when the raw value has moved 0.4 levels past the
-/// current level boundary, preventing rapid oscillation during orbiting.
+/// Only changes zoom when the raw value has moved past the boundary by
+/// the hysteresis amount, preventing rapid oscillation at zoom boundaries.
+/// Uses asymmetric hysteresis: 0.7 to upgrade (biased toward staying at
+/// lower zoom), 0.6 to downgrade, preventing the rapid 14↔15 oscillation
+/// seen at altitude boundaries.
 pub(crate) fn altitude_to_zoom_level(altitude_ft: f32, current_zoom: u8) -> u8 {
     let raw = raw_altitude_to_zoom(altitude_ft);
     let current = current_zoom as f32;
 
-    // Only change if we've moved more than 0.4 past the boundary
-    if raw > current + 0.4 {
+    if raw > current + 0.7 {
         (current as u8 + 1).min(18)
-    } else if raw < current - 0.4 {
+    } else if raw < current - 0.6 {
         (current as u8).saturating_sub(1).max(8)
     } else {
         current_zoom
@@ -308,11 +310,14 @@ fn handle_3d_view_tile_refresh(
 /// of where the user is looking. Band radii adapt to pitch: low pitch (looking
 /// toward horizon) favours far tiles; high pitch (looking down) favours near tiles.
 fn request_3d_tiles_continuous(
+    mut commands: Commands,
     mut timer: ResMut<Tile3DRefreshTimer>,
     time: Res<Time>,
     view3d_state: Res<view3d::View3DState>,
     mut map_state: ResMut<MapState>,
     mut download_events: MessageWriter<DownloadSlippyTilesMessage>,
+    mut spawned_tiles: ResMut<SpawnedTiles>,
+    tile_query: Query<(Entity, &TileFadeState), With<MapTile>>,
 ) {
     if !view3d_state.is_3d_active() {
         return;
@@ -325,11 +330,30 @@ fn request_3d_tiles_continuous(
 
     // Compute zoom level from camera altitude so that flying close to the
     // ground automatically loads higher-detail tiles.
-    let adaptive_zoom = altitude_to_zoom_level(view3d_state.camera_altitude, map_state.zoom_level.to_u8());
+    let old_zoom = map_state.zoom_level.to_u8();
+    let adaptive_zoom = altitude_to_zoom_level(view3d_state.camera_altitude, old_zoom);
     if let Ok(new_zoom) = ZoomLevel::try_from(adaptive_zoom) {
         if map_state.zoom_level != new_zoom {
             debug!("3D adaptive zoom: altitude {:.0} ft -> zoom {}", view3d_state.camera_altitude, adaptive_zoom);
             map_state.zoom_level = new_zoom;
+
+            // When zoom level changes, despawn tiles that are now outside
+            // the new multi-resolution band [new_zoom-4, new_zoom].
+            // Don't clear spawned_tiles — existing in-band tiles should
+            // remain to prevent flashing gaps during transitions.
+            let new_z = new_zoom.to_u8();
+            let min_band = new_z.saturating_sub(4);
+            spawned_tiles.positions.retain(|&(_, _, z)| z >= min_band && z <= new_z);
+            let mut despawned = 0u32;
+            for (entity, fade_state) in tile_query.iter() {
+                if fade_state.tile_zoom > new_z || fade_state.tile_zoom < min_band {
+                    commands.entity(entity).despawn();
+                    despawned += 1;
+                }
+            }
+            if despawned > 0 {
+                debug!("Zoom changed {}->{}: despawned {} out-of-band tiles", old_zoom, new_z, despawned);
+            }
         }
     }
 
@@ -547,15 +571,18 @@ fn display_tiles_filtered(
 }
 
 /// Maximum number of tile entities allowed at any time.
-/// In 3D mode, scales with camera altitude since higher = wider view = more tiles.
+/// In 3D mode the multi-resolution band system (5 zoom levels with
+/// directional requests) can generate 800-1200 tiles at steady state.
+/// The budget must exceed this to prevent a spawn-cull-respawn cycle
+/// where culled tiles are re-requested every 300ms, causing flashing
+/// as they respawn at alpha 0 and fade back in.
 fn max_tile_entities(view3d_state: Option<&view3d::View3DState>) -> usize {
     if let Some(state) = view3d_state {
         if state.is_3d_active() {
-            let alt_factor = (state.camera_altitude / 60000.0).clamp(0.0, 1.0);
-            return 300 + (500.0 * alt_factor) as usize; // 300-800 range
+            return 1500;
         }
     }
-    400 // Original 2D limit
+    400 // 2D limit
 }
 
 /// Despawn tile entities that are far outside the visible viewport.
@@ -698,18 +725,23 @@ fn animate_tile_fades(
 
     for (entity, mut fade_state, mut sprite, transform) in tile_query.iter_mut() {
         let dominated = if is_3d {
-            // In 3D mode, never treat tiles as "old" based on zoom level.
-            // Tile count culling (above) handles cleanup. This prevents
-            // flashing when adaptive zoom changes the current zoom level.
-            false
+            // In 3D mode, tiles within the multi-resolution band
+            // (current_zoom to current_zoom - 4) are intentional. Tiles
+            // outside this band are stale from a previous zoom level.
+            fade_state.tile_zoom > current_zoom
+                || current_zoom.saturating_sub(fade_state.tile_zoom) > 4
         } else {
             fade_state.tile_zoom != current_zoom
         };
 
         if !dominated {
-            // Current / active tile: fade in
+            // Current / active tile: fade in.
+            // In 3D mode, use fast fade (appear in ~2 frames) to minimize
+            // gaps during zoom transitions while still giving textures a
+            // frame to load (prevents Bevy's default magenta showing).
             if fade_state.alpha < 1.0 {
-                fade_state.alpha += constants::TILE_FADE_SPEED * delta;
+                let speed = if is_3d { 30.0 } else { constants::TILE_FADE_SPEED };
+                fade_state.alpha += speed * delta;
                 fade_state.alpha = fade_state.alpha.min(1.0);
                 sprite.color = Color::srgba(1.0, 1.0, 1.0, fade_state.alpha);
             }
@@ -760,20 +792,24 @@ fn setup_tile_quad_mesh(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>
 fn sync_tile_mesh_quads(
     mut commands: Commands,
     view3d_state: Res<view3d::View3DState>,
+    map_state: Res<MapState>,
     quad_mesh: Option<Res<TileQuadMesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     tiles_without_quad: Query<(Entity, &Sprite, &Transform, &TileFadeState), (With<MapTile>, Without<TileMeshQuad>)>,
-    tiles_with_quad: Query<(Entity, &TileMeshQuad), With<MapTile>>,
+    tiles_with_quad: Query<(Entity, &TileMeshQuad, &TileFadeState), With<MapTile>>,
     all_quad_entities: Query<Entity, With<TileQuad3d>>,
 ) {
     let Some(quad_mesh) = quad_mesh else { return };
 
     if view3d_state.is_3d_active() {
-        // Spawn mesh companions for tiles that don't have one yet
+        let current_zoom = map_state.zoom_level.to_u8();
+
+        // Only create mesh quads for current-zoom tiles.
         for (tile_entity, sprite, transform, fade_state) in tiles_without_quad.iter() {
-            // Always use Opaque so the mesh writes depth. Without depth writes,
-            // the atmosphere post-process treats these pixels as sky and
-            // overwrites them (same issue as aircraft GLB models).
+            if fade_state.tile_zoom != current_zoom {
+                continue;
+            }
+
             let material = materials.add(StandardMaterial {
                 base_color_texture: Some(sprite.image.clone()),
                 base_color: Color::WHITE,
@@ -796,9 +832,17 @@ fn sync_tile_mesh_quads(
                 entity.insert(TileMeshQuad(mesh_entity));
             });
         }
+
+        // Despawn mesh quads for tiles that are no longer at current zoom
+        for (tile_entity, quad, fade_state) in tiles_with_quad.iter() {
+            if fade_state.tile_zoom != current_zoom {
+                commands.entity(quad.0).despawn();
+                commands.entity(tile_entity).remove::<TileMeshQuad>();
+            }
+        }
     } else {
         // 2D mode: remove TileMeshQuad component from tiles
-        for (tile_entity, _) in tiles_with_quad.iter() {
+        for (tile_entity, _, _) in tiles_with_quad.iter() {
             commands.entity(tile_entity).remove::<TileMeshQuad>();
         }
         // Despawn all companion mesh entities (referenced + orphans)
