@@ -3,6 +3,23 @@ use bevy_egui::{egui, EguiContexts};
 use catppuccin::FlavorName;
 use egui_aesthetix::Aesthetix;
 
+/// Returns the egui FontFamily used for Phosphor icon glyphs.
+pub fn icon_font_family() -> egui::FontFamily {
+    egui::FontFamily::Name("phosphor_icons".into())
+}
+
+/// Returns a FontId for rendering Phosphor icons at the given size.
+/// Falls back to Proportional if the icon font isn't loaded yet.
+pub fn icon_font_id(size: f32, ctx: &egui::Context) -> egui::FontId {
+    let family = icon_font_family();
+    let available = ctx.fonts(|f| f.families().iter().any(|f2| f2 == &family));
+    if available {
+        egui::FontId::new(size, family)
+    } else {
+        egui::FontId::new(size, egui::FontFamily::Proportional)
+    }
+}
+
 // ── Conversion helpers ──────────────────────────────────────────────
 
 /// Convert an `egui::Color32` to a `bevy::color::Color`.
@@ -386,7 +403,18 @@ pub fn apply_egui_theme(
         fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap()
             .insert(0, "Inter".to_owned());
 
-        egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
+        // Load Phosphor icon font into a dedicated family so it doesn't
+        // conflict with Inter's PUA mappings. Use icon_font_family()
+        // when rendering icon text.
+        fonts.font_data.insert(
+            "phosphor".to_owned(),
+            egui_phosphor::Variant::Regular.font_data().into(),
+        );
+        fonts.families.insert(
+            icon_font_family(),
+            vec!["phosphor".to_owned(), "Inter".to_owned()],
+        );
+
         ctx.set_fonts(fonts);
         *fonts_loaded = true;
     }

@@ -991,7 +991,6 @@ fn render_inline_detail(
                 .num_columns(5)
                 .spacing([6.0, 3.0])
                 .show(ui, |ui| {
-                    // Collect detail pairs to arrange two per row
                     let mut pairs: Vec<(&str, String, egui::Color32)> = Vec::new();
 
                     pairs.push(("Dist", format!("{:.1}nm", distance_nm), highlight_color));
@@ -1015,12 +1014,11 @@ fn render_inline_detail(
                         .unwrap_or_else(|| "---".to_string());
                     pairs.push(("Dur", dur_text, value_color));
 
-                    // Render pairs two per row with a spacer column between them
                     for chunk in pairs.chunks(2) {
                         ui.label(egui::RichText::new(chunk[0].0).color(label_color).size(10.0));
                         ui.label(egui::RichText::new(&chunk[0].1).color(chunk[0].2).size(10.0).monospace());
                         if let Some(pair) = chunk.get(1) {
-                            ui.add_space(14.0); // gap between left and right pair
+                            ui.add_sized([14.0, 0.0], egui::Label::new("")); // gap between left and right pair
                             ui.label(egui::RichText::new(pair.0).color(label_color).size(10.0));
                             ui.label(egui::RichText::new(&pair.1).color(pair.2).size(10.0).monospace());
                         }

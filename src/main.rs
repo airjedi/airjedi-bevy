@@ -205,7 +205,7 @@ fn main() {
         .add_systems(Startup, (setup_debug_logger, setup_map, configure_gizmo_layers))
         .add_systems(bevy_egui::EguiPrimaryContextPass, (
             theme::apply_egui_theme,
-            toolbar::render_toolbar,
+            toolbar::render_toolbar.after(theme::apply_egui_theme),
             statusbar::render_statusbar.after(toolbar::render_toolbar),
             dock::render_dock_tree.after(statusbar::render_statusbar),
         ))
