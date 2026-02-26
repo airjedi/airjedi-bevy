@@ -72,7 +72,7 @@ fn calculate_zoom_to_cursor_center(
             latitude: current_center.0,
             longitude: current_center.1,
         },
-        TileSize::Normal,
+        crate::constants::DEFAULT_TILE_SIZE,
         old_tile_zoom,
     );
 
@@ -80,7 +80,7 @@ fn calculate_zoom_to_cursor_center(
     let cursor_geo = world_pixel_to_world_coords(
         center_pixel.0 + world_offset_before.0,
         center_pixel.1 + world_offset_before.1,
-        TileSize::Normal,
+        crate::constants::DEFAULT_TILE_SIZE,
         old_tile_zoom,
     );
 
@@ -96,7 +96,7 @@ fn calculate_zoom_to_cursor_center(
             latitude: cursor_geo.latitude,
             longitude: cursor_geo.longitude,
         },
-        TileSize::Normal,
+        crate::constants::DEFAULT_TILE_SIZE,
         new_tile_zoom,
     );
 
@@ -104,7 +104,7 @@ fn calculate_zoom_to_cursor_center(
     let new_center = world_pixel_to_world_coords(
         cursor_pixel_after.0 - world_offset_after.0,
         cursor_pixel_after.1 - world_offset_after.1,
-        TileSize::Normal,
+        crate::constants::DEFAULT_TILE_SIZE,
         new_tile_zoom,
     );
 
