@@ -107,15 +107,28 @@ impl Plugin for TilesPlugin {
 /// Uses a logarithmic mapping since each zoom level doubles resolution.
 /// Higher altitudes use lower zoom levels (wider view), lower altitudes
 /// use higher zoom levels (more detail).
-pub(crate) fn altitude_to_zoom_level(altitude_ft: f32) -> u8 {
-    // Logarithmic mapping: zoom = base - log2(altitude / reference)
-    // Tuned so that ~5,000 ft → zoom 16, ~120,000 ft → zoom 9
+fn raw_altitude_to_zoom(altitude_ft: f32) -> f32 {
     let reference_alt = 5000.0_f32;
     let reference_zoom = 16.0_f32;
-
     let ratio = (altitude_ft / reference_alt).max(1.0);
-    let zoom = reference_zoom - ratio.log2() * 1.5;
-    (zoom.round() as u8).clamp(8, 18)
+    (reference_zoom - ratio.log2() * 1.5).clamp(8.0, 18.0)
+}
+
+/// Compute the adaptive zoom level with hysteresis to prevent flashing.
+/// Only changes zoom when the raw value has moved 0.4 levels past the
+/// current level boundary, preventing rapid oscillation during orbiting.
+pub(crate) fn altitude_to_zoom_level(altitude_ft: f32, current_zoom: u8) -> u8 {
+    let raw = raw_altitude_to_zoom(altitude_ft);
+    let current = current_zoom as f32;
+
+    // Only change if we've moved more than 0.4 past the boundary
+    if raw > current + 0.4 {
+        (current as u8 + 1).min(18)
+    } else if raw < current - 0.4 {
+        (current as u8).saturating_sub(1).max(8)
+    } else {
+        current_zoom
+    }
 }
 
 // =============================================================================
@@ -312,7 +325,7 @@ fn request_3d_tiles_continuous(
 
     // Compute zoom level from camera altitude so that flying close to the
     // ground automatically loads higher-detail tiles.
-    let adaptive_zoom = altitude_to_zoom_level(view3d_state.camera_altitude);
+    let adaptive_zoom = altitude_to_zoom_level(view3d_state.camera_altitude, map_state.zoom_level.to_u8());
     if let Ok(new_zoom) = ZoomLevel::try_from(adaptive_zoom) {
         if map_state.zoom_level != new_zoom {
             debug!("3D adaptive zoom: altitude {:.0} ft -> zoom {}", view3d_state.camera_altitude, adaptive_zoom);
@@ -685,8 +698,10 @@ fn animate_tile_fades(
 
     for (entity, mut fade_state, mut sprite, transform) in tile_query.iter_mut() {
         let dominated = if is_3d {
-            // In 3D mode, only tiles outside the multi-resolution band are "old"
-            fade_state.tile_zoom > current_zoom || current_zoom - fade_state.tile_zoom > 4
+            // In 3D mode, never treat tiles as "old" based on zoom level.
+            // Tile count culling (above) handles cleanup. This prevents
+            // flashing when adaptive zoom changes the current zoom level.
+            false
         } else {
             fade_state.tile_zoom != current_zoom
         };
