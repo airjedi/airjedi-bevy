@@ -23,8 +23,18 @@ pub fn draw_trails(
         return;
     }
 
-    let converter = CoordinateConverter::new(&tile_settings, map_state.zoom_level);
     let is_3d = view3d_state.is_3d_active();
+
+    // When hanabi feature is enabled, particle trails handle 3D rendering.
+    // Gizmo trails only draw in 2D mode.
+    #[cfg(feature = "hanabi")]
+    {
+        if is_3d {
+            return;
+        }
+    }
+
+    let converter = CoordinateConverter::new(&tile_settings, map_state.zoom_level);
 
     for (trail, aircraft) in trail_query.iter() {
         let stale_opacity = staleness_opacity(aircraft_age_secs(aircraft));
