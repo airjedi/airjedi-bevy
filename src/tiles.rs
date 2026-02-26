@@ -160,7 +160,7 @@ pub(crate) fn request_tiles_at_location(
     use_cache: bool,
 ) {
     download_events.write(DownloadSlippyTilesMessage {
-        tile_size: TileSize::Normal,
+        tile_size: constants::DEFAULT_TILE_SIZE,
         zoom_level,
         coordinates: Coordinates::from_latitude_longitude(latitude, longitude),
         radius: Radius(constants::TILE_DOWNLOAD_RADIUS),
@@ -204,7 +204,7 @@ fn handle_window_resize(
             Some(&view3d_state),
         );
         download_events.write(DownloadSlippyTilesMessage {
-            tile_size: TileSize::Normal,
+            tile_size: constants::DEFAULT_TILE_SIZE,
             zoom_level: map_state.zoom_level,
             coordinates: Coordinates::from_latitude_longitude(map_state.latitude, map_state.longitude),
             radius: Radius(radius),
@@ -246,7 +246,7 @@ fn handle_3d_view_tile_refresh(
         Some(&view3d_state),
     );
     download_events.write(DownloadSlippyTilesMessage {
-        tile_size: TileSize::Normal,
+        tile_size: constants::DEFAULT_TILE_SIZE,
         zoom_level: map_state.zoom_level,
         coordinates: Coordinates::from_latitude_longitude(map_state.latitude, map_state.longitude),
         radius: Radius(radius),
@@ -739,7 +739,9 @@ fn sync_tile_mesh_quads(
                 Pickable::IGNORE,
             )).id();
 
-            commands.entity(tile_entity).insert(TileMeshQuad(mesh_entity));
+            commands.entity(tile_entity).queue_silenced(move |mut entity: EntityWorldMut| {
+                entity.insert(TileMeshQuad(mesh_entity));
+            });
         }
     } else {
         // 2D mode: remove TileMeshQuad component from tiles
