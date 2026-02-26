@@ -16,6 +16,8 @@ use super::emergency::{detect_emergencies, draw_emergency_rings, update_emergenc
 use super::prediction::draw_predictions;
 use super::typeloader::{start_aircraft_type_loading, poll_aircraft_type_loading, attach_aircraft_type_info};
 use super::picking::{setup_outline_materials, manage_selection_outline, swap_outline_materials, deselect_on_escape, clear_stale_selection, follow_aircraft_3d, pick_aircraft_3d};
+#[cfg(feature = "hanabi")]
+use super::hanabi_plugin::HanabiEffectsPlugin;
 
 pub struct AircraftPlugin;
 
@@ -55,11 +57,15 @@ impl Plugin for AircraftPlugin {
             .add_systems(Update, (poll_aircraft_type_loading, attach_aircraft_type_info))
             .add_systems(Update, (
                 manage_selection_outline,
+                #[cfg(not(feature = "hanabi"))]
                 swap_outline_materials.after(manage_selection_outline),
                 deselect_on_escape,
                 clear_stale_selection,
                 follow_aircraft_3d,
                 pick_aircraft_3d,
             ));
+
+        #[cfg(feature = "hanabi")]
+        app.add_plugins(HanabiEffectsPlugin);
     }
 }
