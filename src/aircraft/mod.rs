@@ -16,6 +16,8 @@ pub mod plugin;
 pub mod hanabi_plugin;
 #[cfg(feature = "hanabi")]
 pub mod hanabi_selection;
+#[cfg(feature = "hanabi")]
+pub mod hanabi_trails;
 
 pub use components::{Aircraft, AircraftLabel};
 pub use trails::{TrailHistory, TrailConfig, SessionClock, TrailRecordTimer};
