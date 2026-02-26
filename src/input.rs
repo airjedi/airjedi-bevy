@@ -142,7 +142,7 @@ pub(crate) fn handle_pan_drag(
                 };
                 let center_pixel = world_coords_to_world_pixel(
                     &center_ll,
-                    TileSize::Normal,
+                    crate::constants::DEFAULT_TILE_SIZE,
                     map_state.zoom_level
                 );
 
@@ -154,7 +154,7 @@ pub(crate) fn handle_pan_drag(
                 let new_center_geo = world_pixel_to_world_coords(
                     new_center_x,
                     new_center_y,
-                    TileSize::Normal,
+                    crate::constants::DEFAULT_TILE_SIZE,
                     map_state.zoom_level
                 );
 
@@ -180,7 +180,7 @@ pub(crate) fn handle_pan_drag(
                         Some(&view3d_state),
                     );
                     download_events.write(DownloadSlippyTilesMessage {
-                        tile_size: TileSize::Normal,
+                        tile_size: crate::constants::DEFAULT_TILE_SIZE,
                         zoom_level: map_state.zoom_level,
                         coordinates: Coordinates::from_latitude_longitude(
                             map_state.latitude,

@@ -30,7 +30,7 @@ pub(crate) struct TileMeshQuad(pub Entity);
 #[derive(Component)]
 struct TileQuad3d;
 
-/// Shared mesh handle for all 3D tile quads (256x256 world-unit plane).
+/// Shared mesh handle for all 3D tile quads (sized to match DEFAULT_TILE_PIXELS).
 #[derive(Resource)]
 pub(crate) struct TileQuadMesh(pub Handle<Mesh>);
 
@@ -100,6 +100,25 @@ impl Plugin for TilesPlugin {
 }
 
 // =============================================================================
+// Altitude-Adaptive Zoom
+// =============================================================================
+
+/// Map camera altitude (feet) to an appropriate tile zoom level for 3D mode.
+/// Uses a logarithmic mapping since each zoom level doubles resolution.
+/// Higher altitudes use lower zoom levels (wider view), lower altitudes
+/// use higher zoom levels (more detail).
+pub(crate) fn altitude_to_zoom_level(altitude_ft: f32) -> u8 {
+    // Logarithmic mapping: zoom = base - log2(altitude / reference)
+    // Tuned so that ~5,000 ft → zoom 16, ~120,000 ft → zoom 9
+    let reference_alt = 5000.0_f32;
+    let reference_zoom = 16.0_f32;
+
+    let ratio = (altitude_ft / reference_alt).max(1.0);
+    let zoom = reference_zoom - ratio.log2() * 1.5;
+    (zoom.round() as u8).clamp(8, 18)
+}
+
+// =============================================================================
 // Tile Helpers
 // =============================================================================
 
@@ -139,13 +158,14 @@ pub(crate) fn compute_tile_radius(
 
             // Use whichever axis demands more tiles
             let max_ground_extent = far_ground_dist.max(half_width);
-            let tiles_needed = (max_ground_extent / 256.0).ceil() as u8;
+            let tile_world_size = constants::DEFAULT_TILE_PIXELS;
+            let tiles_needed = (max_ground_extent / tile_world_size).ceil() as u8;
             return tiles_needed.clamp(3, 12);
         }
     }
 
     // 2D orthographic mode
-    let tile_screen_px = 256.0 * camera_zoom;
+    let tile_screen_px = constants::DEFAULT_TILE_PIXELS * camera_zoom;
     let half_tiles_x = (window_width / (2.0 * tile_screen_px)).ceil() as u8;
     let half_tiles_y = (window_height / (2.0 * tile_screen_px)).ceil() as u8;
     half_tiles_x.max(half_tiles_y).clamp(3, 8)
@@ -219,7 +239,7 @@ fn handle_window_resize(
 fn handle_3d_view_tile_refresh(
     view3d_state: Res<view3d::View3DState>,
     mut download_events: MessageWriter<DownloadSlippyTilesMessage>,
-    map_state: Res<MapState>,
+    mut map_state: ResMut<MapState>,
     zoom_state: Res<ZoomState>,
     window_query: Query<&Window>,
     mut spawned_tiles: ResMut<SpawnedTiles>,
@@ -228,12 +248,20 @@ fn handle_3d_view_tile_refresh(
         return;
     }
 
-    // When we've just returned to 2D mode, clear the spawned tiles tracker.
+    // When we've just returned to 2D mode, clear the spawned tiles tracker
+    // and restore the saved 2D zoom level.
     // 3D mode uses multi-resolution tiles at different zoom levels and scales;
     // without clearing, the dedup check in display_tiles_filtered would skip
     // re-spawning tiles at the current zoom level, leaving a blank map.
     if matches!(view3d_state.mode, view3d::ViewMode::Map2D) && !view3d_state.is_transitioning() {
         spawned_tiles.positions.clear();
+        // Restore the 2D zoom level that was saved when entering 3D mode
+        if let Some(saved_zoom) = view3d_state.saved_2d_zoom_level {
+            if let Ok(zoom) = ZoomLevel::try_from(saved_zoom) {
+                map_state.zoom_level = zoom;
+                debug!("Restored 2D zoom level: {}", saved_zoom);
+            }
+        }
     }
 
     let Ok(window) = window_query.single() else {
@@ -270,7 +298,7 @@ fn request_3d_tiles_continuous(
     mut timer: ResMut<Tile3DRefreshTimer>,
     time: Res<Time>,
     view3d_state: Res<view3d::View3DState>,
-    map_state: Res<MapState>,
+    mut map_state: ResMut<MapState>,
     mut download_events: MessageWriter<DownloadSlippyTilesMessage>,
 ) {
     if !view3d_state.is_3d_active() {
@@ -280,6 +308,16 @@ fn request_3d_tiles_continuous(
     timer.0.tick(time.delta());
     if !timer.0.just_finished() {
         return;
+    }
+
+    // Compute zoom level from camera altitude so that flying close to the
+    // ground automatically loads higher-detail tiles.
+    let adaptive_zoom = altitude_to_zoom_level(view3d_state.camera_altitude);
+    if let Ok(new_zoom) = ZoomLevel::try_from(adaptive_zoom) {
+        if map_state.zoom_level != new_zoom {
+            debug!("3D adaptive zoom: altitude {:.0} ft -> zoom {}", view3d_state.camera_altitude, adaptive_zoom);
+            map_state.zoom_level = new_zoom;
+        }
     }
 
     let base_zoom = map_state.zoom_level.to_u8();
@@ -298,7 +336,7 @@ fn request_3d_tiles_continuous(
 
     // --- Near band: current zoom level, centered on map position ---
     download_events.write(DownloadSlippyTilesMessage {
-        tile_size: TileSize::Normal,
+        tile_size: constants::DEFAULT_TILE_SIZE,
         zoom_level: map_state.zoom_level,
         coordinates: Coordinates::from_latitude_longitude(lat, lon),
         radius: Radius(near_radius),
@@ -323,7 +361,7 @@ fn request_3d_tiles_continuous(
         let offset_lon = fwd * deg_per_tile_lon * yaw_rad.sin() as f64
             + side * deg_per_tile_lon * yaw_rad.cos() as f64;
         download_events.write(DownloadSlippyTilesMessage {
-            tile_size: TileSize::Normal,
+            tile_size: constants::DEFAULT_TILE_SIZE,
             zoom_level: zoom,
             coordinates: Coordinates::from_latitude_longitude(
                 clamp_latitude(lat + offset_lat),
@@ -663,16 +701,16 @@ fn animate_tile_fades(
             // Track fully-opaque tiles by grid cell
             if fade_state.alpha >= 1.0 {
                 let cell = (
-                    (transform.translation.x / 256.0).round() as i32,
-                    (transform.translation.y / 256.0).round() as i32,
+                    (transform.translation.x / constants::DEFAULT_TILE_PIXELS).round() as i32,
+                    (transform.translation.y / constants::DEFAULT_TILE_PIXELS).round() as i32,
                 );
                 loaded_cells.insert(cell);
             }
         } else {
             // Old-zoom tile: record for coverage check
             let cell = (
-                (transform.translation.x / 256.0).round() as i32,
-                (transform.translation.y / 256.0).round() as i32,
+                (transform.translation.x / constants::DEFAULT_TILE_PIXELS).round() as i32,
+                (transform.translation.y / constants::DEFAULT_TILE_PIXELS).round() as i32,
             );
             old_tiles.push((entity, cell.0, cell.1, fade_state.tile_zoom));
         }
@@ -682,8 +720,8 @@ fn animate_tile_fades(
     // Remove from spawned_tiles so the position can be re-used.
     for (entity, cx, cy, zoom) in old_tiles {
         if loaded_cells.contains(&(cx, cy)) {
-            let tx = (cx as f32 * 256.0) as i32;
-            let ty = (cy as f32 * 256.0) as i32;
+            let tx = (cx as f32 * constants::DEFAULT_TILE_PIXELS) as i32;
+            let ty = (cy as f32 * constants::DEFAULT_TILE_PIXELS) as i32;
             spawned_tiles.positions.remove(&(tx, ty, zoom));
             commands.entity(entity).despawn();
         }
@@ -696,7 +734,7 @@ fn animate_tile_fades(
 
 /// Create the shared mesh used by all tile 3D quads.
 fn setup_tile_quad_mesh(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
-    let mesh = meshes.add(Plane3d::new(Vec3::Y, Vec2::splat(128.0)));
+    let mesh = meshes.add(Plane3d::new(Vec3::Y, Vec2::splat(constants::DEFAULT_TILE_PIXELS / 2.0)));
     commands.insert_resource(TileQuadMesh(mesh));
 }
 

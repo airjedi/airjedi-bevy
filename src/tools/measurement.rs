@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
-use bevy_slippy_tiles::{LatitudeLongitudeCoordinates, TileSize, world_coords_to_world_pixel, world_pixel_to_world_coords};
+use bevy_slippy_tiles::{LatitudeLongitudeCoordinates, world_coords_to_world_pixel, world_pixel_to_world_coords};
 
 use crate::{MapState, ZoomState};
 use crate::geo::{haversine_distance_nm, initial_bearing, NM_TO_KM};
@@ -151,7 +151,7 @@ pub fn handle_measurement_clicks(
         latitude: map_state.latitude,
         longitude: map_state.longitude,
     };
-    let (cx, cy) = world_coords_to_world_pixel(&center_coords, TileSize::Normal, map_state.zoom_level);
+    let (cx, cy) = world_coords_to_world_pixel(&center_coords, crate::constants::DEFAULT_TILE_SIZE, map_state.zoom_level);
 
     // Calculate offset from center in world pixels
     let offset_x = world_pos.x as f64 / zoom_state.camera_zoom as f64;
@@ -160,7 +160,7 @@ pub fn handle_measurement_clicks(
     let cursor_geo = world_pixel_to_world_coords(
         cx + offset_x,
         cy + offset_y,
-        TileSize::Normal,
+        crate::constants::DEFAULT_TILE_SIZE,
         map_state.zoom_level,
     );
 
@@ -236,19 +236,19 @@ pub fn update_measurement_line(
         latitude: map_state.latitude,
         longitude: map_state.longitude,
     };
-    let (cx, cy) = world_coords_to_world_pixel(&center_coords, TileSize::Normal, map_state.zoom_level);
+    let (cx, cy) = world_coords_to_world_pixel(&center_coords, crate::constants::DEFAULT_TILE_SIZE, map_state.zoom_level);
 
     let start_coords = LatitudeLongitudeCoordinates {
         latitude: start.0,
         longitude: start.1,
     };
-    let (sx, sy) = world_coords_to_world_pixel(&start_coords, TileSize::Normal, map_state.zoom_level);
+    let (sx, sy) = world_coords_to_world_pixel(&start_coords, crate::constants::DEFAULT_TILE_SIZE, map_state.zoom_level);
 
     let end_coords = LatitudeLongitudeCoordinates {
         latitude: end.0,
         longitude: end.1,
     };
-    let (ex, ey) = world_coords_to_world_pixel(&end_coords, TileSize::Normal, map_state.zoom_level);
+    let (ex, ey) = world_coords_to_world_pixel(&end_coords, crate::constants::DEFAULT_TILE_SIZE, map_state.zoom_level);
 
     // Calculate screen positions
     let start_screen = Vec2::new(

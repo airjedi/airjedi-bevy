@@ -128,7 +128,7 @@ impl CoordinateConverter {
         };
         let reference_pixel = world_coords_to_world_pixel(
             &reference_ll,
-            TileSize::Normal,
+            crate::constants::DEFAULT_TILE_SIZE,
             zoom_level,
         );
         Self {
@@ -144,7 +144,7 @@ impl CoordinateConverter {
             latitude: lat,
             longitude: lon,
         };
-        let pixel = world_coords_to_world_pixel(&ll, TileSize::Normal, self.zoom_level);
+        let pixel = world_coords_to_world_pixel(&ll, crate::constants::DEFAULT_TILE_SIZE, self.zoom_level);
         Vec2::new(
             (pixel.0 - self.reference_pixel.0) as f32,
             (pixel.1 - self.reference_pixel.1) as f32,

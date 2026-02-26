@@ -125,7 +125,7 @@ fn update_camera_position(
         };
         let reference_pixel = world_coords_to_world_pixel(
             &reference_ll,
-            TileSize::Normal,
+            crate::constants::DEFAULT_TILE_SIZE,
             zoom_level
         );
 
@@ -135,7 +135,7 @@ fn update_camera_position(
         };
         let center_pixel = world_coords_to_world_pixel(
             &center_ll,
-            TileSize::Normal,
+            crate::constants::DEFAULT_TILE_SIZE,
             zoom_level
         );
 

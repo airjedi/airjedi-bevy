@@ -64,6 +64,10 @@ pub(crate) mod constants {
     pub const MIN_CAMERA_ZOOM: f32 = 0.1;
     pub const MAX_CAMERA_ZOOM: f32 = 10.0;
 
+    // Tile size: Large = 512px (@2x) for sharper map tiles
+    pub const DEFAULT_TILE_SIZE: bevy_slippy_tiles::TileSize = bevy_slippy_tiles::TileSize::Large;
+    pub const DEFAULT_TILE_PIXELS: f32 = 512.0;
+
     // Tile download settings
     pub const TILE_DOWNLOAD_RADIUS: u8 = 3;
 
