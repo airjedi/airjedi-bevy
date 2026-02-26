@@ -76,7 +76,7 @@ pub fn render_toolbar(
                 let clear_btn = ui.add(
                     egui::Button::new(
                         egui::RichText::new(regular::X)
-                            .size(16.0)
+                            .font(crate::theme::icon_font_id(16.0, ctx))
                             .color(icon_dim),
                     )
                     .min_size(egui::vec2(28.0, 22.0))
@@ -139,7 +139,7 @@ fn toolbar_button(
     let btn = ui.add(
         egui::Button::new(
             egui::RichText::new(icon)
-                .size(18.0)
+                .font(crate::theme::icon_font_id(18.0, ui.ctx()))
                 .color(icon_color),
         )
         .fill(if is_open { active_bg } else { egui::Color32::TRANSPARENT })

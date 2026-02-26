@@ -4,6 +4,7 @@
 /// scattered boolean flags across many individual resources.
 
 use bevy::prelude::*;
+use egui_phosphor::regular;
 use std::collections::HashSet;
 
 /// Identifies every toggleable panel/overlay in the application.
@@ -69,24 +70,24 @@ impl PanelId {
         }
     }
 
-    /// Unicode icon character for toolbar display.
+    /// Phosphor icon glyph for toolbar/UI display.
     pub fn icon(&self) -> &'static str {
         match self {
-            PanelId::Settings => "\u{2699}",     // gear
-            PanelId::AircraftList => "\u{2708}",  // airplane
-            PanelId::AircraftDetail => "\u{1F4CB}", // clipboard
-            PanelId::Bookmarks => "\u{2B50}",     // star
-            PanelId::Statistics => "\u{1F4CA}",   // bar chart
-            PanelId::Recording => "\u{23FA}",     // record
-            PanelId::Measurement => "\u{1F4CF}",  // ruler
-            PanelId::Export => "\u{1F4E5}",       // inbox tray / download
-            PanelId::Coverage => "\u{1F4E1}",     // satellite antenna
-            PanelId::Airspace => "\u{1F5FA}",     // map
-            PanelId::DataSources => "\u{1F5C4}",  // file cabinet
-            PanelId::View3D => "\u{1F4E6}",       // package / cube
-            PanelId::Debug => "#",
-            PanelId::Inspector => "\u{1F50D}", // magnifying glass
-            PanelId::Help => "?",
+            PanelId::Settings => regular::GEAR,
+            PanelId::AircraftList => regular::AIRPLANE_TILT,
+            PanelId::AircraftDetail => regular::LIST_DASHES,
+            PanelId::Bookmarks => regular::STAR,
+            PanelId::Statistics => regular::CHART_BAR,
+            PanelId::Recording => regular::RECORD,
+            PanelId::Measurement => regular::RULER,
+            PanelId::Export => regular::DOWNLOAD_SIMPLE,
+            PanelId::Coverage => regular::TARGET,
+            PanelId::Airspace => regular::STACK,
+            PanelId::DataSources => regular::DATABASE,
+            PanelId::View3D => regular::CUBE,
+            PanelId::Debug => regular::HASH,
+            PanelId::Inspector => regular::MAGNIFYING_GLASS,
+            PanelId::Help => regular::QUESTION,
         }
     }
 }
