@@ -87,6 +87,8 @@ pub struct View3DState {
     pub drag_active: bool,
     /// When following an aircraft, its altitude in feet for orbit center
     pub follow_altitude_ft: Option<i32>,
+    /// Saved 2D zoom level when entering 3D mode, restored on return
+    pub saved_2d_zoom_level: Option<u8>,
 }
 
 /// Minimum mouse movement (pixels) before a click becomes a drag.
@@ -110,6 +112,7 @@ impl Default for View3DState {
             drag_accumulated: 0.0,
             drag_active: false,
             follow_altitude_ft: None,
+            saved_2d_zoom_level: None,
         }
     }
 }
@@ -192,6 +195,9 @@ pub fn toggle_3d_view(
                         cam_transform.translation.y,
                     );
                 }
+
+                // Save the 2D zoom level so we can restore it when returning
+                state.saved_2d_zoom_level = Some(map_state.zoom_level.to_u8());
 
                 // Auto-detect ground elevation from nearest airport
                 detect_ground_elevation(&mut state, &map_state, &aviation_data);
@@ -639,14 +645,14 @@ fn sync_center_to_map_state(
     };
     let reference_pixel = world_coords_to_world_pixel(
         &reference_ll,
-        TileSize::Normal,
+        crate::constants::DEFAULT_TILE_SIZE,
         map_state.zoom_level,
     );
 
     let center_geo = world_pixel_to_world_coords(
         state.saved_2d_center.x as f64 + reference_pixel.0,
         state.saved_2d_center.y as f64 + reference_pixel.1,
-        TileSize::Normal,
+        crate::constants::DEFAULT_TILE_SIZE,
         map_state.zoom_level,
     );
 
