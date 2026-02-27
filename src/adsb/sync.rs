@@ -1,7 +1,8 @@
 use bevy::prelude::*;
 use std::collections::HashMap;
 
-use crate::{constants, Aircraft, AircraftLabel};
+use bevy::camera::visibility::RenderLayers;
+use crate::{constants, Aircraft, AircraftLabel, RenderCategory};
 use crate::aircraft::TrailHistory;
 use crate::aircraft::picking::{on_aircraft_click, on_aircraft_hover, on_aircraft_out};
 use crate::debug_panel::DebugPanelState;
@@ -206,6 +207,7 @@ pub fn sync_aircraft_from_adsb(
                         last_seen: adsb_ac.last_seen,
                     },
                     TrailHistory::default(),
+                    RenderLayers::layer(RenderCategory::AIRCRAFT),
                 ));
             if let Some(corr) = correction {
                 entity_commands.insert(corr);
@@ -236,6 +238,7 @@ pub fn sync_aircraft_from_adsb(
                 AircraftLabel {
                     aircraft_entity,
                 },
+                RenderLayers::layer(RenderCategory::LABELS),
             ));
         }
     }
