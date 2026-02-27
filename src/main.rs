@@ -316,7 +316,7 @@ fn setup_debug_logger(mut commands: Commands) {
 /// when both cameras share the same transform in 3D mode.
 fn configure_gizmo_layers(mut config_store: ResMut<GizmoConfigStore>) {
     let (config, _) = config_store.config_mut::<DefaultGizmoConfigGroup>();
-    config.render_layers = RenderLayers::layer(2);
+    config.render_layers = RenderLayers::layer(RenderCategory::GIZMOS);
 }
 
 pub(crate) fn setup_map(
@@ -345,7 +345,12 @@ pub(crate) fn setup_map(
     // Layer 0 = default content (tiles, sprites, text).
     // Layer 2 = gizmos (trails, navaids, runways) — kept off Camera3d to prevent
     //           double-rendering during 2D↔3D transitions.
-    commands.spawn((Name::new("Map Camera"), Camera2d, MapCamera, RenderLayers::from_layers(&[0, 2])));
+    commands.spawn((
+        Name::new("Map Camera"),
+        Camera2d,
+        MapCamera,
+        render_layers::layers_2d_map(),
+    ));
 
     // Set up 3D camera for aircraft models (renders on top of 2D).
     // Stays on default layer 0 so it sees 3D meshes (SceneRoot children inherit layer 0)
@@ -368,6 +373,7 @@ pub(crate) fn setup_map(
         // generates rays from it in all modes (2D and 3D). Without this marker,
         // the backend may skip this camera when its projection/output mode changes.
         bevy::picking::mesh_picking::MeshPickingCamera,
+        render_layers::layers_2d_aircraft(),
     ));
 
     // Dedicated UI camera for egui. Renders last (order 100) with no clear so it
