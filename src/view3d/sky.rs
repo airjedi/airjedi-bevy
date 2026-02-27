@@ -9,6 +9,7 @@
 
 use bevy::prelude::*;
 use bevy::camera::{CameraOutputMode, Exposure};
+use bevy::camera::visibility::RenderLayers;
 use bevy::pbr::{Atmosphere, AtmosphereSettings, DistanceFog, FogFalloff, StandardMaterial};
 use bevy::light::AtmosphereEnvironmentMapLight;
 use bevy::render::render_resource::BlendState;
@@ -16,6 +17,8 @@ use bevy::render::view::Hdr;
 
 use super::View3DState;
 use crate::map::MapState;
+use crate::RenderCategory;
+use crate::render_layers;
 
 /// Z-depth for the star field sprite (behind tiles at z=0.1)
 const STAR_Z: f32 = -1.0;
@@ -278,6 +281,7 @@ pub fn setup_sky(
         },
         Transform::from_xyz(0.0, 0.0, STAR_Z),
         Visibility::Hidden,
+        RenderLayers::layer(RenderCategory::SKY),
     ));
 
     // Spawn ground plane mesh (hidden until 3D mode activates).
@@ -301,6 +305,7 @@ pub fn setup_sky(
         Pickable::IGNORE,
         Transform::from_xyz(0.0, 0.0, 0.0),
         Visibility::Hidden,
+        RenderLayers::layer(RenderCategory::GROUND),
     ));
 
     // Full-screen tint overlay for 2D mode day/night effect.
@@ -315,6 +320,7 @@ pub fn setup_sky(
         },
         Transform::from_xyz(0.0, 0.0, 5.0),
         Visibility::Hidden,
+        RenderLayers::layer(RenderCategory::OVERLAYS_2D),
     ));
 }
 
@@ -554,15 +560,19 @@ pub fn manage_atmosphere_camera(
     sun_state: Res<SunState>,
     medium_handle: Option<Res<crate::AtmosphereMediumHandle>>,
     mut camera_3d: Query<(Entity, &mut Camera, Option<&Atmosphere>), With<Camera3d>>,
-    mut camera_2d: Query<&mut Camera, (With<crate::MapCamera>, Without<Camera3d>)>,
+    mut camera_2d: Query<(Entity, &mut Camera), (With<crate::MapCamera>, Without<Camera3d>)>,
     mut ground_query: Query<(&mut Transform, &mut Visibility), With<GroundPlane>>,
 ) {
     let Ok((cam3d_entity, mut cam3d, has_atmo)) = camera_3d.single_mut() else {
         return;
     };
-    let Ok(mut cam2d) = camera_2d.single_mut() else {
+    let Ok((cam2d_entity, mut cam2d)) = camera_2d.single_mut() else {
         return;
     };
+
+    // Fixed camera order: Camera3d=0, Camera2d=1. NEVER changes.
+    cam3d.order = 0;
+    cam2d.order = 1;
 
     if state.is_3d_active() {
         // Atmosphere is kept always-present while in 3D mode. Adding/removing
@@ -624,16 +634,15 @@ pub fn manage_atmosphere_camera(
                 .remove::<Exposure>()
                 .remove::<DistanceFog>();
         }
-        // Camera3d renders first (order=0), atmosphere paints sky
-        cam3d.order = 0;
-        // Camera2d renders on top (order=1) with alpha blending so transparent
-        // areas show Camera3d's atmosphere sky through.
-        cam2d.order = 1;
+        // Camera3d subscribes to 3D world layers (aircraft, tile meshes, ground, sky)
+        commands.entity(cam3d_entity).insert(render_layers::layers_3d_world());
+        // Camera2d composites gizmos and labels on top with alpha blending
         cam2d.clear_color = ClearColorConfig::Custom(Color::NONE);
         cam2d.output_mode = CameraOutputMode::Write {
             blend_state: Some(BlendState::ALPHA_BLENDING),
             clear_color: ClearColorConfig::None,
         };
+        commands.entity(cam2d_entity).insert(render_layers::layers_3d_overlay());
         // Ground plane visible as a depth backstop — it writes depth everywhere
         // below the horizon so the atmosphere post-process never treats those
         // pixels as sky. Tile mesh quads render on top of it.
@@ -655,12 +664,14 @@ pub fn manage_atmosphere_camera(
                 .remove::<DistanceFog>()
                 .remove::<Hdr>();
         }
-        cam2d.order = 0;
-        cam2d.clear_color = ClearColorConfig::Default;
-        cam2d.output_mode = CameraOutputMode::default();
-        cam3d.order = 1;
+        // Camera3d in 2D mode: transparent clear, only renders aircraft models
         cam3d.clear_color = ClearColorConfig::Custom(Color::NONE);
         cam3d.output_mode = CameraOutputMode::default();
+        commands.entity(cam3d_entity).insert(render_layers::layers_2d_aircraft());
+        // Camera2d in 2D mode: default clear, renders tiles/gizmos/overlays/labels
+        cam2d.clear_color = ClearColorConfig::Default;
+        cam2d.output_mode = CameraOutputMode::default();
+        commands.entity(cam2d_entity).insert(render_layers::layers_2d_map());
         if let Ok((_, mut gp_vis)) = ground_query.single_mut() {
             *gp_vis = Visibility::Hidden;
         }
