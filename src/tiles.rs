@@ -8,7 +8,9 @@ use crate::map::{MapState, ZoomState};
 use crate::tile_cache;
 use crate::view3d;
 use crate::camera::MapCamera;
+use crate::RenderCategory;
 use crate::{clamp_latitude, clamp_longitude, ZoomDebugLogger};
+use bevy::camera::visibility::RenderLayers;
 
 // =============================================================================
 // Components and Resources
@@ -561,6 +563,7 @@ fn display_tiles_filtered(
                 alpha: 0.0,
                 tile_zoom: event_zoom,
             },
+            RenderLayers::layer(RenderCategory::TILES_2D),
         ));
 
         if let Some(ref log) = logger {
@@ -826,6 +829,7 @@ fn sync_tile_mesh_quads(
                 Transform::from_translation(pos_yup)
                     .with_scale(Vec3::new(transform.scale.x, 1.0, transform.scale.x)),
                 Pickable::IGNORE,
+                RenderLayers::layer(RenderCategory::TILES_3D),
             )).id();
 
             commands.entity(tile_entity).queue_silenced(move |mut entity: EntityWorldMut| {
