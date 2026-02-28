@@ -206,6 +206,8 @@ fn main() {
         .init_resource::<dock::DockTreeState>()
         .init_resource::<inspector::InspectorState>()
         .init_resource::<statusbar::StatusBarState>()
+        .register_type::<MapState>()
+        .register_type::<ZoomState>()
         .insert_resource(ZoomState::new())
         // SlippyTilesSettings will be updated by setup_slippy_tiles_from_config after config is loaded
         .insert_resource(SlippyTilesSettings {
