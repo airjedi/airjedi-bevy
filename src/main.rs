@@ -36,6 +36,8 @@ mod input;
 mod zoom;
 mod camera;
 pub(crate) mod theme;
+#[cfg(feature = "brp")]
+mod brp;
 
 // Re-export core types so crate::Aircraft, crate::MapState, crate::ZoomState
 // continue to resolve throughout the codebase.
@@ -158,8 +160,8 @@ fn main() {
         }
     }
 
-    App::new()
-        .add_plugins((
+    let mut app = App::new();
+    app.add_plugins((
             DefaultPlugins
                 .set(WindowPlugin {
                     primary_window: Some(Window {
@@ -231,8 +233,12 @@ fn main() {
         .add_systems(Update, sync_panel_manager_to_resources.after(sync_resources_to_panel_manager))
         .add_systems(Update, update_help_overlay)
         .add_systems(Update, debug_panel::update_debug_metrics)
-        .add_systems(Update, heartbeat_diagnostic)
-        .run();
+        .add_systems(Update, heartbeat_diagnostic);
+
+    #[cfg(feature = "brp")]
+    app.add_plugins(brp::BrpPlugin);
+
+    app.run();
 }
 
 
