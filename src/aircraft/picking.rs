@@ -183,7 +183,7 @@ pub fn follow_aircraft_3d(
     // Aircraft heading=0 means flying north, so camera should be south = yaw 0.
     // Therefore chase yaw = aircraft heading directly.
     let target_yaw = if let Some(heading) = aircraft.heading {
-        heading % 360.0
+        ((heading % 360.0) + 360.0) % 360.0
     } else {
         view3d_state.camera_yaw
     };
