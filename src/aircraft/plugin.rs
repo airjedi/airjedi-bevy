@@ -6,6 +6,7 @@ use super::{
     DetailPanelState, CameraFollowState,
     EmergencyAlertState, PredictionConfig, StatsPanelState,
     AircraftTypeDatabase,
+    components::Aircraft,
 };
 use super::trail_renderer::{draw_trails, prune_trails};
 use super::trails::record_trail_points;
@@ -24,6 +25,8 @@ pub struct AircraftPlugin;
 impl Plugin for AircraftPlugin {
     fn build(&self, app: &mut App) {
         app
+            .register_type::<Aircraft>()
+            .register_type::<CameraFollowState>()
             .init_resource::<SessionClock>()
             .init_resource::<TrailConfig>()
             .init_resource::<TrailRecordTimer>()

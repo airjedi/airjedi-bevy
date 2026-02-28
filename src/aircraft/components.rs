@@ -2,7 +2,8 @@ use bevy::prelude::*;
 use chrono::{DateTime, Utc};
 
 /// Component for aircraft entities
-#[derive(Component)]
+#[derive(Component, Reflect)]
+#[reflect(Component)]
 pub struct Aircraft {
     /// ICAO 24-bit address (hex string)
     pub icao: String,
@@ -31,6 +32,7 @@ pub struct Aircraft {
     /// SPI (Special Position Identification) flag
     pub spi: Option<bool>,
     /// Timestamp of the last ADS-B message received for this aircraft
+    #[reflect(ignore)]
     pub last_seen: DateTime<Utc>,
 }
 
