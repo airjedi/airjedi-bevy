@@ -160,12 +160,176 @@ Tiles are cached in `~/Library/Caches/airjedi/tiles/` (centralized), symlinked i
 
 ## Bevy Remote Protocol (BRP)
 
-The `brp` feature flag (default-on) enables runtime inspection and control of the app via the Bevy Remote Protocol. This allows AI coding assistants to query entities, inspect components, take screenshots, and simulate input through the `bevy_brp_mcp` MCP server.
+The `brp` feature flag (default-on) enables runtime inspection and control of the app via the Bevy Remote Protocol. The `bevy_brp_mcp` MCP server exposes all BRP and brp_extras capabilities as tools.
 
 - **Feature flag:** `brp` (disable with `--no-default-features -F hanabi`)
-- **HTTP endpoint:** `localhost:15702` (default, not configurable)
-- **MCP server:** Configured in `.mcp.json`, uses `bevy_brp_mcp` binary
+- **HTTP endpoint:** `localhost:15702` (default BRP port)
+- **MCP server:** Configured in `.mcp.json`, uses `bevy_brp_mcp` binary (stdio)
 - **macOS bundle:** BRP is excluded from release app bundles
+- **Implementation:** `src/brp.rs` adds `BrpExtrasPlugin` which includes both `RemotePlugin` and `RemoteHttpPlugin`
+
+### App Lifecycle
+
+| Tool | Description |
+|------|-------------|
+| `brp_status` | Check if app is running with BRP. Returns `running_with_brp`, `running_no_brp`, or `not_running` |
+| `brp_launch_bevy_app` | Launch a Bevy app in detached mode with auto-build and logging. Supports debug/release profiles, multi-instance on sequential ports |
+| `brp_shutdown` | Graceful shutdown via brp_extras, falls back to process kill |
+| `brp_list_bevy_apps` | Discover all Bevy apps in workspace via cargo metadata |
+| `brp_list_brp_apps` | Discover BRP-enabled apps specifically |
+| `brp_list_bevy_examples` | List all Bevy examples in workspace |
+| `brp_launch_bevy_example` | Launch a Bevy example in detached mode |
+
+### Entity & Component Operations
+
+| Tool | Description | Example |
+|------|-------------|---------|
+| `world_query` | Query entities by component filters | `data: {}, filter: {with: ["bevy_transform::components::transform::Transform"]}` |
+| `world_get_components` | Get component data from a specific entity | `entity: 123, components: ["bevy_transform::components::transform::Transform"]` |
+| `world_insert_components` | Insert/replace components on an entity | `entity: 123, components: {"bevy_sprite::sprite::Sprite": {color: ...}}` |
+| `world_mutate_components` | Update specific fields without replacing the whole component | `entity: 123, component: "...Transform", path: ".translation.y", value: 10.5` |
+| `world_remove_components` | Remove components from an entity | `entity: 123, components: ["bevy_sprite::sprite::Sprite"]` |
+| `world_list_components` | List all registered component types, or components on a specific entity | `entity: 123` (optional) |
+| `world_spawn_entity` | Spawn a new entity with components, returns entity ID | `components: {"...Transform": {translation: {x:0,y:0,z:0}, ...}}` |
+| `world_despawn_entity` | Permanently remove an entity | `entity: 123` |
+| `world_reparent_entities` | Change parent of entities (or remove parent) | `entities: [123, 124], parent: 100` |
+
+**Mutation path syntax:** `.field.nested`, `.points[2]` (array), `.0` (tuple). Leading dot required.
+
+### Resource Operations
+
+| Tool | Description | Example |
+|------|-------------|---------|
+| `world_get_resources` | Get resource data | `resource: "bevy_time::time::Time"` |
+| `world_insert_resources` | Insert or replace a resource | `resource: "my::Config", value: {difficulty: "hard"}` |
+| `world_mutate_resources` | Update specific fields in a resource | `resource: "my::Config", path: ".volume", value: 0.5` |
+| `world_remove_resources` | Remove a resource (WARNING: may break systems) | `resource: "my::TempCache"` |
+| `world_list_resources` | List all registered resources | (no params) |
+
+### Events
+
+| Tool | Description | Example |
+|------|-------------|---------|
+| `world_trigger_event` | Trigger a registered event globally | `event: "my_game::PauseGame"` or with payload: `event: "my_game::SpawnEnemy", value: {enemy_type: "goblin"}` |
+
+Events must be registered with `#[derive(Event, Reflect)]` and `#[reflect(Event)]`.
+
+### Type Introspection
+
+| Tool | Description | Notes |
+|------|-------------|-------|
+| `brp_type_guide` | Get spawn/insert/mutate examples for specific types | Best for targeted type lookup |
+| `brp_all_type_guides` | Get guides for all registered Components and Resources | Can be large |
+| `registry_schema` | Get full type schemas with properties | **WARNING: 200k+ tokens unfiltered.** Always use `with_crates` or `with_types` filters |
+| `rpc_discover` | Discover all available BRP methods (OpenRPC spec) | Useful for debugging connectivity |
+| `brp_execute` | Execute any arbitrary BRP method | `method: "world.query", params: {...}` |
+
+**Schema filter examples:**
+- `with_crates: ["airjedi_bevy"]` — app-specific types only
+- `with_types: ["Component"]` — components only
+- `with_crates: ["bevy_transform"], with_types: ["Component"]` — Transform components
+
+### Input Simulation (brp_extras)
+
+#### Keyboard
+
+| Tool | Description | Example |
+|------|-------------|---------|
+| `brp_extras_send_keys` | Send key press/release (simultaneous — for shortcuts) | `keys: ["ShiftLeft", "KeyA"]` for Shift+A; `keys: ["Space"], duration_ms: 2000` to hold |
+| `brp_extras_type_text` | Type text sequentially (one char per frame — for text input) | `text: "hello world"` |
+
+**Key names:** `KeyA`-`KeyZ`, `Digit0`-`Digit9`, `F1`-`F24`, `ShiftLeft/Right`, `ControlLeft/Right`, `AltLeft/Right`, `SuperLeft/Right` (Cmd on macOS), `Enter`, `Tab`, `Space`, `Backspace`, `Delete`, `Escape`, `ArrowUp/Down/Left/Right`, `Home`, `End`, `PageUp`, `PageDown`.
+
+#### Mouse
+
+| Tool | Description | Example |
+|------|-------------|---------|
+| `brp_extras_move_mouse` | Move cursor (absolute or relative) | `position: [200, 150]` or `delta: [50, 30]` |
+| `brp_extras_click_mouse` | Click a button (press + release, 100ms) | `button: "Left"` |
+| `brp_extras_double_click_mouse` | Double click | `button: "Left", delay_ms: 250` |
+| `brp_extras_send_mouse_button` | Press-hold-release a button | `button: "Left", duration_ms: 500` |
+| `brp_extras_drag_mouse` | Smooth drag from start to end | `button: "Left", start: [100,100], end: [300,200], frames: 30` |
+| `brp_extras_scroll_mouse` | Mouse wheel scroll | `x: 0, y: 5, unit: "Line"` or `unit: "Pixel"` |
+
+**Buttons:** `Left`, `Right`, `Middle`, `Back`, `Forward`.
+
+#### Trackpad Gestures (macOS)
+
+| Tool | Description | Example |
+|------|-------------|---------|
+| `brp_extras_pinch_gesture` | Pinch to zoom | `delta: 2.5` (zoom in), `delta: -1.5` (zoom out) |
+| `brp_extras_rotation_gesture` | Rotation gesture (radians) | `delta: 0.5` (clockwise) |
+| `brp_extras_double_tap_gesture` | Double tap gesture | (no params) |
+
+### Visual & Diagnostics (brp_extras)
+
+| Tool | Description | Example |
+|------|-------------|---------|
+| `brp_extras_screenshot` | Capture screenshot to file | `path: "tmp/screenshot.png"` |
+| `brp_extras_get_diagnostics` | Get FPS, frame time, frame count | Returns current/average/smoothed values |
+| `brp_extras_set_window_title` | Change the window title | `title: "AirJedi - Debug"` |
+
+### Watch/Monitoring
+
+| Tool | Description |
+|------|-------------|
+| `world_get_components_watch` | Watch entity component value changes, logs to file | `entity: 123, types: ["...Transform"]` |
+| `world_list_components_watch` | Watch component additions/removals on an entity | `entity: 123` |
+| `brp_list_active_watches` | List all active watch subscriptions with log paths |
+| `brp_stop_watch` | Stop a watch by ID | `watch_id: 1` |
+
+Watch logs are written to `/tmp/bevy_brp_mcp_watch_*.log`. Always stop watches when done to free resources.
+
+### Log Management
+
+| Tool | Description |
+|------|-------------|
+| `brp_list_logs` | List BRP log files (newest first). Use `verbose: true` for full details |
+| `brp_read_log` | Read log contents. Filter with `keyword` or `tail_lines` |
+| `brp_delete_logs` | Delete logs. Filter by `app_name` or `older_than_seconds` |
+
+### Common Debugging Workflows
+
+**Check app status and take a screenshot:**
+```
+brp_status(app_name: "airjedi-bevy") → brp_extras_screenshot(path: "tmp/debug.png")
+```
+
+**Find and inspect a specific entity:**
+```
+world_query(data: {}, filter: {with: ["airjedi_bevy::camera::MapCamera"]})
+→ world_get_components(entity: <id>, components: ["bevy_transform::components::transform::Transform"])
+```
+
+**Inspect app-specific resources:**
+```
+registry_schema(with_crates: ["airjedi_bevy"], with_types: ["Resource"])
+→ world_get_resources(resource: "airjedi_bevy::map::MapState")
+```
+
+**Simulate user interaction (pan the map):**
+```
+brp_extras_move_mouse(position: [400, 300])
+→ brp_extras_drag_mouse(button: "Left", start: [400,300], end: [200,300], frames: 20)
+```
+
+**Monitor an entity's transform over time:**
+```
+world_get_components_watch(entity: 123, types: ["bevy_transform::components::transform::Transform"])
+→ brp_read_log(filename: <log_file>)
+→ brp_stop_watch(watch_id: <id>)
+```
+
+**Get performance diagnostics:**
+```
+brp_extras_get_diagnostics() → returns FPS current/avg/smoothed, frame_time_ms, frame_count
+```
+
+**Component types use fully-qualified paths.** Use `world_list_components()` or `registry_schema(with_crates: ["airjedi_bevy"])` to discover available types. Common Bevy types:
+- `bevy_transform::components::transform::Transform`
+- `bevy_render::camera::camera::Camera`
+- `bevy_sprite::sprite::Sprite`
+- `bevy_core::name::Name`
 
 ## 3D Tile Rendering — Known Pitfalls
 
