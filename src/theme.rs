@@ -215,10 +215,7 @@ impl AppTheme {
 
 impl Default for AppTheme {
     fn default() -> Self {
-        Self::new(
-            "Nord Dark",
-            egui_aesthetix::themes::NordDark,
-        )
+        catppuccin_mocha()
     }
 }
 
@@ -294,6 +291,17 @@ macro_rules! catppuccin_theme {
             }
             fn rounding_visuals(&self) -> u8 {
                 6
+            }
+            fn custom_text_styles(&self) -> std::collections::BTreeMap<egui::TextStyle, egui::FontId> {
+                use egui::FontFamily::{Monospace, Proportional};
+                [
+                    (egui::TextStyle::Small, egui::FontId::new(10.0, Proportional)),
+                    (egui::TextStyle::Body, egui::FontId::new(13.0, Proportional)),
+                    (egui::TextStyle::Button, egui::FontId::new(12.0, Proportional)),
+                    (egui::TextStyle::Heading, egui::FontId::new(15.0, Proportional)),
+                    (egui::TextStyle::Monospace, egui::FontId::new(12.0, Monospace)),
+                ]
+                .into()
             }
         }
 
