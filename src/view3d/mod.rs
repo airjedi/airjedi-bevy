@@ -639,6 +639,10 @@ pub fn handle_3d_camera_controls(
 
             if shift_held {
                 // Shift+drag = Orbit (rotate around target)
+                // Deactivate chase so user orbit inputs aren't overridden
+                if state.chase_active {
+                    state.chase_active = false;
+                }
                 state.camera_yaw += event.delta.x * ORBIT_SENSITIVITY;
                 if state.camera_yaw < 0.0 { state.camera_yaw += 360.0; }
                 if state.camera_yaw >= 360.0 { state.camera_yaw -= 360.0; }
@@ -689,6 +693,10 @@ pub fn handle_3d_camera_controls(
                 scroll_delta.x
             };
             if scroll_y.abs() > 0.1 {
+                // Deactivate chase so pitch changes aren't overridden
+                if state.chase_active {
+                    state.chase_active = false;
+                }
                 let pitch_delta = scroll_y * 0.05;
                 state.camera_pitch = (state.camera_pitch + pitch_delta)
                     .clamp(MIN_PITCH, MAX_PITCH);
@@ -700,6 +708,10 @@ pub fn handle_3d_camera_controls(
                 bevy::input::mouse::MouseScrollUnit::Line => event.y,
                 bevy::input::mouse::MouseScrollUnit::Pixel => event.y * 0.01,
             };
+            // Deactivate chase so altitude changes aren't overridden
+            if state.chase_active {
+                state.chase_active = false;
+            }
             state.camera_altitude = (state.camera_altitude - scroll_y * ALTITUDE_SCROLL_SENSITIVITY)
                 .clamp(MIN_CAMERA_ALTITUDE, MAX_CAMERA_ALTITUDE);
         }
@@ -707,6 +719,10 @@ pub fn handle_3d_camera_controls(
 
     // Pinch = altitude (zoom)
     for event in pinch_events.read() {
+        // Deactivate chase so altitude changes aren't overridden
+        if state.chase_active {
+            state.chase_active = false;
+        }
         state.camera_altitude = (state.camera_altitude * (1.0 - event.0))
             .clamp(MIN_CAMERA_ALTITUDE, MAX_CAMERA_ALTITUDE);
     }
