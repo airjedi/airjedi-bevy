@@ -13,7 +13,8 @@ pub struct DetailPanelState {
 }
 
 /// Resource for camera follow state
-#[derive(Resource, Default)]
+#[derive(Resource, Default, Reflect)]
+#[reflect(Resource)]
 pub struct CameraFollowState {
     /// ICAO of the aircraft being followed (camera locked to this aircraft)
     pub following_icao: Option<String>,
