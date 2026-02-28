@@ -25,14 +25,8 @@ pub fn draw_trails(
 
     let is_3d = view3d_state.is_3d_active();
 
-    // When hanabi feature is enabled, particle trails handle 3D rendering.
-    // Gizmo trails only draw in 2D mode.
-    #[cfg(feature = "hanabi")]
-    {
-        if is_3d {
-            return;
-        }
-    }
+    // Gizmo trails draw in both 2D and 3D modes. In 3D, they render as
+    // an overlay through Camera2d on the GIZMOS layer.
 
     let converter = CoordinateConverter::new(&tile_settings, map_state.zoom_level);
 
