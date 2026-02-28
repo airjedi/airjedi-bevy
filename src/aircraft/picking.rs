@@ -178,9 +178,12 @@ pub fn follow_aircraft_3d(
     let chase_lerp_speed = 2.0;
     let t_chase = (chase_lerp_speed * time.delta_secs()).min(1.0);
 
-    // Target yaw: behind the aircraft (heading + 180)
+    // Target yaw: behind the aircraft.
+    // Orbit yaw=0 places camera south (+Z) looking north (-Z).
+    // Aircraft heading=0 means flying north, so camera should be south = yaw 0.
+    // Therefore chase yaw = aircraft heading directly.
     let target_yaw = if let Some(heading) = aircraft.heading {
-        (heading + 180.0) % 360.0
+        heading % 360.0
     } else {
         view3d_state.camera_yaw
     };
