@@ -49,6 +49,16 @@ use bevy_egui::{EguiGlobalSettings, PrimaryEguiContext};
 
 // ADS-B client types
 
+/// System ordering: all systems that modify `MapState::zoom_level` in 3D mode
+/// must be in `ZoomSet::Change`. Position-dependent systems (aircraft, airports,
+/// navaids, runways, camera) must run `.after(ZoomSet::Change)` so they always
+/// see a consistent zoom level within each frame.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) enum ZoomSet {
+    /// Systems that may change the zoom level (e.g., request_3d_tiles_continuous)
+    Change,
+}
+
 // =============================================================================
 // Constants - All magic numbers centralized here
 // =============================================================================
