@@ -207,7 +207,6 @@ pub fn sync_aircraft_from_adsb(
                         last_seen: adsb_ac.last_seen,
                     },
                     TrailHistory::default(),
-                    RenderLayers::layer(RenderCategory::AIRCRAFT),
                 ));
             if let Some(corr) = correction {
                 entity_commands.insert(corr);

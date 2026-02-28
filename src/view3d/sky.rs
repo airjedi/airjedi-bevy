@@ -570,10 +570,6 @@ pub fn manage_atmosphere_camera(
         return;
     };
 
-    // Fixed camera order: Camera3d=0, Camera2d=1. NEVER changes.
-    cam3d.order = 0;
-    cam2d.order = 1;
-
     if state.is_3d_active() {
         // Atmosphere is kept always-present while in 3D mode. Adding/removing
         // the Atmosphere component across the day/night threshold disrupts
@@ -634,7 +630,9 @@ pub fn manage_atmosphere_camera(
                 .remove::<Exposure>()
                 .remove::<DistanceFog>();
         }
-        // Camera3d subscribes to 3D world layers (aircraft, tile meshes, ground, sky)
+        // 3D mode: Camera3d renders first (base), Camera2d overlays on top
+        cam3d.order = 0;
+        cam2d.order = 1;
         commands.entity(cam3d_entity).insert(render_layers::layers_3d_world());
         // Camera2d composites gizmos and labels on top with alpha blending
         cam2d.clear_color = ClearColorConfig::Custom(Color::NONE);
@@ -664,7 +662,9 @@ pub fn manage_atmosphere_camera(
                 .remove::<DistanceFog>()
                 .remove::<Hdr>();
         }
-        // Camera3d in 2D mode: transparent clear, only renders aircraft models
+        // 2D mode: Camera2d renders first (base), Camera3d overlays aircraft on top
+        cam2d.order = 0;
+        cam3d.order = 1;
         cam3d.clear_color = ClearColorConfig::Custom(Color::NONE);
         cam3d.output_mode = CameraOutputMode::default();
         commands.entity(cam3d_entity).insert(render_layers::layers_2d_aircraft());
