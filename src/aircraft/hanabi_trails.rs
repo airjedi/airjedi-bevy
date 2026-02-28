@@ -4,7 +4,7 @@ use bevy_hanabi::prelude::*;
 use bevy_slippy_tiles::SlippyTilesSettings;
 
 use super::components::Aircraft;
-use super::trails::{altitude_color, TrailConfig};
+use super::trails::{altitude_color, TrailConfig, TrailRenderer};
 use crate::geo::CoordinateConverter;
 use crate::view3d::View3DState;
 use crate::MapState;
@@ -167,7 +167,9 @@ pub fn spawn_trail_effects(
     aircraft_query: Query<(Entity, &Aircraft), Without<TrailEffect>>,
     existing_trails: Query<&TrailEffect>,
 ) {
-    if !trail_config.enabled || !view3d_state.is_3d_active() {
+    let is_3d = view3d_state.is_3d_active();
+    let active_renderer = if is_3d { trail_config.renderer_3d } else { trail_config.renderer_2d };
+    if !trail_config.enabled || active_renderer != TrailRenderer::Particle {
         return;
     }
 
@@ -269,16 +271,20 @@ pub fn update_trail_particles(
 }
 
 /// System that despawns trail effect entities when their aircraft is removed
-/// or when switching back to 2D mode.
+/// or when the particle renderer is not active for the current mode.
 pub fn cleanup_trail_effects(
     mut commands: Commands,
     view3d_state: Res<View3DState>,
+    trail_config: Res<TrailConfig>,
     aircraft_query: Query<Entity, With<Aircraft>>,
     effect_query: Query<(Entity, &TrailEffect)>,
 ) {
+    let is_3d = view3d_state.is_3d_active();
+    let active_renderer = if is_3d { trail_config.renderer_3d } else { trail_config.renderer_2d };
+    let particle_inactive = active_renderer != TrailRenderer::Particle || !trail_config.enabled;
+
     for (effect_entity, trail_effect) in effect_query.iter() {
-        // Despawn if aircraft gone OR if we're back in 2D mode
-        if !view3d_state.is_3d_active() || aircraft_query.get(trail_effect.aircraft_entity).is_err() {
+        if particle_inactive || aircraft_query.get(trail_effect.aircraft_entity).is_err() {
             commands.entity(effect_entity).despawn();
         }
     }
