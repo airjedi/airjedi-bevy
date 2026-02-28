@@ -331,6 +331,29 @@ brp_extras_get_diagnostics() → returns FPS current/avg/smoothed, frame_time_ms
 - `bevy_sprite::sprite::Sprite`
 - `bevy_core::name::Name`
 
+### Reference Test View — 3D Wichita at FL300
+
+A saved camera state for reproducible 3D testing. Restore this view directly via BRP resource mutations — no keyboard or scroll simulation needed.
+
+- **Mode:** Perspective3D
+- **Map center:** 37.6872, -97.3301 (Wichita, KS)
+- **Camera altitude:** 30,000 ft (FL300)
+- **Camera pitch:** 25°, yaw: 0°
+
+**To restore via BRP:**
+```
+world_mutate_resources(resource: "airjedi_bevy::view3d::View3DState", path: ".mode", value: "Perspective3D")
+world_mutate_resources(resource: "airjedi_bevy::view3d::View3DState", path: ".camera_altitude", value: 30000)
+world_mutate_resources(resource: "airjedi_bevy::view3d::View3DState", path: ".camera_pitch", value: 25)
+world_mutate_resources(resource: "airjedi_bevy::map::MapState", path: ".latitude", value: 37.6872)
+world_mutate_resources(resource: "airjedi_bevy::map::MapState", path: ".longitude", value: -97.3301)
+```
+
+**BRP-accessible view resources:**
+- `airjedi_bevy::view3d::View3DState` — mode, camera_altitude, camera_pitch, camera_yaw, altitude_scale, visibility_range, atmosphere_enabled
+- `airjedi_bevy::map::MapState` — latitude, longitude
+- `airjedi_bevy::map::ZoomState` — camera_zoom, min_zoom, max_zoom
+
 ## 3D Tile Rendering — Known Pitfalls
 
 The 3D tile system in `src/tiles.rs` has several interacting subsystems that can cause visual flashing if modified incorrectly. Read this before changing tile display, zoom transitions, or culling logic.

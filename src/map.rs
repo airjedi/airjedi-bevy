@@ -5,7 +5,7 @@ use crate::constants;
 
 /// Resource to track map state (center position and zoom level)
 #[derive(Resource, Clone, Reflect)]
-#[reflect(Default)]
+#[reflect(Resource, Default)]
 pub struct MapState {
     /// Current map center latitude
     pub latitude: f64,
@@ -32,6 +32,7 @@ impl Default for MapState {
 
 /// Resource to track camera zoom (continuous zoom within tile zoom levels)
 #[derive(Resource, Reflect)]
+#[reflect(Resource)]
 pub struct ZoomState {
     /// Continuous camera zoom level (1.0 = normal, 2.0 = 2x zoomed in, 0.5 = 2x zoomed out)
     pub camera_zoom: f32,

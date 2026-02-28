@@ -62,6 +62,7 @@ pub enum TransitionState {
 
 /// Resource for 3D view state
 #[derive(Resource, Reflect)]
+#[reflect(Resource)]
 pub struct View3DState {
     pub mode: ViewMode,
     pub transition: TransitionState,
@@ -859,7 +860,8 @@ pub struct View3DPlugin;
 
 impl Plugin for View3DPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<View3DState>()
+        app.register_type::<View3DState>()
+            .init_resource::<View3DState>()
             .init_resource::<sky::SunState>()
             .init_resource::<sky::MoonState>()
             .init_resource::<sky::TimeState>()
