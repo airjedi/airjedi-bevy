@@ -315,6 +315,140 @@ catppuccin_theme!(CatppuccinMacchiatoTheme, catppuccin_macchiato, FlavorName::Ma
 catppuccin_theme!(CatppuccinFrappeTheme, catppuccin_frappe, FlavorName::Frappe, "Catppuccin Frappe", true);
 catppuccin_theme!(CatppuccinLatteTheme, catppuccin_latte, FlavorName::Latte, "Catppuccin Latte", false);
 
+// ── Cockpit Dark theme ──────────────────────────────────────────────
+//
+// Standalone theme based on the Catppuccin Mocha palette.
+// All color values are hardcoded — no dependency on the catppuccin crate.
+
+pub struct CockpitDarkTheme;
+
+impl Aesthetix for CockpitDarkTheme {
+    fn name(&self) -> &str {
+        "Cockpit Dark"
+    }
+    fn primary_accent_color_visuals(&self) -> egui::Color32 {
+        // burned orange
+        egui::Color32::from_rgb(204, 102, 34)
+    }
+    fn secondary_accent_color_visuals(&self) -> egui::Color32 {
+        // warm amber
+        egui::Color32::from_rgb(224, 148, 64)
+    }
+    fn bg_primary_color_visuals(&self) -> egui::Color32 {
+        // charcoal base
+        egui::Color32::from_rgb(39, 42, 46)
+    }
+    fn bg_secondary_color_visuals(&self) -> egui::Color32 {
+        // deep charcoal
+        egui::Color32::from_rgb(28, 30, 34)
+    }
+    fn bg_triage_color_visuals(&self) -> egui::Color32 {
+        // darkest charcoal
+        egui::Color32::from_rgb(20, 21, 24)
+    }
+    fn bg_auxiliary_color_visuals(&self) -> egui::Color32 {
+        // medium charcoal
+        egui::Color32::from_rgb(50, 53, 58)
+    }
+    fn bg_contrast_color_visuals(&self) -> egui::Color32 {
+        // light charcoal
+        egui::Color32::from_rgb(62, 65, 71)
+    }
+    fn fg_primary_text_color_visuals(&self) -> Option<egui::Color32> {
+        // light gray
+        Some(egui::Color32::from_rgb(208, 210, 214))
+    }
+    fn fg_success_text_color_visuals(&self) -> egui::Color32 {
+        // muted green
+        egui::Color32::from_rgb(125, 186, 106)
+    }
+    fn fg_warn_text_color_visuals(&self) -> egui::Color32 {
+        // amber gold
+        egui::Color32::from_rgb(224, 176, 80)
+    }
+    fn fg_error_text_color_visuals(&self) -> egui::Color32 {
+        // muted red
+        egui::Color32::from_rgb(212, 80, 80)
+    }
+    fn dark_mode_visuals(&self) -> bool {
+        true
+    }
+    fn margin_style(&self) -> i8 {
+        10
+    }
+    fn button_padding(&self) -> egui::Vec2 {
+        egui::Vec2::new(8.0, 4.0)
+    }
+    fn item_spacing_style(&self) -> f32 {
+        8.0
+    }
+    fn scroll_bar_width_style(&self) -> f32 {
+        12.0
+    }
+    fn rounding_visuals(&self) -> u8 {
+        6
+    }
+    fn custom_text_styles(&self) -> std::collections::BTreeMap<egui::TextStyle, egui::FontId> {
+        use egui::FontFamily::{Monospace, Proportional};
+        [
+            (egui::TextStyle::Small, egui::FontId::new(10.0, Proportional)),
+            (egui::TextStyle::Body, egui::FontId::new(13.0, Proportional)),
+            (egui::TextStyle::Button, egui::FontId::new(12.0, Proportional)),
+            (egui::TextStyle::Heading, egui::FontId::new(15.0, Proportional)),
+            (egui::TextStyle::Monospace, egui::FontId::new(12.0, Monospace)),
+        ]
+        .into()
+    }
+    fn widget_hovered_visual(&self) -> egui::style::WidgetVisuals {
+        let rounding = egui::CornerRadius::same(self.rounding_visuals());
+        egui::style::WidgetVisuals {
+            bg_fill: self.bg_auxiliary_color_visuals(),
+            weak_bg_fill: self.bg_auxiliary_color_visuals(),
+            bg_stroke: egui::Stroke { width: 1.0, color: self.primary_accent_color_visuals() },
+            fg_stroke: egui::Stroke { width: 1.5, color: self.fg_primary_text_color_visuals().unwrap_or_default() },
+            corner_radius: rounding,
+            expansion: 2.0,
+        }
+    }
+    fn custom_active_widget_visual(&self) -> egui::style::WidgetVisuals {
+        let rounding = egui::CornerRadius::same(self.rounding_visuals());
+        egui::style::WidgetVisuals {
+            bg_fill: self.bg_contrast_color_visuals(),
+            weak_bg_fill: self.bg_contrast_color_visuals(),
+            bg_stroke: egui::Stroke { width: 1.0, color: self.primary_accent_color_visuals() },
+            fg_stroke: egui::Stroke { width: 2.0, color: self.fg_primary_text_color_visuals().unwrap_or_default() },
+            corner_radius: rounding,
+            expansion: 1.0,
+        }
+    }
+    fn custom_open_widget_visual(&self) -> egui::style::WidgetVisuals {
+        let rounding = egui::CornerRadius::same(self.rounding_visuals());
+        egui::style::WidgetVisuals {
+            bg_fill: self.bg_auxiliary_color_visuals(),
+            weak_bg_fill: self.bg_auxiliary_color_visuals(),
+            bg_stroke: egui::Stroke { width: 1.0, color: self.primary_accent_color_visuals() },
+            fg_stroke: egui::Stroke { width: 1.0, color: self.fg_primary_text_color_visuals().unwrap_or_default() },
+            corner_radius: rounding,
+            expansion: 0.0,
+        }
+    }
+}
+
+pub fn cockpit_dark() -> AppTheme {
+    AppTheme::new("Cockpit Dark", CockpitDarkTheme).with_extended_colors(
+        // dim gray text
+        egui::Color32::from_rgb(128, 133, 144),
+        // overlay gray
+        egui::Color32::from_rgb(74, 77, 84),
+        // muted teal (altitude low)
+        egui::Color32::from_rgb(90, 158, 160),
+        // burned orange (altitude high)
+        egui::Color32::from_rgb(204, 102, 34),
+        // warm amber (altitude ultra)
+        egui::Color32::from_rgb(224, 148, 64),
+    )
+}
+
 // ── Theme registry ──────────────────────────────────────────────────
 
 pub type ThemeConstructor = fn() -> AppTheme;
@@ -327,6 +461,9 @@ pub struct ThemeRegistry {
 impl ThemeRegistry {
     pub fn new() -> Self {
         let mut reg = Self { themes: Vec::new() };
+
+        // Custom themes
+        reg.register("Cockpit Dark", cockpit_dark);
 
         // Catppuccin themes
         reg.register("Catppuccin Mocha", catppuccin_mocha);
