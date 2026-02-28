@@ -134,11 +134,15 @@ pub fn follow_aircraft_3d(
     let Some(ref following_icao) = follow_state.following_icao else {
         // Just stopped following — deactivate chase and restore orbit params
         if view3d_state.chase_active {
-            view3d_state.camera_pitch = view3d_state.pre_chase_pitch;
-            view3d_state.camera_yaw = view3d_state.pre_chase_yaw;
-            view3d_state.camera_altitude = view3d_state.pre_chase_altitude;
+            if !view3d_state.chase_orbit_override {
+                // Restore pre-chase orbit params only if user hasn't orbited
+                view3d_state.camera_pitch = view3d_state.pre_chase_pitch;
+                view3d_state.camera_yaw = view3d_state.pre_chase_yaw;
+                view3d_state.camera_altitude = view3d_state.pre_chase_altitude;
+            }
             view3d_state.chase_active = false;
             view3d_state.chase_transition = 0.0;
+            view3d_state.chase_orbit_override = false;
         }
         view3d_state.follow_altitude_ft = None;
         return;
@@ -175,35 +179,38 @@ pub fn follow_aircraft_3d(
         + time.delta_secs() / crate::view3d::CHASE_TRANSITION_DURATION)
         .min(1.0);
 
-    let chase_lerp_speed = 2.0;
-    let t_chase = (chase_lerp_speed * time.delta_secs()).min(1.0);
+    // Only lerp yaw/pitch/altitude when user hasn't overridden with orbit input
+    if !view3d_state.chase_orbit_override {
+        let chase_lerp_speed = 2.0;
+        let t_chase = (chase_lerp_speed * time.delta_secs()).min(1.0);
 
-    // Target yaw: behind the aircraft.
-    // Orbit yaw=0 places camera south (+Z) looking north (-Z).
-    // Aircraft heading=0 means flying north, so camera should be south = yaw 0.
-    // Therefore chase yaw = aircraft heading directly.
-    let target_yaw = if let Some(heading) = aircraft.heading {
-        ((heading % 360.0) + 360.0) % 360.0
-    } else {
-        view3d_state.camera_yaw
-    };
+        // Target yaw: behind the aircraft.
+        // Orbit yaw=0 places camera south (+Z) looking north (-Z).
+        // Aircraft heading=0 means flying north, so camera should be south = yaw 0.
+        // Therefore chase yaw = aircraft heading directly.
+        let target_yaw = if let Some(heading) = aircraft.heading {
+            ((heading % 360.0) + 360.0) % 360.0
+        } else {
+            view3d_state.camera_yaw
+        };
 
-    // Shortest-path yaw lerp (handle 0/360 wrap)
-    let mut yaw_diff = target_yaw - view3d_state.camera_yaw;
-    if yaw_diff > 180.0 { yaw_diff -= 360.0; }
-    if yaw_diff < -180.0 { yaw_diff += 360.0; }
-    view3d_state.camera_yaw += yaw_diff * t_chase;
-    if view3d_state.camera_yaw < 0.0 { view3d_state.camera_yaw += 360.0; }
-    if view3d_state.camera_yaw >= 360.0 { view3d_state.camera_yaw -= 360.0; }
+        // Shortest-path yaw lerp (handle 0/360 wrap)
+        let mut yaw_diff = target_yaw - view3d_state.camera_yaw;
+        if yaw_diff > 180.0 { yaw_diff -= 360.0; }
+        if yaw_diff < -180.0 { yaw_diff += 360.0; }
+        view3d_state.camera_yaw += yaw_diff * t_chase;
+        if view3d_state.camera_yaw < 0.0 { view3d_state.camera_yaw += 360.0; }
+        if view3d_state.camera_yaw >= 360.0 { view3d_state.camera_yaw -= 360.0; }
 
-    // Target pitch
-    let target_pitch = crate::view3d::CHASE_PITCH;
-    view3d_state.camera_pitch += (target_pitch - view3d_state.camera_pitch) * t_chase;
+        // Target pitch
+        let target_pitch = crate::view3d::CHASE_PITCH;
+        view3d_state.camera_pitch += (target_pitch - view3d_state.camera_pitch) * t_chase;
 
-    // Target altitude: aircraft altitude + offset above
-    let target_altitude = aircraft.altitude.unwrap_or(0) as f32
-        + crate::view3d::CHASE_OFFSET_ABOVE_FT;
-    view3d_state.camera_altitude += (target_altitude - view3d_state.camera_altitude) * t_chase;
+        // Target altitude: aircraft altitude + offset above
+        let target_altitude = aircraft.altitude.unwrap_or(0) as f32
+            + crate::view3d::CHASE_OFFSET_ABOVE_FT;
+        view3d_state.camera_altitude += (target_altitude - view3d_state.camera_altitude) * t_chase;
+    }
 }
 
 /// System that clears selection when the selected aircraft no longer exists.
