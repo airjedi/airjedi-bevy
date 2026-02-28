@@ -113,7 +113,7 @@ pub fn deselect_on_escape(
 }
 
 /// System that lerps the 3D camera orbit center toward the followed aircraft.
-/// Runs as a separate system to avoid adding resource conflicts to update_3d_camera.
+/// When chase is active, also lerps orbit params toward chase targets.
 pub fn follow_aircraft_3d(
     mut view3d_state: ResMut<crate::view3d::View3DState>,
     follow_state: Res<CameraFollowState>,
@@ -132,6 +132,14 @@ pub fn follow_aircraft_3d(
     }
 
     let Some(ref following_icao) = follow_state.following_icao else {
+        // Just stopped following — deactivate chase and restore orbit params
+        if view3d_state.chase_active {
+            view3d_state.camera_pitch = view3d_state.pre_chase_pitch;
+            view3d_state.camera_yaw = view3d_state.pre_chase_yaw;
+            view3d_state.camera_altitude = view3d_state.pre_chase_altitude;
+            view3d_state.chase_active = false;
+            view3d_state.chase_transition = 0.0;
+        }
         view3d_state.follow_altitude_ft = None;
         return;
     };
@@ -141,16 +149,58 @@ pub fn follow_aircraft_3d(
         return;
     };
 
+    // Activate chase on first frame of following
+    if !view3d_state.chase_active {
+        view3d_state.pre_chase_pitch = view3d_state.camera_pitch;
+        view3d_state.pre_chase_yaw = view3d_state.camera_yaw;
+        view3d_state.pre_chase_altitude = view3d_state.camera_altitude;
+        view3d_state.chase_active = true;
+        view3d_state.chase_transition = 0.0;
+    }
+
     let converter = crate::geo::CoordinateConverter::new(&tile_settings, map_state.zoom_level);
     let target_pos = converter.latlon_to_world(aircraft.latitude, aircraft.longitude);
 
-    let lerp_speed = 3.0;
-    let t_lerp = (lerp_speed * time.delta_secs()).min(1.0);
-    view3d_state.saved_2d_center.x += (target_pos.x - view3d_state.saved_2d_center.x) * t_lerp;
-    view3d_state.saved_2d_center.y += (target_pos.y - view3d_state.saved_2d_center.y) * t_lerp;
+    // Lerp map center toward aircraft position
+    let pos_lerp_speed = 3.0;
+    let t_pos = (pos_lerp_speed * time.delta_secs()).min(1.0);
+    view3d_state.saved_2d_center.x += (target_pos.x - view3d_state.saved_2d_center.x) * t_pos;
+    view3d_state.saved_2d_center.y += (target_pos.y - view3d_state.saved_2d_center.y) * t_pos;
 
     // Track the followed aircraft's altitude for the orbit center
     view3d_state.follow_altitude_ft = aircraft.altitude;
+
+    // Advance chase transition progress
+    view3d_state.chase_transition = (view3d_state.chase_transition
+        + time.delta_secs() / crate::view3d::CHASE_TRANSITION_DURATION)
+        .min(1.0);
+
+    let chase_lerp_speed = 2.0;
+    let t_chase = (chase_lerp_speed * time.delta_secs()).min(1.0);
+
+    // Target yaw: behind the aircraft (heading + 180)
+    let target_yaw = if let Some(heading) = aircraft.heading {
+        (heading + 180.0) % 360.0
+    } else {
+        view3d_state.camera_yaw
+    };
+
+    // Shortest-path yaw lerp (handle 0/360 wrap)
+    let mut yaw_diff = target_yaw - view3d_state.camera_yaw;
+    if yaw_diff > 180.0 { yaw_diff -= 360.0; }
+    if yaw_diff < -180.0 { yaw_diff += 360.0; }
+    view3d_state.camera_yaw += yaw_diff * t_chase;
+    if view3d_state.camera_yaw < 0.0 { view3d_state.camera_yaw += 360.0; }
+    if view3d_state.camera_yaw >= 360.0 { view3d_state.camera_yaw -= 360.0; }
+
+    // Target pitch
+    let target_pitch = crate::view3d::CHASE_PITCH;
+    view3d_state.camera_pitch += (target_pitch - view3d_state.camera_pitch) * t_chase;
+
+    // Target altitude: aircraft altitude + offset above
+    let target_altitude = aircraft.altitude.unwrap_or(0) as f32
+        + crate::view3d::CHASE_OFFSET_ABOVE_FT;
+    view3d_state.camera_altitude += (target_altitude - view3d_state.camera_altitude) * t_chase;
 }
 
 /// System that clears selection when the selected aircraft no longer exists.
