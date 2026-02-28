@@ -39,6 +39,10 @@ const MAX_PITCH: f32 = 89.9;
 const MIN_CAMERA_ALTITUDE: f32 = 1000.0;
 const MAX_CAMERA_ALTITUDE: f32 = 120000.0;
 const ALTITUDE_EXAGGERATION: f32 = 1.0;
+pub(crate) const CHASE_OFFSET_BEHIND_FT: f32 = 100.0;
+pub(crate) const CHASE_OFFSET_ABOVE_FT: f32 = 25.0;
+pub(crate) const CHASE_PITCH: f32 = 5.0;
+pub(crate) const CHASE_TRANSITION_DURATION: f32 = 2.0;
 
 /// Scale factor to convert altitude/distance values to pixel-space.
 pub(crate) const PIXEL_SCALE: f32 = 20.0;
@@ -90,6 +94,14 @@ pub struct View3DState {
     pub follow_altitude_ft: Option<i32>,
     /// Saved 2D zoom level when entering 3D mode, restored on return
     pub saved_2d_zoom_level: Option<u8>,
+    /// Whether the camera is in chase mode (tracking aircraft heading)
+    pub chase_active: bool,
+    /// Progress of the initial transition into chase position (0.0 to 1.0)
+    pub chase_transition: f32,
+    /// Saved orbit parameters from before chase started
+    pub pre_chase_pitch: f32,
+    pub pre_chase_yaw: f32,
+    pub pre_chase_altitude: f32,
 }
 
 /// Minimum mouse movement (pixels) before a click becomes a drag.
@@ -114,6 +126,11 @@ impl Default for View3DState {
             drag_active: false,
             follow_altitude_ft: None,
             saved_2d_zoom_level: None,
+            chase_active: false,
+            chase_transition: 0.0,
+            pre_chase_pitch: DEFAULT_PITCH,
+            pre_chase_yaw: 0.0,
+            pre_chase_altitude: DEFAULT_CAMERA_ALTITUDE,
         }
     }
 }
