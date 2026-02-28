@@ -137,6 +137,7 @@ Key dependencies (see `Cargo.toml` for full list):
 - `catppuccin = "2.6"` + `egui-aesthetix`: Theming
 - `bevy_obj = "0.18"`: OBJ model loading
 - `bevy_hanabi = "0.18"` (optional `hanabi` feature, default on): GPU particle effects for aircraft trails
+- `bevy_brp_extras = "0.18"` (optional `brp` feature, default on): BRP extras for remote inspection, screenshots, input simulation
 - `adsb-client`: Local crate for ADS-B SBS1 protocol parsing
 - `tokio`: Async runtime for ADS-B network connections
 - `reqwest`: HTTP client (blocking + json) for METAR and data downloads
@@ -156,6 +157,15 @@ Tiles are cached in `~/Library/Caches/airjedi/tiles/` (centralized), symlinked i
 - Clear cache via in-app button or `tile_cache::clear_tile_cache()`
 - Cache can grow large with extensive panning/zooming across multiple zoom levels
 - `tile_cache::remove_invalid_tiles()` runs at startup to clean corrupted files
+
+## Bevy Remote Protocol (BRP)
+
+The `brp` feature flag (default-on) enables runtime inspection and control of the app via the Bevy Remote Protocol. This allows AI coding assistants to query entities, inspect components, take screenshots, and simulate input through the `bevy_brp_mcp` MCP server.
+
+- **Feature flag:** `brp` (disable with `--no-default-features -F hanabi`)
+- **HTTP endpoint:** `localhost:15702` (default, not configurable)
+- **MCP server:** Configured in `.mcp.json`, uses `bevy_brp_mcp` binary
+- **macOS bundle:** BRP is excluded from release app bundles
 
 ## 3D Tile Rendering — Known Pitfalls
 
