@@ -9,7 +9,7 @@ use crate::tile_cache;
 use crate::view3d;
 use crate::camera::MapCamera;
 use crate::RenderCategory;
-use crate::{clamp_latitude, clamp_longitude, ZoomDebugLogger};
+use crate::{clamp_latitude, clamp_longitude, ZoomDebugLogger, ZoomSet};
 use bevy::camera::visibility::RenderLayers;
 
 // =============================================================================
@@ -54,6 +54,19 @@ impl Default for Tile3DRefreshTimer {
     }
 }
 
+/// Tracks the previous 3D zoom level so tile transforms can be rescaled
+/// when the zoom level changes. Without this, tiles spawned at zoom N
+/// stay at zoom-N pixel coordinates while the camera and entities move
+/// to zoom-(N+1) coordinates, making tiles appear at half size/position.
+#[derive(Resource)]
+struct Previous3DZoom(u8);
+
+impl Default for Previous3DZoom {
+    fn default() -> Self {
+        Self(10) // matches default MapState zoom
+    }
+}
+
 /// Tracks the previous camera altitude to detect active altitude changes.
 /// During rapid altitude changes, tile culling is softened to prevent
 /// flashing while new tiles load.
@@ -84,13 +97,20 @@ impl Plugin for TilesPlugin {
         app.init_resource::<SpawnedTiles>()
             .init_resource::<Tile3DRefreshTimer>()
             .init_resource::<AltitudeChangeTracker>()
+            .init_resource::<Previous3DZoom>()
             .add_systems(Startup, setup_tile_quad_mesh)
             .add_systems(Update, handle_window_resize)
             .add_systems(Update, handle_3d_view_tile_refresh)
-            .add_systems(Update, request_3d_tiles_continuous.after(handle_3d_view_tile_refresh))
+            .add_systems(Update, request_3d_tiles_continuous
+                .after(handle_3d_view_tile_refresh)
+                .in_set(ZoomSet::Change))
+            .add_systems(Update, rescale_tiles_on_zoom_change
+                .after(ZoomSet::Change))
             .add_systems(Update, track_altitude_changes)
             .add_systems(Update, handle_tile_load_failures)
-            .add_systems(Update, display_tiles_filtered.after(bevy::ecs::schedule::ApplyDeferred))
+            .add_systems(Update, display_tiles_filtered
+                .after(bevy::ecs::schedule::ApplyDeferred)
+                .after(rescale_tiles_on_zoom_change))
             .add_systems(Update, animate_tile_fades.after(display_tiles_filtered))
             .add_systems(Update, cull_offscreen_tiles.after(display_tiles_filtered))
             .add_systems(Update, sync_tile_mesh_quads.after(animate_tile_fades))
@@ -124,8 +144,16 @@ fn raw_altitude_to_zoom(altitude_ft: f32) -> f32 {
 /// seen at altitude boundaries.
 pub(crate) fn altitude_to_zoom_level(altitude_ft: f32, current_zoom: u8) -> u8 {
     let raw = raw_altitude_to_zoom(altitude_ft);
+    let target = raw.round() as u8;
     let current = current_zoom as f32;
 
+    // When far from target (e.g. entering 3D mode), jump directly
+    // instead of climbing one level at a time every 300ms.
+    if target.abs_diff(current_zoom) > 1 {
+        return target.clamp(8, 18);
+    }
+
+    // Normal hysteresis for single-level transitions during scrolling
     if raw > current + 0.7 {
         (current as u8 + 1).min(18)
     } else if raw < current - 0.6 {
@@ -212,7 +240,10 @@ pub(crate) fn request_tiles_at_location(
 /// When a tile image fails to load, check if the cached file is corrupt and remove it.
 /// The tile will be re-requested automatically by bevy_slippy_tiles on the next frame.
 fn handle_tile_load_failures(
+    mut commands: Commands,
     mut failed_events: MessageReader<AssetLoadFailedEvent<Image>>,
+    tile_query: Query<(Entity, &Sprite, &Transform, Option<&TileMeshQuad>, &TileFadeState), With<MapTile>>,
+    mut spawned_tiles: ResMut<SpawnedTiles>,
 ) {
     for event in failed_events.read() {
         let asset_path = event.path.path();
@@ -221,6 +252,23 @@ fn handle_tile_load_failures(
         if path_str.contains(".tile.") {
             warn!("Tile asset load failed: {:?} — checking for corrupt cache file", asset_path);
             tile_cache::remove_corrupt_cached_tile(asset_path);
+
+            // Despawn the tile entity (and its mesh quad) that references
+            // the failed texture so it doesn't render as a black rectangle.
+            // Clearing its spawned_tiles entry allows re-download.
+            let failed_id = event.id;
+            for (entity, sprite, transform, mesh_quad, fade) in tile_query.iter() {
+                if sprite.image.id() == failed_id {
+                    if let Some(quad) = mesh_quad {
+                        commands.entity(quad.0).despawn();
+                    }
+                    let key = (transform.translation.x as i32, transform.translation.y as i32, fade.tile_zoom);
+                    spawned_tiles.positions.remove(&key);
+                    commands.entity(entity).despawn();
+                    debug!("Despawned tile entity with failed texture: {:?}", asset_path);
+                    break;
+                }
+            }
         }
     }
 }
@@ -315,11 +363,12 @@ fn request_3d_tiles_continuous(
     mut commands: Commands,
     mut timer: ResMut<Tile3DRefreshTimer>,
     time: Res<Time>,
-    view3d_state: Res<view3d::View3DState>,
+    mut view3d_state: ResMut<view3d::View3DState>,
     mut map_state: ResMut<MapState>,
+    tile_settings: Res<SlippyTilesSettings>,
     mut download_events: MessageWriter<DownloadSlippyTilesMessage>,
     mut spawned_tiles: ResMut<SpawnedTiles>,
-    tile_query: Query<(Entity, &TileFadeState), With<MapTile>>,
+    tile_query: Query<(Entity, &TileFadeState, Option<&TileMeshQuad>), With<MapTile>>,
 ) {
     if !view3d_state.is_3d_active() {
         return;
@@ -339,6 +388,18 @@ fn request_3d_tiles_continuous(
             debug!("3D adaptive zoom: altitude {:.0} ft -> zoom {}", view3d_state.camera_altitude, adaptive_zoom);
             map_state.zoom_level = new_zoom;
 
+            // Recalculate the camera orbit center (saved_2d_center) in the
+            // new zoom level's pixel space. Without this, the camera center
+            // stays in the old zoom's coordinates while all entity positions
+            // recalculate at the new zoom, causing everything to jump.
+            let converter = crate::geo::CoordinateConverter::new(
+                &tile_settings, new_zoom,
+            );
+            let new_center = converter.latlon_to_world(
+                map_state.latitude, map_state.longitude,
+            );
+            view3d_state.saved_2d_center = new_center;
+
             // When zoom level changes, despawn tiles that are now outside
             // the new multi-resolution band [new_zoom-4, new_zoom].
             // Don't clear spawned_tiles — existing in-band tiles should
@@ -347,8 +408,12 @@ fn request_3d_tiles_continuous(
             let min_band = new_z.saturating_sub(4);
             spawned_tiles.positions.retain(|&(_, _, z)| z >= min_band && z <= new_z);
             let mut despawned = 0u32;
-            for (entity, fade_state) in tile_query.iter() {
+            for (entity, fade_state, mesh_quad) in tile_query.iter() {
                 if fade_state.tile_zoom > new_z || fade_state.tile_zoom < min_band {
+                    // Despawn the mesh quad companion first to prevent orphans
+                    if let Some(quad) = mesh_quad {
+                        commands.entity(quad.0).despawn();
+                    }
                     commands.entity(entity).despawn();
                     despawned += 1;
                 }
@@ -457,6 +522,59 @@ fn track_altitude_changes(
         tracker.idle_secs += time.delta_secs();
     }
     tracker.prev_altitude = current;
+}
+
+/// Rescale all existing tile transforms when the 3D adaptive zoom changes.
+///
+/// Tiles are positioned in pixel space at their spawn-time zoom level. When
+/// the discrete zoom changes, the pixel coordinate system scales by 2x per
+/// level. This system applies that scale factor to existing tiles so they
+/// remain correctly positioned relative to the camera and entities (which
+/// recompute their positions at the new zoom level every frame).
+fn rescale_tiles_on_zoom_change(
+    map_state: Res<MapState>,
+    view3d_state: Res<view3d::View3DState>,
+    mut prev_zoom: ResMut<Previous3DZoom>,
+    mut tile_query: Query<&mut Transform, With<MapTile>>,
+    mut spawned_tiles: ResMut<SpawnedTiles>,
+) {
+    let current = map_state.zoom_level.to_u8();
+
+    if !view3d_state.is_3d_active() {
+        // Keep tracking zoom even in 2D so transition to 3D starts correct
+        prev_zoom.0 = current;
+        return;
+    }
+
+    if current == prev_zoom.0 {
+        return;
+    }
+
+    let zoom_diff = current as i32 - prev_zoom.0 as i32;
+    let factor = 2.0_f32.powi(zoom_diff);
+
+    let mut count = 0u32;
+    for mut transform in tile_query.iter_mut() {
+        transform.translation.x *= factor;
+        transform.translation.y *= factor;
+        // Z is managed by update_tile_elevation, don't touch it
+        transform.scale.x *= factor;
+        transform.scale.y *= factor;
+        count += 1;
+    }
+
+    // Rescale spawned_tiles position keys so the dedup check in
+    // display_tiles_filtered correctly detects existing tiles at
+    // their new coordinates and doesn't spawn duplicates.
+    let old_positions: Vec<_> = spawned_tiles.positions.drain().collect();
+    for (x, y, z) in old_positions {
+        let new_x = ((x as f64) * factor as f64).round() as i32;
+        let new_y = ((y as f64) * factor as f64).round() as i32;
+        spawned_tiles.positions.insert((new_x, new_y, z));
+    }
+
+    debug!("Rescaled {} tiles by {}x for zoom {} -> {}", count, factor, prev_zoom.0, current);
+    prev_zoom.0 = current;
 }
 
 /// Custom tile display system that filters tiles by current zoom level.
@@ -807,9 +925,16 @@ fn sync_tile_mesh_quads(
     if view3d_state.is_3d_active() {
         let current_zoom = map_state.zoom_level.to_u8();
 
-        // Only create mesh quads for current-zoom tiles.
+        // Create mesh quads for tiles at current zoom AND one zoom level
+        // below (fallback). When zoom changes, the previous zoom's mesh
+        // quads persist as visual fallback until new tiles arrive and their
+        // mesh quads replace them. This prevents the ground from going
+        // blank during zoom transitions. Minor Z-fighting between adjacent
+        // zoom levels at grazing angles near the horizon is acceptable
+        // since those tiles are already faded by distance fog.
+        let min_quad_zoom = current_zoom.saturating_sub(1);
         for (tile_entity, sprite, transform, fade_state) in tiles_without_quad.iter() {
-            if fade_state.tile_zoom != current_zoom {
+            if fade_state.tile_zoom < min_quad_zoom || fade_state.tile_zoom > current_zoom {
                 continue;
             }
 
@@ -837,9 +962,10 @@ fn sync_tile_mesh_quads(
             });
         }
 
-        // Despawn mesh quads for tiles that are no longer at current zoom
+        // Despawn mesh quads for tiles more than 1 zoom level away from
+        // current. Adjacent-zoom quads are kept as fallback.
         for (tile_entity, quad, fade_state) in tiles_with_quad.iter() {
-            if fade_state.tile_zoom != current_zoom {
+            if fade_state.tile_zoom < min_quad_zoom || fade_state.tile_zoom > current_zoom {
                 commands.entity(quad.0).despawn();
                 commands.entity(tile_entity).remove::<TileMeshQuad>();
             }
