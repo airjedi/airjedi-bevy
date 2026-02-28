@@ -153,7 +153,7 @@ pub struct AppearanceConfig {
 impl Default for AppearanceConfig {
     fn default() -> Self {
         Self {
-            theme: "Nord Dark".to_string(),
+            theme: "Catppuccin Mocha".to_string(),
         }
     }
 }
