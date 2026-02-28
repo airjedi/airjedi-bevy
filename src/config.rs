@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
+use crate::aircraft::TrailRenderer;
 use crate::theme::{AppTheme, ThemeRegistry};
 
 const CONFIG_FILE: &str = "config.toml";
@@ -99,6 +100,19 @@ impl Default for OverlayConfig {
 pub struct TrailsConfig {
     pub enabled: bool,
     pub max_age_seconds: u64,
+    #[serde(default)]
+    pub renderer_2d: TrailRenderer,
+    #[serde(default = "TrailsConfig::default_renderer_3d")]
+    pub renderer_3d: TrailRenderer,
+}
+
+impl TrailsConfig {
+    fn default_renderer_3d() -> TrailRenderer {
+        #[cfg(feature = "hanabi")]
+        { TrailRenderer::Particle }
+        #[cfg(not(feature = "hanabi"))]
+        { TrailRenderer::Gizmo }
+    }
 }
 
 impl Default for TrailsConfig {
@@ -106,6 +120,8 @@ impl Default for TrailsConfig {
         Self {
             enabled: true,
             max_age_seconds: 300,
+            renderer_2d: TrailRenderer::default(),
+            renderer_3d: Self::default_renderer_3d(),
         }
     }
 }
@@ -258,6 +274,8 @@ pub struct SettingsUiState {
     // Trail settings
     pub trails_enabled: bool,
     pub trails_max_age: String,
+    pub trails_renderer_2d: TrailRenderer,
+    pub trails_renderer_3d: TrailRenderer,
     pub error_message: Option<String>,
 }
 
@@ -277,6 +295,8 @@ impl SettingsUiState {
         // Trail settings
         self.trails_enabled = config.trails.enabled;
         self.trails_max_age = config.trails.max_age_seconds.to_string();
+        self.trails_renderer_2d = config.trails.renderer_2d;
+        self.trails_renderer_3d = config.trails.renderer_3d;
         self.error_message = None;
     }
 
@@ -349,6 +369,8 @@ impl SettingsUiState {
             trails: TrailsConfig {
                 enabled: self.trails_enabled,
                 max_age_seconds: trails_max_age,
+                renderer_2d: self.trails_renderer_2d,
+                renderer_3d: self.trails_renderer_3d,
             },
             bookmarks: BookmarksConfig::default(),
             appearance: AppearanceConfig::default(),
@@ -443,8 +465,31 @@ pub fn render_settings_pane_content(
     ui.collapsing("Flight Trails", |ui| {
         ui.checkbox(&mut ui_state.trails_enabled, "Enable Trails");
         ui.add_space(8.0);
-        ui.label("Max Age (seconds):");
-        ui.text_edit_singleline(&mut ui_state.trails_max_age);
+        ui.add_enabled_ui(ui_state.trails_enabled, |ui| {
+            ui.label("Max Age (seconds):");
+            ui.text_edit_singleline(&mut ui_state.trails_max_age);
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                ui.label("2D Renderer:");
+                egui::ComboBox::from_id_salt("trail_renderer_2d")
+                    .selected_text(ui_state.trails_renderer_2d.to_string())
+                    .show_ui(ui, |ui| {
+                        for &r in TrailRenderer::ALL {
+                            ui.selectable_value(&mut ui_state.trails_renderer_2d, r, r.to_string());
+                        }
+                    });
+            });
+            ui.horizontal(|ui| {
+                ui.label("3D Renderer:");
+                egui::ComboBox::from_id_salt("trail_renderer_3d")
+                    .selected_text(ui_state.trails_renderer_3d.to_string())
+                    .show_ui(ui, |ui| {
+                        for &r in TrailRenderer::ALL {
+                            ui.selectable_value(&mut ui_state.trails_renderer_3d, r, r.to_string());
+                        }
+                    });
+            });
+        });
     });
 
     ui.add_space(16.0);
@@ -518,6 +563,8 @@ pub fn sync_config_to_render_states(
     if let Some(ref mut config) = trail_config {
         config.enabled = app_config.trails.enabled;
         config.max_age_seconds = app_config.trails.max_age_seconds;
+        config.renderer_2d = app_config.trails.renderer_2d;
+        config.renderer_3d = app_config.trails.renderer_3d;
     }
 }
 

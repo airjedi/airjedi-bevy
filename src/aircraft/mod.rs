@@ -20,7 +20,7 @@ pub mod hanabi_selection;
 pub mod hanabi_trails;
 
 pub use components::{Aircraft, AircraftLabel};
-pub use trails::{TrailHistory, TrailConfig, SessionClock, TrailRecordTimer};
+pub use trails::{TrailHistory, TrailConfig, TrailRenderer, SessionClock, TrailRecordTimer};
 pub use list_panel::{AircraftListState, AircraftDisplayList, AircraftDisplayData};
 pub use detail_panel::{DetailPanelState, CameraFollowState};
 pub use stats_panel::StatsPanelState;

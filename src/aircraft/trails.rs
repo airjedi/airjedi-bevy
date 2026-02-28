@@ -1,7 +1,17 @@
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
+use std::fmt;
 use std::time::Instant;
+
+/// Which renderer to use for aircraft trails.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TrailRenderer {
+    #[default]
+    Gizmo,
+    #[cfg(feature = "hanabi")]
+    Particle,
+}
 
 /// Resource providing a session-relative clock for serializable timestamps.
 /// Trail points store seconds since this clock's epoch (session start).
@@ -46,6 +56,24 @@ pub struct TrailHistory {
     pub points: VecDeque<TrailPoint>,
 }
 
+impl fmt::Display for TrailRenderer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TrailRenderer::Gizmo => write!(f, "Gizmo"),
+            #[cfg(feature = "hanabi")]
+            TrailRenderer::Particle => write!(f, "Particle"),
+        }
+    }
+}
+
+impl TrailRenderer {
+    pub const ALL: &'static [TrailRenderer] = &[
+        TrailRenderer::Gizmo,
+        #[cfg(feature = "hanabi")]
+        TrailRenderer::Particle,
+    ];
+}
+
 /// Resource for trail configuration
 #[derive(Resource)]
 pub struct TrailConfig {
@@ -53,6 +81,8 @@ pub struct TrailConfig {
     pub max_age_seconds: u64,
     pub solid_duration_seconds: u64,
     pub fade_duration_seconds: u64,
+    pub renderer_2d: TrailRenderer,
+    pub renderer_3d: TrailRenderer,
 }
 
 impl Default for TrailConfig {
@@ -62,6 +92,11 @@ impl Default for TrailConfig {
             max_age_seconds: 300,
             solid_duration_seconds: 225,
             fade_duration_seconds: 75,
+            renderer_2d: TrailRenderer::Gizmo,
+            #[cfg(feature = "hanabi")]
+            renderer_3d: TrailRenderer::Particle,
+            #[cfg(not(feature = "hanabi"))]
+            renderer_3d: TrailRenderer::Gizmo,
         }
     }
 }
