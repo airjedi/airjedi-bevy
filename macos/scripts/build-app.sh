@@ -27,7 +27,7 @@ echo "Building $APP_NAME v$VERSION..."
 
 # Step 1: Build release binary
 echo "Step 1: Building release binary..."
-(cd "$ROOT_DIR" && cargo build --release)
+(cd "$ROOT_DIR" && cargo build --release --no-default-features -F hanabi)
 
 if [ ! -f "$BINARY_PATH" ]; then
     echo "Error: Release binary not found at $BINARY_PATH"
