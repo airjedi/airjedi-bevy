@@ -50,76 +50,112 @@ The `macos/` directory contains all macOS-specific build files. Assets are copie
 
 ## Architecture
 
-### Core Systems
+The application uses Bevy's ECS architecture with a plugin-based modular design. `src/main.rs` wires plugins together and defines shared constants, coordinate helpers, and the `setup_map` startup system.
 
-The application uses Bevy's ECS (Entity-Component-System) architecture with these main systems:
+### Module Map
 
-1. **Map Management** (src/main.rs:113-130)
-   - `setup_map`: Initializes camera and sends initial tile download requests
-   - Map tiles are downloaded via `bevy_slippy_tiles` and cached in the `assets/` directory as `{zoom}.{x}.{y}.{tile_size}.tile.png`
-   - Default center: London (51.5074, -0.1278) at zoom level 10
-   - Tile endpoint: CartoDB dark_all basemap
+| Module | Purpose |
+|--------|---------|
+| `src/main.rs` | App setup, plugin registration, constants, `setup_map` |
+| `src/camera.rs` | Dual-camera system (MapCamera 2D + AircraftCamera 3D), aircraft position/label updates |
+| `src/zoom.rs` | Two-tier zoom: continuous camera zoom + discrete tile zoom levels |
+| `src/input.rs` | Pan/drag handling with Mercator projection conversion |
+| `src/tiles.rs` | Tile lifecycle, multi-resolution bands, fade-in/out, 3D mesh quads |
+| `src/tile_cache.rs` | Centralized tile cache in `~/Library/Caches/airjedi/tiles/`, symlinked into assets |
+| `src/geo.rs` | `CoordinateConverter`, haversine distance, lat/lon-to-world helpers |
+| `src/config.rs` | `AppConfig` persistence (TOML), basemap style, settings UI state |
+| `src/theme.rs` | Catppuccin-based theming, egui style application |
+| `src/dock.rs` | `egui_tiles`-based dock layout with tabbed panels |
+| `src/toolbar.rs` | Top toolbar rendering |
+| `src/statusbar.rs` | Bottom status bar (connection, zoom, coordinates) |
+| `src/keyboard.rs` | Keyboard shortcuts and help overlay |
+| `src/inspector.rs` | `bevy-inspector-egui` integration |
+| `src/debug_panel.rs` | FPS, frame time, entity count diagnostics |
+| `src/render_layers.rs` | `RenderCategory` constants for layer separation |
+| `src/paths.rs` | Bundle-aware path resolution (dev vs macOS .app) |
+| `src/map.rs` | `MapState` and `ZoomState` resource definitions |
+| `src/units.rs` | Unit conversion helpers |
+| `src/ui_panels.rs` | `UiPanelManager` and `PanelId` for panel visibility |
+| `src/tools_window.rs` | Consolidated tools/settings window |
 
-2. **Zoom System** (src/main.rs:297-374)
-   - Two-tier zoom: camera zoom (continuous, 0.1x to 10x) and tile zoom (discrete levels 0-19)
-   - `handle_zoom`: Processes MouseWheel events, updates camera zoom, triggers tile level changes at thresholds (1.5x upgrade, 0.75x downgrade)
-   - `apply_camera_zoom`: Applies zoom to OrthographicProjection scale
-   - Supports both mouse wheel (line units) and trackpad (pixel units) with different sensitivity
+### Domain Modules (each has its own Plugin)
 
-3. **Pan/Drag System** (src/main.rs:225-295)
-   - `handle_pan_drag`: Implements click-and-drag panning using Mercator projection calculations
-   - Converts pixel deltas to lat/lon deltas based on current zoom level and latitude
-   - Requests new tiles only after significant movement (>0.001 degrees ≈ 100m)
+| Module | Plugin | Purpose |
+|--------|--------|---------|
+| `src/aircraft/` | `AircraftPlugin` | Components, trails, picking, prediction, staleness, altitude coloring, list/detail/stats panels, emergency alerts, type database, hanabi particle effects (optional feature) |
+| `src/adsb/` | `AdsbPlugin` | Live ADS-B data via `adsb-client` crate, aircraft sync, 3D model loading |
+| `src/aviation/` | `AviationPlugin` | Airport, navaid, and runway data loading and rendering |
+| `src/view3d/` | `View3DPlugin` | 2D/3D mode transitions, orbit camera, atmosphere/sky/fog, sun/moon positioning, day/night cycle |
+| `src/weather/` | `WeatherPlugin` | METAR fetching and weather indicators |
+| `src/recording/` | `RecordingPlugin` | Flight recording and playback |
+| `src/bookmarks/` | `BookmarksPlugin` | Map location bookmarks |
+| `src/tools/` | `ToolsPlugin` | Measurement tools |
+| `src/coverage/` | `CoveragePlugin` | ADS-B coverage visualization |
+| `src/airspace/` | `AirspacePlugin` | Airspace boundary display |
+| `src/data_sources/` | `DataSourcesPlugin` | Data source management |
+| `src/export/` | `ExportPlugin` | Data export functionality |
+| `src/data/` | — | Background data downloading |
 
-4. **Aircraft Rendering** (src/main.rs:400-439)
-   - `update_aircraft_positions`: Converts lat/lon to screen coordinates using Mercator projection
-   - `scale_aircraft_and_labels`: Scales markers and font sizes based on camera zoom
-   - `update_aircraft_labels`: Positions text labels relative to aircraft with zoom-aware offsets
-   - Aircraft are rendered at z=10, labels at z=11, map tiles at z=0
+### Dual Camera Architecture
 
-5. **UI and Cache Management** (src/main.rs:132-178, 441-528)
-   - `setup_ui`: Creates attribution text, control instructions, and clear cache button
-   - `clear_tile_cache`: Deletes all *.tile.png files from assets/ directory and forces fresh tile downloads
+The app uses three cameras:
+1. **MapCamera** (`Camera2d`): Map tiles, sprites, text. Layers 0 + 2 (gizmos).
+2. **AircraftCamera** (`Camera3d`): 3D aircraft models. Alpha-blends over MapCamera. Switches between orthographic (2D mode) and perspective (3D mode).
+3. **UI Camera** (`Camera2d`, order 100): Dedicated egui camera, layer 11 only.
 
-### Key Components
+In 3D mode, Camera3d operates in Y-up space; Camera2d derives its transform via rotation for tile rendering.
 
-- `Aircraft`: Stores id, latitude, longitude, altitude, heading
-- `AircraftLabel`: Links label entities to their aircraft entities
-- `MapState`: Tracks current map center (lat/lon) and discrete zoom level
-- `ZoomState`: Tracks continuous camera zoom (1.0 = normal) and min/max bounds
-- `DragState`: Manages pan drag state and throttles tile requests
+### Key Resources
+
+- `MapState`: Current map center (lat/lon) and discrete zoom level
+- `ZoomState`: Continuous camera zoom (0.1x–10x)
+- `View3DState`: 3D view mode, camera orbit (pitch/yaw/altitude), transition state
+- `AppConfig`: Persisted settings (basemap, default location, zoom)
+- `DockTreeState`: `egui_tiles` dock layout state
 
 ### Coordinate System
 
-- Bevy world coordinates: origin at screen center, +X right, +Y up
+- Bevy world coordinates: origin at reference point, +X right, +Y up (2D) / +Y up (3D via rotation)
 - Map tiles use Web Mercator projection (EPSG:3857)
-- Latitude clamped to ±85.0511° (Mercator limit)
-- Longitude clamped to ±180°
-- Pixel-to-degree conversion varies by zoom level and latitude (uses cosine correction)
+- Latitude clamped to ±85.0511° (Mercator limit), longitude to ±180°
+- Default center: Wichita, KS (37.6872, -97.3301)
+- `CoordinateConverter` in `src/geo.rs` handles all lat/lon-to-world conversions
+
+### System Ordering
+
+Systems that modify `MapState::zoom_level` in 3D mode run in `ZoomSet::Change`. Position-dependent systems (aircraft, airports, navaids, camera) run `.after(ZoomSet::Change)`.
 
 ## Dependencies
 
-- `bevy = "0.18"`: Game engine providing ECS, rendering, input, and windowing
-- `bevy_slippy_tiles`: Slippy map tile downloading and caching (git fork for 0.18 compatibility)
-- `bevy_egui = "0.39"`: Immediate mode GUI integration for settings panel
-- `serde`, `serde_json`: JSON serialization for aircraft data feeds
-- `reqwest` with blocking feature: HTTP client for API calls
+Key dependencies (see `Cargo.toml` for full list):
 
-## Current Sample Data
+- `bevy = "0.18"` with `jpeg` feature: Game engine
+- `bevy_slippy_tiles`: Slippy map tile downloading/caching (local path, fork for 0.18)
+- `bevy_egui = "0.39"` + `bevy-inspector-egui = "0.36"`: egui UI integration and entity inspector
+- `egui_tiles = "0.14"`: Dock/tab layout system
+- `egui-phosphor = "0.11"`: Icon font for UI
+- `catppuccin = "2.6"` + `egui-aesthetix`: Theming
+- `bevy_obj = "0.18"`: OBJ model loading
+- `bevy_hanabi = "0.18"` (optional `hanabi` feature, default on): GPU particle effects for aircraft trails
+- `adsb-client`: Local crate for ADS-B SBS1 protocol parsing
+- `tokio`: Async runtime for ADS-B network connections
+- `reqwest`: HTTP client (blocking + json) for METAR and data downloads
+- `serde` + `serde_json` + `toml`: Serialization for config and data
+- `chrono`: Date/time handling for sun position and recordings
+- `solar-positioning`: Sun elevation/azimuth calculations
+- `csv`: Airport/navaid data parsing
+- `dirs`: Platform-specific directory paths
 
-The application spawns 3 sample aircraft around London (src/main.rs:186-223):
-- BA123: London center, 35000 ft, heading 90°
-- AA456: Southeast offset, 38000 ft, heading 180°
-- LH789: Northwest offset, 32000 ft, heading 270°
+## Live Data
 
-These are hardcoded in `spawn_sample_aircraft` and should be replaced with real data feeds in production.
+Aircraft data comes from a live ADS-B feed via the `adsb-client` crate connecting to an SBS1 server (default: `98.186.33.60:30003`). Aircraft are synced in real-time with a 180-second staleness timeout and 250-mile max distance filter. Connection settings are in `src/main.rs::constants`.
 
 ## Map Tile Caching
 
-Tiles are cached in `assets/` with naming format: `{zoom}.{x}.{y}.{tile_size}.tile.png`
-- Clear cache via in-app button or manually delete `assets/*.tile.png`
+Tiles are cached in `~/Library/Caches/airjedi/tiles/` (centralized), symlinked into `assets/tiles/` for Bevy's AssetPlugin. Naming format: `{zoom}.{x}.{y}.{tile_size}.tile.png`
+- Clear cache via in-app button or `tile_cache::clear_tile_cache()`
 - Cache can grow large with extensive panning/zooming across multiple zoom levels
-- No automatic cache size management currently implemented
+- `tile_cache::remove_invalid_tiles()` runs at startup to clean corrupted files
 
 ## 3D Tile Rendering — Known Pitfalls
 
