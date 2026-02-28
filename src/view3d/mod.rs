@@ -39,8 +39,8 @@ const MAX_PITCH: f32 = 89.9;
 const MIN_CAMERA_ALTITUDE: f32 = 1000.0;
 const MAX_CAMERA_ALTITUDE: f32 = 120000.0;
 const ALTITUDE_EXAGGERATION: f32 = 1.0;
-pub(crate) const CHASE_OFFSET_BEHIND_FT: f32 = 100.0;
-pub(crate) const CHASE_OFFSET_ABOVE_FT: f32 = 25.0;
+pub(crate) const CHASE_OFFSET_BEHIND_FT: f32 = 8000.0;
+pub(crate) const CHASE_OFFSET_ABOVE_FT: f32 = 2000.0;
 pub(crate) const CHASE_PITCH: f32 = 5.0;
 pub(crate) const CHASE_TRANSITION_DURATION: f32 = 2.0;
 
