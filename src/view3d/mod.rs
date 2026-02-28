@@ -189,6 +189,35 @@ impl View3DState {
 
         Transform::from_translation(camera_pos).looking_at(center, Vec3::Y)
     }
+
+    /// Calculate chase camera transform in Y-up space.
+    /// Places camera at a fixed offset behind and above the orbit center,
+    /// rotated by the chase yaw, with a fixed downward pitch.
+    fn calculate_chase_transform_yup(&self, center: Vec3) -> Transform {
+        let yaw_rad = self.camera_yaw.to_radians();
+
+        let behind_dist = CHASE_OFFSET_BEHIND_FT * 0.3048 / 1000.0 * PIXEL_SCALE * self.altitude_scale;
+        let above_dist = CHASE_OFFSET_ABOVE_FT * 0.3048 / 1000.0 * PIXEL_SCALE * self.altitude_scale;
+
+        // Camera position: behind along yaw direction, above center
+        // At yaw=0, camera is south (+Z in Y-up), looking north (-Z)
+        let camera_pos = Vec3::new(
+            center.x - behind_dist * yaw_rad.sin(),
+            center.y + above_dist,
+            center.z + behind_dist * yaw_rad.cos(),
+        );
+
+        // Look at a point ahead of center for the downward pitch effect
+        let pitch_rad = CHASE_PITCH.to_radians();
+        let look_ahead_dist = behind_dist * 2.0;
+        let look_target = Vec3::new(
+            center.x + look_ahead_dist * yaw_rad.sin(),
+            center.y - look_ahead_dist * pitch_rad.tan(),
+            center.z - look_ahead_dist * yaw_rad.cos(),
+        );
+
+        Transform::from_translation(camera_pos).looking_at(look_target, Vec3::Y)
+    }
 }
 
 /// System to toggle 3D view mode with smooth transition
@@ -449,7 +478,18 @@ pub fn update_3d_camera(
         center_2d.y,
         orbit_alt,
     ));
-    let orbit_yup = state.calculate_camera_transform_yup(center_yup);
+    let orbit_yup = if state.chase_active {
+        let t = smooth_step(state.chase_transition);
+        let orbit = state.calculate_camera_transform_yup(center_yup);
+        let chase = state.calculate_chase_transform_yup(center_yup);
+        Transform {
+            translation: orbit.translation.lerp(chase.translation, t),
+            rotation: orbit.rotation.slerp(chase.rotation, t),
+            scale: Vec3::ONE,
+        }
+    } else {
+        state.calculate_camera_transform_yup(center_yup)
+    };
 
     // Matching height: perspective altitude that shows the same area as orthographic
     let base_fov = 60.0_f32.to_radians();
