@@ -135,7 +135,7 @@ impl View3DState {
         alt_km * PIXEL_SCALE * self.altitude_scale
     }
 
-    /// Convert camera altitude in feet to pixel-space distance
+    /// Convert camera altitude in feet to pixel-space vertical height
     pub fn altitude_to_distance(&self) -> f32 {
         let alt_km = self.camera_altitude * 0.3048 / 1000.0;
         alt_km * PIXEL_SCALE * self.altitude_scale
@@ -143,13 +143,23 @@ impl View3DState {
 
     /// Calculate the 3D camera transform in Y-up space.
     /// The orbit center is provided in Y-up coordinates.
+    ///
+    /// `camera_altitude` represents the true vertical altitude above the orbit
+    /// center. The orbit distance is derived so the camera stays at the stated
+    /// altitude regardless of pitch angle. At low pitch the horizontal distance
+    /// increases naturally (shallow viewing angle from altitude).
     fn calculate_camera_transform_yup(&self, center: Vec3) -> Transform {
         let pitch_rad = self.camera_pitch.to_radians();
         let yaw_rad = self.camera_yaw.to_radians();
 
-        let effective_distance = self.altitude_to_distance();
-        let horizontal_dist = effective_distance * pitch_rad.cos();
-        let vertical_dist = effective_distance * pitch_rad.sin();
+        // camera_altitude is true vertical height above orbit center.
+        // Derive orbit distance so vertical component always equals altitude.
+        // Clamp sin(pitch) to prevent infinite distance at very low angles.
+        let vertical_dist = self.altitude_to_distance();
+        let min_sin = 5.0_f32.to_radians().sin(); // ~0.087, caps orbit at ~11.5x altitude
+        let clamped_sin = pitch_rad.sin().max(min_sin);
+        let orbit_distance = vertical_dist / clamped_sin;
+        let horizontal_dist = orbit_distance * pitch_rad.cos();
 
         // Y is "up" (altitude), orbit in XZ plane.
         // At yaw=0, camera is south of center (+Z direction in Y-up)
