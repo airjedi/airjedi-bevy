@@ -6,6 +6,7 @@ use super::{
     draw_runways, draw_navaids,
     start_aviation_data_loading, poll_aviation_data_loading,
 };
+use crate::ZoomSet;
 
 pub struct AviationPlugin;
 
@@ -20,10 +21,10 @@ impl Plugin for AviationPlugin {
             .add_systems(Update, (
                 poll_aviation_data_loading,
                 spawn_airports,
-                update_airport_positions,
+                update_airport_positions.after(ZoomSet::Change),
                 update_airport_visibility,
-                draw_runways,
-                draw_navaids,
+                draw_runways.after(ZoomSet::Change),
+                draw_navaids.after(ZoomSet::Change),
             ));
     }
 }

@@ -365,6 +365,11 @@ pub fn animate_view_transition(
 
 /// System to update cameras for 3D perspective view.
 /// Camera3d is primary in Y-up space; Camera2d derives via rotation for tile rendering.
+///
+/// The orbit center is computed from geographic coordinates (`map_state.latitude/longitude`)
+/// using the current zoom level, ensuring the camera is always in the same coordinate
+/// system as entity positions (aircraft, airports, etc.), regardless of system execution
+/// order within the frame.
 pub fn update_3d_camera(
     mut state: ResMut<View3DState>,
     mut camera_2d: Query<
@@ -377,6 +382,8 @@ pub fn update_3d_camera(
     >,
     window_query: Query<&Window>,
     zoom_state: Res<crate::ZoomState>,
+    map_state: Res<crate::MapState>,
+    tile_settings: Res<bevy_slippy_tiles::SlippyTilesSettings>,
 ) {
     if matches!(state.mode, ViewMode::Map2D) && !state.is_transitioning() {
         return;
@@ -398,13 +405,20 @@ pub fn update_3d_camera(
         TransitionState::TransitioningTo2D { progress } => smooth_step(1.0 - progress),
     };
 
-    // Y-up orbit center: convert saved_2d_center from Z-up pixel space.
+    // Compute orbit center from geographic coordinates at the current zoom level.
+    // This ensures the camera is in the same pixel-space coordinate system as
+    // all entity positions (which also use CoordinateConverter with map_state.zoom_level).
+    // Using lat/lon as the authoritative source eliminates frame-ordering issues
+    // where saved_2d_center might be at a different zoom's scale than entities.
+    let converter = crate::geo::CoordinateConverter::new(&tile_settings, map_state.zoom_level);
+    let center_2d = converter.latlon_to_world(map_state.latitude, map_state.longitude);
+
     // When following an aircraft, orbit around its altitude instead of ground.
     let orbit_alt_ft = state.follow_altitude_ft.unwrap_or(state.ground_elevation_ft);
     let orbit_alt = state.altitude_to_z(orbit_alt_ft);
     let center_yup = zup_to_yup(Vec3::new(
-        state.saved_2d_center.x,
-        state.saved_2d_center.y,
+        center_2d.x,
+        center_2d.y,
         orbit_alt,
     ));
     let orbit_yup = state.calculate_camera_transform_yup(center_yup);
@@ -419,7 +433,7 @@ pub fn update_3d_camera(
 
     if t < 0.001 {
         // Pure 2D — restore orthographic, flat position, identity rotation
-        let pos_2d = Vec3::new(state.saved_2d_center.x, state.saved_2d_center.y, 0.0);
+        let pos_2d = Vec3::new(center_2d.x, center_2d.y, 0.0);
         *proj_2d = Projection::Orthographic(OrthographicProjection::default_2d());
         tf_2d.translation = pos_2d;
         tf_2d.rotation = Quat::IDENTITY;
@@ -854,10 +868,13 @@ impl Plugin for View3DPlugin {
                 toggle_3d_view,
                 animate_view_transition,
                 handle_3d_camera_controls,
-                update_3d_camera.after(animate_view_transition),
+                update_3d_camera
+                    .after(animate_view_transition)
+                    .after(crate::ZoomSet::Change),
             ))
             .add_systems(Update, update_tile_elevation
-                .after(animate_view_transition))
+                .after(animate_view_transition)
+                .after(crate::ZoomSet::Change))
             .add_systems(Update, update_aircraft_3d_transform
                 .after(crate::camera::update_aircraft_positions))
             .add_systems(Update, fix_aircraft_model_materials)

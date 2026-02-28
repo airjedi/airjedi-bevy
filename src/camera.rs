@@ -5,7 +5,7 @@ use crate::constants;
 use crate::geo;
 use crate::map::{MapState, ZoomState};
 use crate::view3d;
-use crate::{clamp_latitude, clamp_longitude, Aircraft, AircraftLabel, ZoomDebugLogger};
+use crate::{clamp_latitude, clamp_longitude, Aircraft, AircraftLabel, ZoomDebugLogger, ZoomSet};
 
 // =============================================================================
 // Constants
@@ -60,7 +60,8 @@ impl Plugin for CameraPlugin {
             Update,
             update_aircraft_positions
                 .after(update_camera_position)
-                .after(crate::adsb::sync_aircraft_from_adsb),
+                .after(crate::adsb::sync_aircraft_from_adsb)
+                .after(ZoomSet::Change),
         )
         .add_systems(
             Update,
