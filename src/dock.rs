@@ -243,9 +243,16 @@ struct DockBehavior<'a> {
     colors: CachedThemeColors,
 }
 
-/// Paint opaque background and wrap content in a vertical scroll area.
+/// Paint opaque background with subtle gradient and wrap content in a vertical scroll area.
 fn render_pane_with_bg(bg: egui::Color32, ui: &mut egui::Ui, content: impl FnOnce(&mut egui::Ui)) {
-    ui.painter().rect_filled(ui.max_rect(), 0.0, bg);
+    let top_color = crate::widgets::lerp_color(bg, egui::Color32::WHITE, 0.04);
+    crate::widgets::paint_gradient_rect(
+        ui.painter(),
+        ui.max_rect(),
+        top_color,
+        bg,
+        crate::widgets::GradientDirection::Vertical,
+    );
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
