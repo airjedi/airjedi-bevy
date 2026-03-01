@@ -36,6 +36,7 @@ mod input;
 mod zoom;
 mod camera;
 pub(crate) mod theme;
+pub(crate) mod widgets;
 #[cfg(feature = "brp")]
 mod brp;
 
