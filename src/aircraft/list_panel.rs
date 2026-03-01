@@ -579,6 +579,7 @@ pub fn render_aircraft_list_panel(
                                     &app_config,
                                     &clock,
                                     &aircraft_query,
+                                    &theme,
                                 );
                             }
                         });
@@ -621,7 +622,7 @@ pub fn render_aircraft_list_pane_content(
     app_config: &crate::config::AppConfig,
     clock: &SessionClock,
     aircraft_query: &Query<(&crate::Aircraft, &TrailHistory, Option<&AircraftTypeInfo>)>,
-    _theme: &AppTheme,
+    theme: &AppTheme,
 ) {
     let selected_bg = egui::Color32::from_rgba_unmultiplied(100, 140, 180, 26);
     let header_color = egui::Color32::from_rgb(150, 150, 150);
@@ -898,6 +899,7 @@ pub fn render_aircraft_list_pane_content(
                             app_config,
                             clock,
                             aircraft_query,
+                            theme,
                         );
                     }
                 });
@@ -936,21 +938,13 @@ fn render_inline_detail(
     app_config: &crate::config::AppConfig,
     clock: &SessionClock,
     aircraft_query: &Query<(&crate::Aircraft, &TrailHistory, Option<&AircraftTypeInfo>)>,
+    theme: &AppTheme,
 ) {
     let Some((aircraft, trail, type_info)) = aircraft_query.iter().find(|(a, _, _)| a.icao == selected_icao) else {
         return;
     };
 
-    // Build a WidgetTheme from hardcoded colors matching the current panel style.
-    let wt = WidgetTheme {
-        bg_primary: egui::Color32::from_gray(30),
-        bg_secondary: egui::Color32::from_gray(38),
-        accent: egui::Color32::from_rgb(100, 200, 255),
-        border: egui::Color32::from_gray(55),
-        text: egui::Color32::from_rgb(220, 220, 220),
-        text_dim: egui::Color32::from_rgb(150, 150, 150),
-        shadow_color: egui::Color32::from_black_alpha(50),
-    };
+    let wt = WidgetTheme::from(theme);
 
     let distance_nm = haversine_distance_nm(
         app_config.map.default_latitude,
