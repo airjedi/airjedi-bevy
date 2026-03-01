@@ -139,6 +139,8 @@ pub(crate) fn clamp_longitude(lon: f64) -> f64 {
 }
 
 fn main() {
+    paths::init_from_args();
+
     // Raise the open file descriptor limit from the macOS default of 256.
     // 3D mode loads many tile textures across multiple zoom levels and can
     // easily exhaust the soft limit.
