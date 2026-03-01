@@ -569,6 +569,10 @@ impl<'a> Behavior<DockPane> for DockBehavior<'a> {
             self.colors.text_dim
         }
     }
+
+    fn tab_bar_hline_stroke(&self, _visuals: &egui::Visuals) -> egui::Stroke {
+        egui::Stroke::NONE
+    }
 }
 
 // =============================================================================
