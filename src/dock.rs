@@ -261,6 +261,50 @@ fn render_pane_with_bg(bg: egui::Color32, ui: &mut egui::Ui, content: impl FnOnc
         });
 }
 
+/// Build the convex polygon path for a custom tab shape.
+///
+/// Vertices (clockwise in screen coords where Y increases downward):
+///   top-left arc → top edge → top-right arc → right edge →
+///   chamfer diagonal → bottom edge → (implicit left edge closes polygon)
+fn build_tab_path(rect: egui::Rect, corner_radius: f32, chamfer: f32) -> Vec<egui::Pos2> {
+    use std::f32::consts::{FRAC_PI_2, PI};
+    let r = corner_radius;
+    let c = chamfer;
+    let min = rect.min;
+    let max = rect.max;
+    const STEPS: usize = 8;
+    let mut pts = Vec::with_capacity(STEPS * 2 + 7);
+
+    // Top-left arc: center=(min.x+r, min.y+r), angles π → 3π/2
+    for i in 0..=STEPS {
+        let t = i as f32 / STEPS as f32;
+        let a = PI + t * FRAC_PI_2;
+        pts.push(egui::pos2(min.x + r + r * a.cos(), min.y + r + r * a.sin()));
+    }
+
+    // Top-right arc: center=(max.x-r, min.y+r), angles 3π/2 → 2π
+    for i in 0..=STEPS {
+        let t = i as f32 / STEPS as f32;
+        let a = 3.0 * FRAC_PI_2 + t * FRAC_PI_2;
+        pts.push(egui::pos2(max.x - r + r * a.cos(), min.y + r + r * a.sin()));
+    }
+
+    // Right edge to chamfer start, then chamfer diagonal
+    pts.push(egui::pos2(max.x, max.y - c));
+    pts.push(egui::pos2(max.x - c, max.y));
+
+    // Bottom-left corner (square) — convex_polygon closes back to first point automatically
+    pts.push(egui::pos2(min.x, max.y));
+
+    pts
+}
+
+// Tab geometry constants for custom tab shapes
+const TAB_CORNER_RADIUS: f32 = 6.0;
+const TAB_CHAMFER: f32 = 10.0;
+const TAB_H_PAD: f32 = 10.0;
+const TAB_V_PAD: f32 = 4.0;
+
 impl<'a> Behavior<DockPane> for DockBehavior<'a> {
     fn pane_ui(
         &mut self,
