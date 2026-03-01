@@ -265,7 +265,7 @@ fn render_pane_with_bg(bg: egui::Color32, ui: &mut egui::Ui, content: impl FnOnc
 ///
 /// Vertices (clockwise in screen coords where Y increases downward):
 ///   top-left arc → top edge → top-right arc → right edge →
-///   chamfer diagonal → bottom edge → (implicit left edge closes polygon)
+///   outward arc at bottom-right → bottom edge → (implicit left edge closes polygon)
 fn build_tab_path(rect: egui::Rect, corner_radius: f32, chamfer: f32) -> Vec<egui::Pos2> {
     use std::f32::consts::{FRAC_PI_2, PI};
     let r = corner_radius;
@@ -273,7 +273,7 @@ fn build_tab_path(rect: egui::Rect, corner_radius: f32, chamfer: f32) -> Vec<egu
     let min = rect.min;
     let max = rect.max;
     const STEPS: usize = 8;
-    let mut pts = Vec::with_capacity(STEPS * 2 + 7);
+    let mut pts = Vec::with_capacity(STEPS * 3 + 5);
 
     // Top-left arc: center=(min.x+r, min.y+r), angles π → 3π/2
     for i in 0..=STEPS {
@@ -289,11 +289,15 @@ fn build_tab_path(rect: egui::Rect, corner_radius: f32, chamfer: f32) -> Vec<egu
         pts.push(egui::pos2(max.x - r + r * a.cos(), min.y + r + r * a.sin()));
     }
 
-    // Right edge to chamfer start, then chamfer diagonal
-    pts.push(egui::pos2(max.x, max.y - c));
-    pts.push(egui::pos2(max.x - c, max.y));
+    // Bottom-right outward arc: center=(max.x-c, max.y-c), radius c
+    // Curves from (max.x, max.y-c) to (max.x-c, max.y), bowing outward toward (max.x, max.y)
+    for i in 0..=STEPS {
+        let t = i as f32 / STEPS as f32;
+        let a = t * FRAC_PI_2;
+        pts.push(egui::pos2(max.x - c + c * a.cos(), max.y - c + c * a.sin()));
+    }
 
-    // Bottom-left corner (square) — convex_polygon closes back to first point automatically
+    // Bottom-left corner (square)
     pts.push(egui::pos2(min.x, max.y));
 
     pts
