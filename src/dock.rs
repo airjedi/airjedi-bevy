@@ -658,6 +658,33 @@ impl<'a> Behavior<DockPane> for DockBehavior<'a> {
                 font_id,
                 text_color,
             );
+
+            // Close button (only when closable)
+            if is_closable {
+                // Position close button left of the chamfer zone so it stays on the flat part
+                let close_x = tab_rect.right()
+                    - (if state.active { TAB_CHAMFER + 2.0 } else { 2.0 })
+                    - 12.0;
+                let close_center = egui::pos2(close_x, tab_rect.center().y);
+                let close_rect = egui::Rect::from_center_size(close_center, egui::vec2(14.0, 14.0));
+
+                let close_resp = ui.interact(close_rect, id.with("close"), egui::Sense::click());
+                let close_color = if close_resp.hovered() {
+                    egui::Color32::from_rgb(220, 80, 60)
+                } else {
+                    self.colors.text_dim
+                };
+                painter.text(
+                    close_center,
+                    egui::Align2::CENTER_CENTER,
+                    "\u{00d7}",
+                    egui::FontId::proportional(13.0),
+                    close_color,
+                );
+                if close_resp.clicked() {
+                    self.on_tab_close(tiles, tile_id);
+                }
+            }
         }
 
         self.on_tab_button(tiles, tile_id, response)
