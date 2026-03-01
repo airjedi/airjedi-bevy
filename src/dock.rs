@@ -261,19 +261,19 @@ fn render_pane_with_bg(bg: egui::Color32, ui: &mut egui::Ui, content: impl FnOnc
         });
 }
 
-/// Build the convex polygon path for a custom tab shape.
+/// Build the main tab body polygon (convex).
 ///
-/// Vertices (clockwise in screen coords where Y increases downward):
-///   top-left arc → top edge → top-right arc → right edge →
-///   outward arc at bottom-right → bottom edge → (implicit left edge closes polygon)
-fn build_tab_path(rect: egui::Rect, corner_radius: f32, chamfer: f32) -> Vec<egui::Pos2> {
+/// The body has rounded top corners and a straight right edge at `max.x - chamfer`,
+/// leaving room for the outward arc foot to extend to the right.
+fn build_tab_body(rect: egui::Rect, corner_radius: f32, chamfer: f32) -> Vec<egui::Pos2> {
     use std::f32::consts::{FRAC_PI_2, PI};
     let r = corner_radius;
     let c = chamfer;
     let min = rect.min;
     let max = rect.max;
+    let body_right = max.x - c;
     const STEPS: usize = 8;
-    let mut pts = Vec::with_capacity(STEPS * 3 + 5);
+    let mut pts = Vec::with_capacity(STEPS * 2 + 5);
 
     // Top-left arc: center=(min.x+r, min.y+r), angles π → 3π/2
     for i in 0..=STEPS {
@@ -282,23 +282,44 @@ fn build_tab_path(rect: egui::Rect, corner_radius: f32, chamfer: f32) -> Vec<egu
         pts.push(egui::pos2(min.x + r + r * a.cos(), min.y + r + r * a.sin()));
     }
 
-    // Top-right arc: center=(max.x-r, min.y+r), angles 3π/2 → 2π
+    // Top-right arc: center=(body_right-r, min.y+r), angles 3π/2 → 2π
     for i in 0..=STEPS {
         let t = i as f32 / STEPS as f32;
         let a = 3.0 * FRAC_PI_2 + t * FRAC_PI_2;
-        pts.push(egui::pos2(max.x - r + r * a.cos(), min.y + r + r * a.sin()));
+        pts.push(egui::pos2(body_right - r + r * a.cos(), min.y + r + r * a.sin()));
     }
 
-    // Bottom-right outward arc: center=(max.x-c, max.y-c), radius c
-    // Curves from (max.x, max.y-c) to (max.x-c, max.y), bowing outward toward (max.x, max.y)
+    // Right edge down to bottom, then bottom-left corner
+    pts.push(egui::pos2(body_right, max.y));
+    pts.push(egui::pos2(min.x, max.y));
+
+    pts
+}
+
+/// Build the outward arc "foot" at the bottom-right of the active tab (convex).
+///
+/// This small shape extends from the tab body's right edge outward to the right,
+/// creating a bracket-like transition from the tab body to the tab bar baseline.
+fn build_tab_foot(rect: egui::Rect, chamfer: f32) -> Vec<egui::Pos2> {
+    use std::f32::consts::FRAC_PI_2;
+    let c = chamfer;
+    let max = rect.max;
+    let body_right = max.x - c;
+    const STEPS: usize = 8;
+    let mut pts = Vec::with_capacity(STEPS + 3);
+
+    // Left edge: from bottom up to arc start
+    pts.push(egui::pos2(body_right, max.y));
+    pts.push(egui::pos2(body_right, max.y - c));
+
+    // Outward arc: center=(body_right, max.y), radius c
+    // From angle 3π/2 at (body_right, max.y-c) to angle 0 at (max.x, max.y)
+    // Curves outward to the right
     for i in 0..=STEPS {
         let t = i as f32 / STEPS as f32;
-        let a = t * FRAC_PI_2;
-        pts.push(egui::pos2(max.x - c + c * a.cos(), max.y - c + c * a.sin()));
+        let a = 3.0 * FRAC_PI_2 + t * FRAC_PI_2;
+        pts.push(egui::pos2(body_right + c * a.cos(), max.y + c * a.sin()));
     }
-
-    // Bottom-left corner (square)
-    pts.push(egui::pos2(min.x, max.y));
 
     pts
 }
@@ -619,9 +640,17 @@ impl<'a> Behavior<DockPane> for DockBehavior<'a> {
             let painter = ui.painter();
 
             if state.active {
-                let pts = build_tab_path(tab_rect, TAB_CORNER_RADIUS, TAB_CHAMFER);
+                // Draw tab body (rounded top corners, right edge inset by chamfer)
+                let body_pts = build_tab_body(tab_rect, TAB_CORNER_RADIUS, TAB_CHAMFER);
                 painter.add(egui::Shape::convex_polygon(
-                    pts,
+                    body_pts,
+                    self.colors.bg_primary,
+                    egui::Stroke::NONE,
+                ));
+                // Draw outward arc foot at bottom-right (extends from body edge to tab rect edge)
+                let foot_pts = build_tab_foot(tab_rect, TAB_CHAMFER);
+                painter.add(egui::Shape::convex_polygon(
+                    foot_pts,
                     self.colors.bg_primary,
                     egui::Stroke::NONE,
                 ));
@@ -640,7 +669,7 @@ impl<'a> Behavior<DockPane> for DockBehavior<'a> {
                         self.colors.bg_secondary.r(),
                         self.colors.bg_secondary.g(),
                         self.colors.bg_secondary.b(),
-                        120,
+                        160,
                     )
                 };
                 painter.rect_filled(
