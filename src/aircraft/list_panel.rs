@@ -970,7 +970,7 @@ fn render_inline_detail(
         egui::vec2(ui.available_width(), visible_height),
         egui::Layout::top_down(egui::Align::LEFT),
         |ui| {
-            ui.set_clip_rect(ui.max_rect());
+            ui.set_clip_rect(ui.clip_rect().intersect(ui.max_rect()));
 
             // Position data strip
             DataStrip::new(&wt)
