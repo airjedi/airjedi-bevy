@@ -573,6 +573,91 @@ impl<'a> Behavior<DockPane> for DockBehavior<'a> {
     fn tab_bar_hline_stroke(&self, _visuals: &egui::Visuals) -> egui::Stroke {
         egui::Stroke::NONE
     }
+
+    fn tab_ui(
+        &mut self,
+        tiles: &mut egui_tiles::Tiles<DockPane>,
+        ui: &mut egui::Ui,
+        id: egui::Id,
+        tile_id: egui_tiles::TileId,
+        state: &egui_tiles::TabState,
+    ) -> egui::Response {
+        // Get the pane to retrieve its title
+        let pane = match tiles.get(tile_id) {
+            Some(egui_tiles::Tile::Pane(pane)) => *pane,
+            _ => return ui.allocate_response(egui::vec2(0.0, 0.0), egui::Sense::hover()),
+        };
+
+        let title = self.tab_title_for_pane(&pane);
+        let is_closable = self.is_tab_closable(tiles, tile_id);
+        let text_color = if state.active {
+            self.colors.text_primary
+        } else {
+            self.colors.text_dim
+        };
+        let close_w = if is_closable { 18.0 } else { 0.0 };
+
+        // Measure title text
+        let title_str = title.text();
+        let font_id = egui::FontId::proportional(13.0);
+        // Simple text width estimate: ~7 pixels per character for proportional font at size 13
+        let text_w = title_str.len() as f32 * 7.0;
+        let tab_h = ui.available_height();
+        let extra_right = if state.active { TAB_CHAMFER } else { 0.0 };
+        let tab_w = text_w + 2.0 * TAB_H_PAD + close_w + extra_right;
+
+        let (tab_rect, mut response) = ui.allocate_exact_size(
+            egui::vec2(tab_w, tab_h),
+            egui::Sense::click_and_drag(),
+        );
+
+        if ui.is_rect_visible(tab_rect) {
+            let painter = ui.painter();
+
+            if state.active {
+                // Placeholder — will be replaced in Task 4
+                painter.rect_filled(tab_rect, egui::Rounding::ZERO, self.colors.bg_primary);
+            } else {
+                // Inactive: rounded top corners only
+                let hovered = response.hovered();
+                let fill = if hovered {
+                    egui::Color32::from_rgba_unmultiplied(
+                        self.colors.bg_primary.r(),
+                        self.colors.bg_primary.g(),
+                        self.colors.bg_primary.b(),
+                        80,
+                    )
+                } else {
+                    egui::Color32::from_rgba_unmultiplied(
+                        self.colors.bg_secondary.r(),
+                        self.colors.bg_secondary.g(),
+                        self.colors.bg_secondary.b(),
+                        120,
+                    )
+                };
+                painter.rect_filled(
+                    tab_rect,
+                    egui::Rounding { nw: 4, ne: 4, sw: 0, se: 0 },
+                    fill,
+                );
+            }
+
+            // Paint title text (vertically centered, left-padded)
+            let text_pos = egui::pos2(
+                tab_rect.left() + TAB_H_PAD,
+                tab_rect.center().y,
+            );
+            painter.text(
+                text_pos,
+                egui::Align2::LEFT_CENTER,
+                title_str,
+                font_id,
+                text_color,
+            );
+        }
+
+        self.on_tab_button(tiles, tile_id, response)
+    }
 }
 
 // =============================================================================
