@@ -4,6 +4,7 @@ use bevy_egui::{egui, EguiContexts};
 use crate::MapState;
 use crate::geo::{haversine_distance_nm, CoordinateConverter};
 use crate::theme::{AppTheme, to_egui_color32, to_egui_color32_alpha};
+use crate::widgets::{DataStrip, ArcGauge, WidgetTheme};
 use super::{CameraFollowState, DetailPanelState, TrailHistory, SessionClock};
 use super::typeinfo::AircraftTypeInfo;
 use super::altitude::{format_altitude, format_altitude_with_indicator};
@@ -936,12 +937,19 @@ fn render_inline_detail(
     clock: &SessionClock,
     aircraft_query: &Query<(&crate::Aircraft, &TrailHistory, Option<&AircraftTypeInfo>)>,
 ) {
-    let label_color = egui::Color32::from_rgb(150, 150, 150);
-    let value_color = egui::Color32::from_rgb(220, 220, 220);
-    let highlight_color = egui::Color32::from_rgb(100, 200, 255);
-
     let Some((aircraft, trail, type_info)) = aircraft_query.iter().find(|(a, _, _)| a.icao == selected_icao) else {
         return;
+    };
+
+    // Build a WidgetTheme from hardcoded colors matching the current panel style.
+    let wt = WidgetTheme {
+        bg_primary: egui::Color32::from_gray(30),
+        bg_secondary: egui::Color32::from_gray(38),
+        accent: egui::Color32::from_rgb(100, 200, 255),
+        border: egui::Color32::from_gray(55),
+        text: egui::Color32::from_rgb(220, 220, 220),
+        text_dim: egui::Color32::from_rgb(150, 150, 150),
+        shadow_color: egui::Color32::from_black_alpha(50),
     };
 
     let distance_nm = haversine_distance_nm(
@@ -956,7 +964,7 @@ fn render_inline_detail(
     // Measure the full detail content height, then clip to expand_t fraction
     let detail_id = ui.id().with(selected_icao).with("detail_content");
     let full_height = ui.ctx().memory(|mem| {
-        mem.data.get_temp::<f32>(detail_id).unwrap_or(150.0)
+        mem.data.get_temp::<f32>(detail_id).unwrap_or(200.0)
     });
     let visible_height = full_height * expand_t;
 
@@ -964,78 +972,119 @@ fn render_inline_detail(
     ui.separator();
     ui.add_space(2.0);
 
-    // Clip the detail content to the animated height
     let response = ui.allocate_ui_with_layout(
         egui::vec2(ui.available_width(), visible_height),
         egui::Layout::top_down(egui::Align::LEFT),
         |ui| {
             ui.set_clip_rect(ui.max_rect());
 
-            // Position row (full width, 2-column)
-            egui::Grid::new(ui.id().with("inline_pos_grid"))
-                .num_columns(2)
-                .spacing([8.0, 2.0])
+            // Position data strip
+            DataStrip::new(&wt)
+                .accent_left(wt.accent, 3.0)
                 .show(ui, |ui| {
-                    ui.label(egui::RichText::new("Pos").color(label_color).size(10.0));
-                    ui.label(
-                        egui::RichText::new(format!("{:.4}, {:.4}", aircraft.latitude, aircraft.longitude))
-                            .color(value_color).size(10.0).monospace(),
-                    );
-                    ui.end_row();
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Pos").color(wt.text_dim).size(10.0));
+                        ui.label(
+                            egui::RichText::new(format!("{:.4}, {:.4}", aircraft.latitude, aircraft.longitude))
+                                .color(wt.text).size(10.0).monospace(),
+                        );
+                    });
                 });
 
             ui.add_space(2.0);
 
-            // Remaining detail fields in a 5-column grid (label, value, spacer, label, value)
-            egui::Grid::new(ui.id().with("inline_detail_grid"))
-                .num_columns(5)
-                .spacing([6.0, 3.0])
-                .show(ui, |ui| {
-                    let mut pairs: Vec<(&str, String, egui::Color32)> = Vec::new();
+            // Key metrics as data strips
+            let mut pairs: Vec<(&str, String, egui::Color32)> = Vec::new();
+            pairs.push(("Dist", format!("{:.1}nm", distance_nm), wt.accent));
 
-                    pairs.push(("Dist", format!("{:.1}nm", distance_nm), highlight_color));
+            if let Some(ti) = type_info {
+                if let Some(ref reg) = ti.registration {
+                    pairs.push(("Reg", reg.clone(), wt.text));
+                }
+                if let Some(ref tc) = ti.type_code {
+                    pairs.push(("Type", tc.clone(), wt.text));
+                }
+                if let Some(ref op) = ti.operator {
+                    pairs.push(("Oper", op.clone(), wt.text));
+                }
+            }
 
-                    if let Some(ti) = type_info {
-                        if let Some(ref reg) = ti.registration {
-                            pairs.push(("Reg", reg.clone(), value_color));
-                        }
-                        if let Some(ref tc) = ti.type_code {
-                            pairs.push(("Type", tc.clone(), value_color));
-                        }
-                        if let Some(ref op) = ti.operator {
-                            pairs.push(("Oper", op.clone(), value_color));
-                        }
-                    }
+            pairs.push(("Trk", format!("{}", trail.points.len()), wt.text));
 
-                    pairs.push(("Trk", format!("{}", trail.points.len()), value_color));
+            let dur_text = oldest_point_age
+                .map(|secs| format!("{}:{:02}", secs / 60, secs % 60))
+                .unwrap_or_else(|| "---".to_string());
+            pairs.push(("Dur", dur_text, wt.text));
 
-                    let dur_text = oldest_point_age
-                        .map(|secs| format!("{}:{:02}", secs / 60, secs % 60))
-                        .unwrap_or_else(|| "---".to_string());
-                    pairs.push(("Dur", dur_text, value_color));
-
-                    for chunk in pairs.chunks(2) {
-                        ui.label(egui::RichText::new(chunk[0].0).color(label_color).size(10.0));
-                        ui.label(egui::RichText::new(&chunk[0].1).color(chunk[0].2).size(10.0).monospace());
-                        if let Some(pair) = chunk.get(1) {
-                            ui.add_sized([14.0, 0.0], egui::Label::new("")); // gap between left and right pair
-                            ui.label(egui::RichText::new(pair.0).color(label_color).size(10.0));
-                            ui.label(egui::RichText::new(&pair.1).color(pair.2).size(10.0).monospace());
-                        }
-                        ui.end_row();
-                    }
-                });
+            // Render pairs as data strips, 2 per row
+            for chunk in pairs.chunks(2) {
+                DataStrip::new(&wt)
+                    .accent_left(wt.border, 2.0)
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new(chunk[0].0).color(wt.text_dim).size(10.0));
+                            ui.label(egui::RichText::new(&chunk[0].1).color(chunk[0].2).size(10.0).monospace());
+                            if let Some(pair) = chunk.get(1) {
+                                ui.add_space(12.0);
+                                ui.label(egui::RichText::new(pair.0).color(wt.text_dim).size(10.0));
+                                ui.label(egui::RichText::new(&pair.1).color(pair.2).size(10.0).monospace());
+                            }
+                        });
+                    });
+                ui.add_space(1.0);
+            }
 
             ui.add_space(2.0);
 
-            // Follow/Unfollow button in expanded section
+            // Gauges row for key flight metrics
+            ui.horizontal(|ui| {
+                if let Some(alt) = aircraft.altitude {
+                    let alt_norm = (alt as f32 / 45000.0).clamp(0.0, 1.0);
+                    ui.add(ArcGauge::themed(alt_norm, &wt)
+                        .size(60.0)
+                        .label("ALT")
+                        .value_text(&format!("{}", alt))
+                        .tick_count(5)
+                        .track_width(4.0)
+                        .fill_width(4.0));
+                }
+
+                if let Some(speed) = aircraft.velocity {
+                    let spd_norm = (speed as f32 / 600.0).clamp(0.0, 1.0);
+                    ui.add(ArcGauge::themed(spd_norm, &wt)
+                        .size(60.0)
+                        .label("SPD")
+                        .value_text(&format!("{:.0}", speed))
+                        .fill_color(egui::Color32::from_rgb(100, 220, 150))
+                        .tick_count(5)
+                        .track_width(4.0)
+                        .fill_width(4.0));
+                }
+
+                if let Some(hdg) = aircraft.heading {
+                    let hdg_norm = hdg / 360.0;
+                    ui.add(ArcGauge::themed(hdg_norm, &wt)
+                        .size(60.0)
+                        .label("HDG")
+                        .value_text(&format!("{:.0}", hdg))
+                        .fill_color(egui::Color32::from_rgb(220, 180, 100))
+                        .sweep(360.0)
+                        .tick_count(8)
+                        .track_width(4.0)
+                        .fill_width(4.0));
+                }
+            });
+
+            ui.add_space(2.0);
+
+            // Follow/Unfollow button
             ui.horizontal(|ui| {
                 let is_following = follow_state.following_icao.as_deref() == Some(selected_icao);
                 let follow_text = if is_following { "Unfollow" } else { "Follow" };
                 let follow_color = if is_following {
                     egui::Color32::from_rgb(255, 100, 100)
                 } else {
-                    egui::Color32::from_rgb(100, 180, 255)
+                    wt.accent
                 };
                 if ui.add(egui::Button::new(
                     egui::RichText::new(follow_text)
@@ -1052,7 +1101,6 @@ fn render_inline_detail(
         },
     );
 
-    // Store the actual content height for next frame's animation
     let actual_height = response.response.rect.height().max(10.0);
     if expand_t >= 1.0 {
         ui.ctx().memory_mut(|mem| {
