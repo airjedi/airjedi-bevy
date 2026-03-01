@@ -615,8 +615,12 @@ impl<'a> Behavior<DockPane> for DockBehavior<'a> {
             let painter = ui.painter();
 
             if state.active {
-                // Placeholder — will be replaced in Task 4
-                painter.rect_filled(tab_rect, egui::Rounding::ZERO, self.colors.bg_primary);
+                let pts = build_tab_path(tab_rect, TAB_CORNER_RADIUS, TAB_CHAMFER);
+                painter.add(egui::Shape::convex_polygon(
+                    pts,
+                    self.colors.bg_primary,
+                    egui::Stroke::NONE,
+                ));
             } else {
                 // Inactive: rounded top corners only
                 let hovered = response.hovered();
