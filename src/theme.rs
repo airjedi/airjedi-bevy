@@ -213,6 +213,36 @@ impl AppTheme {
     }
 }
 
+// ── WidgetTheme ─────────────────────────────────────────────────────
+
+/// Lightweight theme colors for custom widgets.
+///
+/// Extracted from `AppTheme` so widgets don't depend on the full
+/// Aesthetix trait or Bevy ECS resources.
+pub struct WidgetTheme {
+    pub bg_primary: egui::Color32,
+    pub bg_secondary: egui::Color32,
+    pub accent: egui::Color32,
+    pub border: egui::Color32,
+    pub text: egui::Color32,
+    pub text_dim: egui::Color32,
+    pub shadow_color: egui::Color32,
+}
+
+impl From<&AppTheme> for WidgetTheme {
+    fn from(theme: &AppTheme) -> Self {
+        Self {
+            bg_primary: theme.inner.bg_primary_color_visuals(),
+            bg_secondary: theme.inner.bg_secondary_color_visuals(),
+            accent: theme.inner.primary_accent_color_visuals(),
+            border: theme.inner.bg_contrast_color_visuals(),
+            text: theme.inner.fg_primary_text_color_visuals().unwrap_or(egui::Color32::WHITE),
+            text_dim: theme.ext_text_dim,
+            shadow_color: egui::Color32::from_black_alpha(50),
+        }
+    }
+}
+
 impl Default for AppTheme {
     fn default() -> Self {
         catppuccin_mocha()
