@@ -62,9 +62,7 @@ pub fn download_file_blocking(file: &DataFile) -> Result<(), String> {
 
 /// Cache directory for aviation data
 fn cache_dir() -> PathBuf {
-    dirs::cache_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("airjedi-bevy")
+    crate::paths::cache_dir().join("data")
 }
 
 /// Check if cached file exists and is fresh (< 7 days old)

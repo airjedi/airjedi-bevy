@@ -14,10 +14,7 @@ use std::path::{Path, PathBuf};
 /// - Linux:   `~/.cache/airjedi/tiles`
 /// - Windows: `%LOCALAPPDATA%\airjedi\cache\tiles`
 pub fn tile_cache_dir() -> PathBuf {
-    dirs::cache_dir()
-        .unwrap_or_else(|| PathBuf::from(".cache"))
-        .join("airjedi")
-        .join("tiles")
+    crate::paths::cache_dir().join("tiles")
 }
 
 /// Ensures the centralized cache directory exists and is symlinked into
@@ -191,12 +188,17 @@ pub fn remove_invalid_tiles() {
                 _ => true,
             };
             if !valid {
-                let sig = if bytes.len() >= 4 {
-                    format!("{:02x}{:02x}{:02x}{:02x}", bytes[0], bytes[1], bytes[2], bytes[3])
-                } else {
-                    format!("({} bytes)", bytes.len())
-                };
-                warn!("Removing invalid tile {} (signature: {})", filename, sig);
+                let hex_header: String = bytes.iter().take(16)
+                    .map(|b| format!("{:02x}", b))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let ascii_preview: String = bytes.iter().take(64)
+                    .map(|&b| if b.is_ascii_graphic() || b == b' ' { b as char } else { '.' })
+                    .collect();
+                warn!(
+                    "Invalid tile at startup: {} size={} bytes, header=[{}], preview=[{}]",
+                    filename, bytes.len(), hex_header, ascii_preview
+                );
                 let _ = fs::remove_file(&path);
                 removed += 1;
             }
@@ -244,7 +246,18 @@ pub fn validate_and_remove_if_corrupt(path: &Path) -> bool {
     };
 
     if !valid {
-        warn!("Removing corrupt tile: {:?} ({} bytes)", path, bytes.len());
+        // Log diagnostic details to help identify the corruption source
+        let hex_header: String = bytes.iter().take(16)
+            .map(|b| format!("{:02x}", b))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let ascii_preview: String = bytes.iter().take(64)
+            .map(|&b| if b.is_ascii_graphic() || b == b' ' { b as char } else { '.' })
+            .collect();
+        warn!(
+            "Corrupt tile: {:?} size={} bytes, header=[{}], preview=[{}]",
+            path, bytes.len(), hex_header, ascii_preview
+        );
         let _ = fs::remove_file(path);
         true
     } else {
