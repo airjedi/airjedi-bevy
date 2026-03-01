@@ -981,7 +981,6 @@ impl Plugin for View3DPlugin {
             .add_systems(Update, sky::update_atmosphere_scale)
             .add_systems(Update, sky::update_exposure_for_time.after(sky::update_sun_position))
             .add_systems(Update, sky::update_fog_color_for_time.after(sky::update_sun_position))
-            .add_systems(Update, sky::update_2d_tint.after(sky::update_sun_position))
             .add_systems(Update, fade_distant_sprites
                 .after(update_3d_camera)
                 .after(update_tile_elevation))
