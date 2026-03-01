@@ -261,19 +261,14 @@ fn render_pane_with_bg(bg: egui::Color32, ui: &mut egui::Ui, content: impl FnOnc
         });
 }
 
-/// Build the main tab body polygon (convex).
-///
-/// The body has rounded top corners and a straight right edge at `max.x - chamfer`,
-/// leaving room for the outward arc foot to extend to the right.
-fn build_tab_body(rect: egui::Rect, corner_radius: f32, chamfer: f32) -> Vec<egui::Pos2> {
+/// Build a convex polygon with rounded top corners and flat bottom edge.
+fn build_rounded_top_tab(rect: egui::Rect, corner_radius: f32) -> Vec<egui::Pos2> {
     use std::f32::consts::{FRAC_PI_2, PI};
     let r = corner_radius;
-    let c = chamfer;
     let min = rect.min;
     let max = rect.max;
-    let body_right = max.x - c;
     const STEPS: usize = 8;
-    let mut pts = Vec::with_capacity(STEPS * 2 + 5);
+    let mut pts = Vec::with_capacity(STEPS * 2 + 4);
 
     // Top-left arc: center=(min.x+r, min.y+r), angles π → 3π/2
     for i in 0..=STEPS {
@@ -282,53 +277,24 @@ fn build_tab_body(rect: egui::Rect, corner_radius: f32, chamfer: f32) -> Vec<egu
         pts.push(egui::pos2(min.x + r + r * a.cos(), min.y + r + r * a.sin()));
     }
 
-    // Top-right arc: center=(body_right-r, min.y+r), angles 3π/2 → 2π
+    // Top-right arc: center=(max.x-r, min.y+r), angles 3π/2 → 2π
     for i in 0..=STEPS {
         let t = i as f32 / STEPS as f32;
         let a = 3.0 * FRAC_PI_2 + t * FRAC_PI_2;
-        pts.push(egui::pos2(body_right - r + r * a.cos(), min.y + r + r * a.sin()));
+        pts.push(egui::pos2(max.x - r + r * a.cos(), min.y + r + r * a.sin()));
     }
 
-    // Right edge down to bottom, then bottom-left corner
-    pts.push(egui::pos2(body_right, max.y));
+    // Bottom-right and bottom-left corners (square)
+    pts.push(egui::pos2(max.x, max.y));
     pts.push(egui::pos2(min.x, max.y));
 
     pts
 }
 
-/// Build the outward arc "foot" at the bottom-right of the active tab (convex).
-///
-/// This small shape extends from the tab body's right edge outward to the right,
-/// creating a bracket-like transition from the tab body to the tab bar baseline.
-fn build_tab_foot(rect: egui::Rect, chamfer: f32) -> Vec<egui::Pos2> {
-    use std::f32::consts::FRAC_PI_2;
-    let c = chamfer;
-    let max = rect.max;
-    let body_right = max.x - c;
-    const STEPS: usize = 8;
-    let mut pts = Vec::with_capacity(STEPS + 3);
-
-    // Left edge: from bottom up to arc start
-    pts.push(egui::pos2(body_right, max.y));
-    pts.push(egui::pos2(body_right, max.y - c));
-
-    // Outward arc: center=(body_right, max.y), radius c
-    // From angle 3π/2 at (body_right, max.y-c) to angle 0 at (max.x, max.y)
-    // Curves outward to the right
-    for i in 0..=STEPS {
-        let t = i as f32 / STEPS as f32;
-        let a = 3.0 * FRAC_PI_2 + t * FRAC_PI_2;
-        pts.push(egui::pos2(body_right + c * a.cos(), max.y + c * a.sin()));
-    }
-
-    pts
-}
-
-// Tab geometry constants for custom tab shapes
+// Tab geometry constants
 const TAB_CORNER_RADIUS: f32 = 6.0;
-const TAB_CHAMFER: f32 = 10.0;
 const TAB_H_PAD: f32 = 10.0;
-const TAB_V_PAD: f32 = 4.0;
+const TAB_GAP: f32 = 3.0;
 
 impl<'a> Behavior<DockPane> for DockBehavior<'a> {
     fn pane_ui(
@@ -628,34 +594,31 @@ impl<'a> Behavior<DockPane> for DockBehavior<'a> {
         // Simple text width estimate: ~7 pixels per character for proportional font at size 13
         let text_w = title_str.len() as f32 * 7.0;
         let tab_h = ui.available_height();
-        let extra_right = if state.active { TAB_CHAMFER } else { 0.0 };
-        let tab_w = text_w + 2.0 * TAB_H_PAD + close_w + extra_right;
+        let tab_w = text_w + 2.0 * TAB_H_PAD + close_w + TAB_GAP;
 
         let (tab_rect, mut response) = ui.allocate_exact_size(
             egui::vec2(tab_w, tab_h),
             egui::Sense::click_and_drag(),
         );
 
+        // Inset the visual tab rect by the gap so there's space between tabs
+        let visual_rect = egui::Rect::from_min_max(
+            tab_rect.min,
+            egui::pos2(tab_rect.max.x - TAB_GAP, tab_rect.max.y),
+        );
+
         if ui.is_rect_visible(tab_rect) {
             let painter = ui.painter();
 
             if state.active {
-                // Draw tab body (rounded top corners, right edge inset by chamfer)
-                let body_pts = build_tab_body(tab_rect, TAB_CORNER_RADIUS, TAB_CHAMFER);
+                let pts = build_rounded_top_tab(visual_rect, TAB_CORNER_RADIUS);
                 painter.add(egui::Shape::convex_polygon(
-                    body_pts,
-                    self.colors.bg_primary,
-                    egui::Stroke::NONE,
-                ));
-                // Draw outward arc foot at bottom-right (extends from body edge to tab rect edge)
-                let foot_pts = build_tab_foot(tab_rect, TAB_CHAMFER);
-                painter.add(egui::Shape::convex_polygon(
-                    foot_pts,
+                    pts,
                     self.colors.bg_primary,
                     egui::Stroke::NONE,
                 ));
             } else {
-                // Inactive: rounded top corners only
+                // Inactive: rounded top corners with transparency
                 let hovered = response.hovered();
                 let fill = if hovered {
                     egui::Color32::from_rgba_unmultiplied(
@@ -672,17 +635,18 @@ impl<'a> Behavior<DockPane> for DockBehavior<'a> {
                         160,
                     )
                 };
-                painter.rect_filled(
-                    tab_rect,
-                    egui::Rounding { nw: 4, ne: 4, sw: 0, se: 0 },
+                let pts = build_rounded_top_tab(visual_rect, TAB_CORNER_RADIUS);
+                painter.add(egui::Shape::convex_polygon(
+                    pts,
                     fill,
-                );
+                    egui::Stroke::NONE,
+                ));
             }
 
             // Paint title text (vertically centered, left-padded)
             let text_pos = egui::pos2(
-                tab_rect.left() + TAB_H_PAD,
-                tab_rect.center().y,
+                visual_rect.left() + TAB_H_PAD,
+                visual_rect.center().y,
             );
             painter.text(
                 text_pos,
@@ -694,11 +658,8 @@ impl<'a> Behavior<DockPane> for DockBehavior<'a> {
 
             // Close button (only when closable)
             if is_closable {
-                // Position close button left of the chamfer zone so it stays on the flat part
-                let close_x = tab_rect.right()
-                    - (if state.active { TAB_CHAMFER + 2.0 } else { 2.0 })
-                    - 12.0;
-                let close_center = egui::pos2(close_x, tab_rect.center().y);
+                let close_x = visual_rect.right() - 2.0 - 12.0;
+                let close_center = egui::pos2(close_x, visual_rect.center().y);
                 let close_rect = egui::Rect::from_center_size(close_center, egui::vec2(14.0, 14.0));
 
                 let close_resp = ui.interact(close_rect, id.with("close"), egui::Sense::click());
