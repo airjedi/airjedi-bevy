@@ -1,4 +1,8 @@
 pub mod effects;
+pub mod shadow_frame;
+pub mod gradient_panel;
+pub mod gauge;
+pub mod data_strip;
 
 pub use crate::theme::WidgetTheme;
 
@@ -11,3 +15,8 @@ pub use effects::{
     lerp_color,
     arc_points,
 };
+
+pub use shadow_frame::{ShadowFrame, ShadowPreset};
+pub use gradient_panel::GradientPanel;
+pub use gauge::ArcGauge;
+pub use data_strip::DataStrip;
