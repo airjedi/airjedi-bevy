@@ -264,6 +264,51 @@ pub fn render_debug_pane_content(
 
     ui.separator();
 
+    // -- Build Info section --
+    egui::CollapsingHeader::new("Build Info")
+        .default_open(false)
+        .show(ui, |ui| {
+            use crate::build_info::build;
+            egui::Grid::new("debug_build_grid")
+                .num_columns(2)
+                .spacing([12.0, 4.0])
+                .show(ui, |ui| {
+                    ui.label("Version:");
+                    ui.label(build::PKG_VERSION);
+                    ui.end_row();
+
+                    ui.label("Branch:");
+                    ui.label(build::BRANCH);
+                    ui.end_row();
+
+                    ui.label("Commit:");
+                    ui.label(build::COMMIT_HASH);
+                    ui.end_row();
+
+                    ui.label("Commit date:");
+                    ui.label(build::COMMIT_DATE);
+                    ui.end_row();
+
+                    ui.label("Dirty:");
+                    ui.label(if build::GIT_CLEAN { "No" } else { "Yes" });
+                    ui.end_row();
+
+                    ui.label("Built:");
+                    ui.label(build::BUILD_TIME);
+                    ui.end_row();
+
+                    ui.label("Rust:");
+                    ui.label(build::RUST_VERSION);
+                    ui.end_row();
+
+                    ui.label("Target:");
+                    ui.label(build::BUILD_TARGET);
+                    ui.end_row();
+                });
+        });
+
+    ui.separator();
+
     // -- Log section --
     egui::CollapsingHeader::new("Log")
         .default_open(true)
