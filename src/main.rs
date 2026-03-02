@@ -170,6 +170,7 @@ fn main() {
                     primary_window: Some(Window {
                         title: "AirJedi - Aircraft Map Tracker".to_string(),
                         resolution: (1280, 720).into(),
+                        visible: false,
                         ..default()
                     }),
                     ..default()
@@ -196,6 +197,7 @@ fn main() {
         .add_plugins((bevy_obj::ObjPlugin, bevy_inspector_egui::DefaultInspectorConfigPlugin))
         // Full speed when focused; ~4 FPS when unfocused to keep ADS-B data
         // flowing without overwhelming the GPU or triggering macOS throttling.
+        .insert_resource(ClearColor(Color::srgb(20.0 / 255.0, 21.0 / 255.0, 24.0 / 255.0)))
         .insert_resource(bevy::winit::WinitSettings {
             focused_mode: bevy::winit::UpdateMode::Continuous,
             unfocused_mode: bevy::winit::UpdateMode::reactive(
@@ -232,6 +234,7 @@ fn main() {
             statusbar::render_statusbar.after(toolbar::render_toolbar),
             dock::render_dock_tree.after(statusbar::render_statusbar),
         ))
+        .add_systems(Update, show_window_after_init)
         .add_systems(Update, handle_keyboard_shortcuts)
         .add_systems(Update, toggle_overlays_keyboard)
         .add_systems(Update, sync_resources_to_panel_manager.after(handle_keyboard_shortcuts))
@@ -258,6 +261,20 @@ impl ZoomDebugLogger {
         if let Ok(mut file) = self.file.lock() {
             let _ = writeln!(file, "{}", msg);
             let _ = file.flush();
+        }
+    }
+}
+
+/// Show the window after a few frames so the GPU clear color is active before
+/// the window becomes visible, avoiding the macOS Metal magenta flash.
+fn show_window_after_init(
+    mut windows: Query<&mut Window>,
+    mut frame: Local<u32>,
+) {
+    *frame += 1;
+    if *frame == 3 {
+        if let Ok(mut window) = windows.single_mut() {
+            window.visible = true;
         }
     }
 }
@@ -366,9 +383,14 @@ pub(crate) fn setup_map(
     // Layer 0 = default content (tiles, sprites, text).
     // Layer 2 = gizmos (trails, navaids, runways) — kept off Camera3d to prevent
     //           double-rendering during 2D↔3D transitions.
+    let dark_bg = Color::srgb(20.0 / 255.0, 21.0 / 255.0, 24.0 / 255.0);
     commands.spawn((
         Name::new("Map Camera"),
         Camera2d,
+        Camera {
+            clear_color: ClearColorConfig::Custom(dark_bg),
+            ..default()
+        },
         MapCamera,
         render_layers::layers_2d_map(),
     ));

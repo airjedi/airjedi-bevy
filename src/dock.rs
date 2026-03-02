@@ -256,8 +256,10 @@ fn render_pane_with_bg(bg: egui::Color32, ui: &mut egui::Ui, content: impl FnOnc
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            ui.add_space(4.0);
-            content(ui);
+            let margin = egui::Margin::symmetric(6, 4);
+            egui::Frame::NONE.inner_margin(margin).show(ui, |ui| {
+                content(ui);
+            });
         });
 }
 
