@@ -35,6 +35,7 @@ mod render_layers;
 mod input;
 mod zoom;
 mod camera;
+mod build_info;
 pub(crate) mod theme;
 pub(crate) mod widgets;
 #[cfg(feature = "brp")]

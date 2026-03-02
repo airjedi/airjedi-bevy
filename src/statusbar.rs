@@ -120,7 +120,16 @@ pub fn render_statusbar(
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.spacing_mut().item_spacing.x = 6.0;
 
-                    // Attribution (rightmost)
+                    // Build version (rightmost)
+                    ui.label(
+                        egui::RichText::new(crate::build_info::version_short())
+                            .size(FONT_SIZE)
+                            .color(dim),
+                    );
+
+                    separator(ui, dim);
+
+                    // Attribution
                     ui.label(
                         egui::RichText::new("\u{00A9} OSM, CartoDB")
                             .size(FONT_SIZE)
