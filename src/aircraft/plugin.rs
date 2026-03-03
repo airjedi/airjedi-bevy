@@ -41,7 +41,7 @@ impl Plugin for AircraftPlugin {
             .add_systems(Startup, (start_aircraft_type_loading, setup_outline_materials))
             .add_systems(Update, (
                 record_trail_points,
-                draw_trails,
+                draw_trails.after(crate::ZoomSet::Change),
                 prune_trails,
                 toggle_aircraft_list,
                 update_aircraft_display_list,
@@ -50,10 +50,10 @@ impl Plugin for AircraftPlugin {
                 open_detail_on_selection,
                 detect_aircraft_click,
                 detect_emergencies,
-                draw_emergency_rings,
+                draw_emergency_rings.after(crate::ZoomSet::Change),
                 update_emergency_banner,
                 update_emergency_banner_text,
-                draw_predictions,
+                draw_predictions.after(crate::ZoomSet::Change),
                 dim_stale_aircraft,
             ))
             .add_systems(Update, render_detail_panel)
