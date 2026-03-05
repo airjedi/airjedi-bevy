@@ -38,6 +38,7 @@ mod camera;
 mod build_info;
 pub(crate) mod theme;
 pub(crate) mod widgets;
+mod data_ingest;
 #[cfg(feature = "brp")]
 mod brp;
 
@@ -195,7 +196,7 @@ fn main() {
             view3d::View3DPlugin,
             adsb::AdsbPlugin,
         ))
-        .add_plugins((bevy_obj::ObjPlugin, bevy_inspector_egui::DefaultInspectorConfigPlugin))
+        .add_plugins((bevy_obj::ObjPlugin, bevy_inspector_egui::DefaultInspectorConfigPlugin, data_ingest::DataIngestPlugin))
         // Full speed when focused; ~4 FPS when unfocused to keep ADS-B data
         // flowing without overwhelming the GPU or triggering macOS throttling.
         .insert_resource(ClearColor(Color::srgb(20.0 / 255.0, 21.0 / 255.0, 24.0 / 255.0)))

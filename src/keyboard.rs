@@ -91,6 +91,11 @@ pub fn handle_keyboard_shortcuts(
         panels.toggle_panel(PanelId::DataSources);
     }
 
+    // I - Toggle ingest panel
+    if keyboard.just_pressed(KeyCode::KeyI) {
+        panels.toggle_panel(PanelId::Ingest);
+    }
+
     // H - Toggle help overlay
     if keyboard.just_pressed(KeyCode::KeyH) {
         panels.toggle_panel(PanelId::Help);

@@ -25,6 +25,7 @@ pub enum ToolsTab {
     Export,
     Recording,
     View3D,
+    Ingest,
 }
 
 /// Whether the tools window is open.
@@ -53,6 +54,9 @@ pub fn render_tools_window(
     mut time_state: ResMut<TimeState>,
     sun_state: Res<SunState>,
     theme: Res<AppTheme>,
+    mut app_config: ResMut<crate::config::AppConfig>,
+    ingest_status: Option<Res<crate::data_ingest::IngestStatus>>,
+    mut ingest_ui: Option<ResMut<crate::data_ingest::IngestUiState>>,
 ) {
     if !tools_state.open {
         return;
@@ -99,6 +103,9 @@ pub fn render_tools_window(
                 if ui.selectable_label(tools_state.active_tab == ToolsTab::View3D, "3D View").clicked() {
                     tools_state.active_tab = ToolsTab::View3D;
                 }
+                if ui.selectable_label(tools_state.active_tab == ToolsTab::Ingest, "Ingest").clicked() {
+                    tools_state.active_tab = ToolsTab::Ingest;
+                }
             });
 
             ui.separator();
@@ -114,6 +121,7 @@ pub fn render_tools_window(
                         ToolsTab::Export => render_export_tab(ui, &mut export_state),
                         ToolsTab::Recording => render_recording_tab(ui, &mut recording, &mut playback),
                         ToolsTab::View3D => render_view3d_tab(ui, &mut view3d_state, &mut time_state, &sun_state),
+                        ToolsTab::Ingest => render_ingest_tab(ui, ingest_status.as_deref(), &mut app_config, ingest_ui.as_deref_mut()),
                     }
                 });
         });
@@ -495,6 +503,287 @@ pub fn render_recording_tab(
                 }
             }
         }
+    }
+}
+
+pub fn render_ingest_tab(
+    ui: &mut egui::Ui,
+    ingest_status: Option<&crate::data_ingest::IngestStatus>,
+    app_config: &mut crate::config::AppConfig,
+    ingest_ui: Option<&mut crate::data_ingest::IngestUiState>,
+) {
+    use crate::data_ingest::provider::{ProviderCategory, ProviderStatus, SchedulePreset};
+
+    // Build a list of all configurable providers with their metadata.
+    // We iterate provider_entries() which covers all config keys regardless of
+    // whether the provider is currently running (so disabled ones still appear).
+    // Open data folder button
+    let data_dir = crate::paths::data_dir();
+    ui.horizontal(|ui| {
+        if ui.button("Open Data Folder").clicked() {
+            let _ = std::fs::create_dir_all(&data_dir);
+            let _ = std::process::Command::new("open").arg(&data_dir).spawn();
+        }
+        ui.label(
+            egui::RichText::new(data_dir.to_string_lossy().to_string())
+                .size(10.0)
+                .color(egui::Color32::GRAY),
+        );
+    });
+    ui.separator();
+
+    let provider_entries = provider_entries();
+
+    let mut changed = false;
+    let mut fetch_keys: Vec<String> = Vec::new();
+
+    for category in ProviderCategory::all() {
+        let entries: Vec<_> = provider_entries
+            .iter()
+            .filter(|e| e.category == *category)
+            .collect();
+
+        if entries.is_empty() {
+            continue;
+        }
+
+        egui::CollapsingHeader::new(category.display_name())
+            .default_open(true)
+            .show(ui, |ui| {
+                for entry in &entries {
+                    let provider_config = get_provider_config_mut(&mut app_config.data_ingest, entry.config_key);
+
+                    // Status indicator from live IngestStatus (if available)
+                    let status_info = ingest_status.and_then(|s| {
+                        s.providers.iter().find(|p| p.config_key == entry.config_key)
+                    });
+
+                    let (status_color, status_text) = match status_info.map(|s| &s.status) {
+                        Some(ProviderStatus::Idle) | None => (egui::Color32::GRAY, "Idle".to_string()),
+                        Some(ProviderStatus::Fetching) => (egui::Color32::YELLOW, "Fetching...".to_string()),
+                        Some(ProviderStatus::Ok { last_success, record_count }) => {
+                            let time = last_success.format("%H:%M").to_string();
+                            (egui::Color32::GREEN, format!("{} ({} records)", time, record_count))
+                        }
+                        Some(ProviderStatus::Error { message, .. }) => {
+                            (egui::Color32::RED, format!("Error: {}", message))
+                        }
+                    };
+
+                    // Header row: enabled checkbox + name + run button + status
+                    ui.horizontal(|ui| {
+                        if ui.checkbox(&mut provider_config.enabled, "").changed() {
+                            changed = true;
+                        }
+                        ui.colored_label(status_color, "\u{25CF}");
+                        ui.strong(entry.display_name);
+
+                        // Play button for on-demand fetch
+                        if provider_config.enabled {
+                            let play_btn = ui.add(
+                                egui::Button::new(
+                                    egui::RichText::new("\u{25B6}")
+                                        .size(12.0)
+                                        .color(egui::Color32::from_rgb(80, 200, 80)),
+                                )
+                                .min_size(egui::vec2(20.0, 16.0))
+                            ).on_hover_text("Run now");
+
+                            if play_btn.clicked() {
+                                fetch_keys.push(entry.config_key.to_string());
+                            }
+                        }
+
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.label(
+                                egui::RichText::new(&status_text)
+                                    .size(10.0)
+                                    .color(egui::Color32::GRAY),
+                            );
+                        });
+                    });
+
+                    // Expandable settings per provider
+                    ui.add_enabled_ui(provider_config.enabled, |ui| {
+                        ui.indent(entry.config_key, |ui| {
+                            // Description
+                            ui.label(
+                                egui::RichText::new(entry.description)
+                                    .size(11.0)
+                                    .color(egui::Color32::from_rgb(160, 160, 160)),
+                            );
+
+                            // Schedule selector
+                            let current_preset = SchedulePreset::from_cron(&provider_config.schedule);
+                            ui.horizontal(|ui| {
+                                ui.label("Schedule:");
+                                let combo_id = format!("schedule_{}", entry.config_key);
+                                egui::ComboBox::from_id_salt(&combo_id)
+                                    .selected_text(current_preset.display_name())
+                                    .show_ui(ui, |ui| {
+                                        for preset in SchedulePreset::all() {
+                                            if *preset == SchedulePreset::Custom {
+                                                continue; // custom shown via text field below
+                                            }
+                                            if ui.selectable_label(current_preset == *preset, preset.display_name()).clicked() {
+                                                provider_config.schedule = preset.to_cron().to_string();
+                                                changed = true;
+                                            }
+                                        }
+                                    });
+                            });
+
+                            // Cron expression (editable for Custom or display for presets)
+                            if current_preset == SchedulePreset::Custom {
+                                ui.horizontal(|ui| {
+                                    ui.label("Cron:");
+                                    if ui.text_edit_singleline(&mut provider_config.schedule).lost_focus() {
+                                        changed = true;
+                                    }
+                                });
+                            }
+
+                            // API credentials (for providers that need them)
+                            if entry.needs_credentials {
+                                ui.add_space(4.0);
+                                let mut key = provider_config.api_key.clone().unwrap_or_default();
+                                let mut secret = provider_config.api_secret.clone().unwrap_or_default();
+
+                                ui.horizontal(|ui| {
+                                    ui.label("API Key:");
+                                    if ui.text_edit_singleline(&mut key).lost_focus() {
+                                        provider_config.api_key = if key.is_empty() { None } else { Some(key.clone()) };
+                                        changed = true;
+                                    }
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.label("API Secret:");
+                                    if ui.add(egui::TextEdit::singleline(&mut secret).password(true)).lost_focus() {
+                                        provider_config.api_secret = if secret.is_empty() { None } else { Some(secret.clone()) };
+                                        changed = true;
+                                    }
+                                });
+
+                                if key.is_empty() || secret.is_empty() {
+                                    ui.label(
+                                        egui::RichText::new(entry.credentials_hint)
+                                            .size(10.0)
+                                            .color(egui::Color32::from_rgb(200, 180, 80)),
+                                    );
+                                }
+                            }
+                        });
+                    });
+
+                    ui.add_space(4.0);
+                }
+            });
+
+        ui.add_space(4.0);
+    }
+
+    // Note about restart requirement
+    ui.separator();
+    ui.label(
+        egui::RichText::new("Changes to enabled/disabled providers take effect on restart.")
+            .size(10.0)
+            .color(egui::Color32::from_rgb(180, 180, 100)),
+    );
+
+    if let Some(ui_state) = ingest_ui {
+        ui_state.pending_fetches.extend(fetch_keys);
+    }
+
+    if changed {
+        crate::config::save_config(app_config);
+    }
+}
+
+/// Static metadata for each configurable provider.
+struct ProviderEntry {
+    config_key: &'static str,
+    display_name: &'static str,
+    description: &'static str,
+    category: crate::data_ingest::provider::ProviderCategory,
+    needs_credentials: bool,
+    credentials_hint: &'static str,
+}
+
+fn provider_entries() -> Vec<ProviderEntry> {
+    use crate::data_ingest::provider::ProviderCategory;
+    vec![
+        ProviderEntry {
+            config_key: "metar",
+            display_name: "METAR / Weather",
+            description: "METARs, TAFs, SIGMETs, AIRMETs, PIREPs from aviationweather.gov",
+            category: ProviderCategory::Weather,
+            needs_credentials: false,
+            credentials_hint: "",
+        },
+        ProviderEntry {
+            config_key: "taf",
+            display_name: "TAF (standalone)",
+            description: "Terminal Aerodrome Forecasts (when METAR group is disabled)",
+            category: ProviderCategory::Weather,
+            needs_credentials: false,
+            credentials_hint: "",
+        },
+        ProviderEntry {
+            config_key: "ourairports",
+            display_name: "OurAirports",
+            description: "Airports, runways, and navaids from OurAirports open data",
+            category: ProviderCategory::Navigation,
+            needs_credentials: false,
+            credentials_hint: "",
+        },
+        ProviderEntry {
+            config_key: "faa_nasr",
+            display_name: "FAA NASR",
+            description: "Airways and frequencies from FAA NASR 28-day subscription (CSV)",
+            category: ProviderCategory::Navigation,
+            needs_credentials: false,
+            credentials_hint: "",
+        },
+        ProviderEntry {
+            config_key: "openaip",
+            display_name: "OpenAIP",
+            description: "International airport and airspace data from OpenAIP",
+            category: ProviderCategory::Navigation,
+            needs_credentials: false,
+            credentials_hint: "",
+        },
+        ProviderEntry {
+            config_key: "notam",
+            display_name: "NOTAMs",
+            description: "Notices to Air Missions from FAA NOTAM API v1",
+            category: ProviderCategory::Notices,
+            needs_credentials: true,
+            credentials_hint: "Register free at https://api.faa.gov/s/",
+        },
+        ProviderEntry {
+            config_key: "tfr",
+            display_name: "TFRs",
+            description: "Temporary Flight Restrictions from FAA GeoServer",
+            category: ProviderCategory::Notices,
+            needs_credentials: false,
+            credentials_hint: "",
+        },
+    ]
+}
+
+fn get_provider_config_mut<'a>(
+    config: &'a mut crate::config::DataIngestConfig,
+    key: &str,
+) -> &'a mut crate::config::ProviderConfig {
+    match key {
+        "metar" => &mut config.metar,
+        "taf" => &mut config.taf,
+        "ourairports" => &mut config.ourairports,
+        "faa_nasr" => &mut config.faa_nasr,
+        "openaip" => &mut config.openaip,
+        "notam" => &mut config.notam,
+        "tfr" => &mut config.tfr,
+        _ => panic!("unknown provider config key: {}", key),
     }
 }
 
