@@ -77,6 +77,8 @@ pub struct AppConfig {
     pub bookmarks: BookmarksConfig,
     #[serde(default)]
     pub appearance: AppearanceConfig,
+    #[serde(default)]
+    pub data_ingest: DataIngestConfig,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -189,6 +191,77 @@ pub struct MapConfig {
     pub basemap_style: BasemapStyle,
 }
 
+/// Configuration for a single data ingest provider.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ProviderConfig {
+    pub enabled: bool,
+    /// Cron schedule (6-field: sec min hour dom month dow).
+    pub schedule: String,
+    /// Optional API key / client_id for providers that require auth.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_key: Option<String>,
+    /// Optional API secret / client_secret for providers that require auth.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_secret: Option<String>,
+}
+
+/// Data ingest configuration with per-provider settings.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DataIngestConfig {
+    #[serde(default = "DataIngestConfig::default_metar")]
+    pub metar: ProviderConfig,
+    #[serde(default = "DataIngestConfig::default_taf")]
+    pub taf: ProviderConfig,
+    #[serde(default = "DataIngestConfig::default_ourairports")]
+    pub ourairports: ProviderConfig,
+    #[serde(default = "DataIngestConfig::default_faa_nasr")]
+    pub faa_nasr: ProviderConfig,
+    #[serde(default = "DataIngestConfig::default_openaip")]
+    pub openaip: ProviderConfig,
+    #[serde(default = "DataIngestConfig::default_notam")]
+    pub notam: ProviderConfig,
+    #[serde(default = "DataIngestConfig::default_tfr")]
+    pub tfr: ProviderConfig,
+}
+
+impl DataIngestConfig {
+    fn default_metar() -> ProviderConfig {
+        ProviderConfig { enabled: true, schedule: "0 */5 * * * *".into(), api_key: None, api_secret: None }
+    }
+    fn default_taf() -> ProviderConfig {
+        ProviderConfig { enabled: true, schedule: "0 */15 * * * *".into(), api_key: None, api_secret: None }
+    }
+    fn default_ourairports() -> ProviderConfig {
+        ProviderConfig { enabled: true, schedule: "0 0 3 * * *".into(), api_key: None, api_secret: None }
+    }
+    fn default_faa_nasr() -> ProviderConfig {
+        ProviderConfig { enabled: false, schedule: "0 0 4 * * *".into(), api_key: None, api_secret: None }
+    }
+    fn default_openaip() -> ProviderConfig {
+        ProviderConfig { enabled: false, schedule: "0 0 4 * * *".into(), api_key: None, api_secret: None }
+    }
+    fn default_notam() -> ProviderConfig {
+        ProviderConfig { enabled: false, schedule: "0 */30 * * * *".into(), api_key: None, api_secret: None }
+    }
+    fn default_tfr() -> ProviderConfig {
+        ProviderConfig { enabled: true, schedule: "0 */15 * * * *".into(), api_key: None, api_secret: None }
+    }
+}
+
+impl Default for DataIngestConfig {
+    fn default() -> Self {
+        Self {
+            metar: Self::default_metar(),
+            taf: Self::default_taf(),
+            ourairports: Self::default_ourairports(),
+            faa_nasr: Self::default_faa_nasr(),
+            openaip: Self::default_openaip(),
+            notam: Self::default_notam(),
+            tfr: Self::default_tfr(),
+        }
+    }
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -207,6 +280,7 @@ impl Default for AppConfig {
             trails: TrailsConfig::default(),
             bookmarks: BookmarksConfig::default(),
             appearance: AppearanceConfig::default(),
+            data_ingest: DataIngestConfig::default(),
         }
     }
 }
@@ -276,6 +350,7 @@ pub struct SettingsUiState {
     pub trails_max_age: String,
     pub trails_renderer_2d: TrailRenderer,
     pub trails_renderer_3d: TrailRenderer,
+    pub data_ingest: DataIngestConfig,
     pub error_message: Option<String>,
 }
 
@@ -297,6 +372,7 @@ impl SettingsUiState {
         self.trails_max_age = config.trails.max_age_seconds.to_string();
         self.trails_renderer_2d = config.trails.renderer_2d;
         self.trails_renderer_3d = config.trails.renderer_3d;
+        self.data_ingest = config.data_ingest.clone();
         self.error_message = None;
     }
 
@@ -374,6 +450,7 @@ impl SettingsUiState {
             },
             bookmarks: BookmarksConfig::default(),
             appearance: AppearanceConfig::default(),
+            data_ingest: self.data_ingest.clone(),
         })
     }
 }

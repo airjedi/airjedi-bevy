@@ -32,6 +32,9 @@ libc = "0.2"
 bevy_hanabi = { version = "0.18", optional = true }
 bevy_brp_extras = { version = "0.18", optional = true }
 shadow-rs = { version = "1", default-features = false }
+tokio-cron-scheduler = "0.15"
+crossbeam-channel = "0.5"
+zip = "2"
 
 [build-dependencies]
 shadow-rs = { version = "1", features = ["build"] }

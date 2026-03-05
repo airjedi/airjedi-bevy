@@ -42,6 +42,7 @@ pub enum DockPane {
     Export,
     Recording,
     View3D,
+    Ingest,
     Settings,
     AircraftList,
     AircraftDetail,
@@ -62,6 +63,7 @@ impl DockPane {
             DockPane::Export => "Export",
             DockPane::Recording => "Recording",
             DockPane::View3D => "3D View",
+            DockPane::Ingest => "Ingest",
             DockPane::Settings => "Settings",
             DockPane::AircraftList => "Aircraft",
             DockPane::AircraftDetail => "Detail",
@@ -102,6 +104,7 @@ const RIGHT_PANES: &[DockPane] = &[
     DockPane::Bookmarks,
     DockPane::Stats,
     DockPane::Settings,
+    DockPane::Ingest,
     DockPane::View3D,
     DockPane::Debug,
     DockPane::Inspector,
@@ -122,6 +125,7 @@ impl Default for DockTreeState {
             DockPane::Export,
             DockPane::Recording,
             DockPane::View3D,
+            DockPane::Ingest,
             DockPane::Settings,
             DockPane::AircraftList,
             DockPane::AircraftDetail,
@@ -151,6 +155,7 @@ impl Default for DockTreeState {
             pane_tile_ids[&DockPane::Bookmarks],
             pane_tile_ids[&DockPane::Stats],
             pane_tile_ids[&DockPane::Settings],
+            pane_tile_ids[&DockPane::Ingest],
             pane_tile_ids[&DockPane::View3D],
             pane_tile_ids[&DockPane::Debug],
             pane_tile_ids[&DockPane::Inspector],
@@ -184,6 +189,7 @@ impl Default for DockTreeState {
             DockPane::Export,
             DockPane::Recording,
             DockPane::View3D,
+            DockPane::Ingest,
             DockPane::AircraftDetail,
             DockPane::Bookmarks,
             DockPane::Stats,
@@ -490,6 +496,24 @@ impl<'a> Behavior<DockPane> for DockBehavior<'a> {
                 });
             }
 
+            DockPane::Ingest => {
+                let world = &mut *self.world;
+                render_pane_with_bg(bg, ui, |ui| {
+                    let mut state = SystemState::<(
+                        Option<Res<crate::data_ingest::IngestStatus>>,
+                        ResMut<AppConfig>,
+                        Option<ResMut<crate::data_ingest::IngestUiState>>,
+                    )>::new(world);
+                    let (ingest_status, mut app_config, mut ingest_ui) = state.get_mut(world);
+                    tools_window::render_ingest_tab(
+                        ui,
+                        ingest_status.as_deref(),
+                        &mut app_config,
+                        ingest_ui.as_deref_mut(),
+                    );
+                });
+            }
+
             DockPane::Inspector => {
                 let world = &mut *self.world;
                 render_pane_with_bg(bg, ui, |ui| {
@@ -705,6 +729,7 @@ const PANEL_DOCK_MAP: &[(PanelId, DockPane)] = &[
     (PanelId::Export, DockPane::Export),
     (PanelId::Recording, DockPane::Recording),
     (PanelId::View3D, DockPane::View3D),
+    (PanelId::Ingest, DockPane::Ingest),
 ];
 
 // =============================================================================

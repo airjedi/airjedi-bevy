@@ -62,6 +62,7 @@ pub fn render_toolbar(
                 toolbar_button(ui, &mut panels, PanelId::Coverage, regular::TARGET, "Coverage (V)", active_color, inactive_color, active_bg);
                 toolbar_button(ui, &mut panels, PanelId::Airspace, regular::STACK, "Airspace (Shift+A)", active_color, inactive_color, active_bg);
                 toolbar_button(ui, &mut panels, PanelId::DataSources, regular::DATABASE, "Data Sources (Shift+D)", active_color, inactive_color, active_bg);
+                toolbar_button(ui, &mut panels, PanelId::Ingest, regular::CLOUD_ARROW_DOWN, "Ingest (I)", active_color, inactive_color, active_bg);
                 toolbar_button(ui, &mut panels, PanelId::Recording, regular::RECORD, "Recording (Ctrl+R)", active_color, inactive_color, active_bg);
                 toolbar_button(ui, &mut panels, PanelId::View3D, regular::CUBE, "3D View (3)", active_color, inactive_color, active_bg);
 
