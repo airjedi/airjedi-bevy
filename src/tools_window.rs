@@ -374,7 +374,7 @@ pub fn render_view3d_tab(ui: &mut egui::Ui, state: &mut View3DState, time_state:
     });
     ui.horizontal(|ui| {
         ui.label("Alt Scale:");
-        ui.add(egui::Slider::new(&mut state.altitude_scale, 0.1..=10.0));
+        ui.add(egui::Slider::new(&mut state.altitude_scale, 0.1..=100.0));
     });
 
     ui.separator();
