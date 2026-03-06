@@ -182,6 +182,8 @@ pub struct AirspaceInfo {
     pub airspace_type: String,
     pub lower_limit_ft: Option<i32>,
     pub upper_limit_ft: Option<i32>,
+    pub lower_altitude_ref: Option<String>,
+    pub upper_altitude_ref: Option<String>,
     pub polygon: Vec<(f64, f64)>,
     pub fetched_at: DateTime<Utc>,
 }

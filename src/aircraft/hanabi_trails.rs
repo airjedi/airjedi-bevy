@@ -25,6 +25,12 @@ pub struct TrailEffectAsset {
     pub texture: Handle<Image>,
 }
 
+/// Tracks zoom level to detect changes that invalidate particle positions.
+#[derive(Resource, Default)]
+pub struct TrailZoomTracker {
+    pub last_zoom: Option<u8>,
+}
+
 /// Create a soft radial gradient texture for contrail particles.
 fn create_contrail_texture(images: &mut Assets<Image>) -> Handle<Image> {
     let size = 64u32;
@@ -251,11 +257,19 @@ pub fn update_trail_particles(
 
         // Aircraft scale factor affects world-space offset
         let scale = crate::constants::AIRCRAFT_MODEL_SCALE;
-        transform.translation = Vec3::new(
+        let pos_zup = Vec3::new(
             xy.x - tail_dx * scale,
             xy.y - tail_dy * scale,
             z,
         );
+
+        // In 3D mode, convert from Z-up (x, y, z) to Y-up (x, z, -y)
+        // to match Camera3d and aircraft model positions
+        transform.translation = if is_3d {
+            Vec3::new(pos_zup.x, pos_zup.z, -pos_zup.y)
+        } else {
+            pos_zup
+        };
 
         // Update spawn color based on current altitude
         let color = altitude_color(aircraft.altitude);
@@ -270,18 +284,31 @@ pub fn update_trail_particles(
     }
 }
 
-/// System that despawns trail effect entities when their aircraft is removed
-/// or when the particle renderer is not active for the current mode.
+/// System that despawns trail effect entities when their aircraft is removed,
+/// when the particle renderer is not active, or when zoom level changes
+/// (old particles have stale world-space positions from the previous zoom).
 pub fn cleanup_trail_effects(
     mut commands: Commands,
     view3d_state: Res<View3DState>,
     trail_config: Res<TrailConfig>,
+    map_state: Res<MapState>,
+    mut zoom_tracker: ResMut<TrailZoomTracker>,
     aircraft_query: Query<Entity, With<Aircraft>>,
     effect_query: Query<(Entity, &TrailEffect)>,
 ) {
     let is_3d = view3d_state.is_3d_active();
     let active_renderer = if is_3d { trail_config.renderer_3d } else { trail_config.renderer_2d };
     let particle_inactive = active_renderer != TrailRenderer::Particle || !trail_config.enabled;
+
+    // When zoom level changes, temporarily disable spawning on existing
+    // trail effects so stale particles at old coordinates fade out naturally
+    // rather than abruptly disappearing. The emitter position updates
+    // immediately via update_trail_particles.
+    let current_zoom = map_state.zoom_level.to_u8();
+    let zoom_changed = zoom_tracker.last_zoom != Some(current_zoom);
+    if zoom_changed {
+        zoom_tracker.last_zoom = Some(current_zoom);
+    }
 
     for (effect_entity, trail_effect) in effect_query.iter() {
         if particle_inactive || aircraft_query.get(trail_effect.aircraft_entity).is_err() {

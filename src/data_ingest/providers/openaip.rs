@@ -181,6 +181,8 @@ impl AirspaceBuilder {
             airspace_type,
             lower_limit_ft,
             upper_limit_ft,
+            lower_altitude_ref: None,
+            upper_altitude_ref: None,
             polygon: self.points,
             fetched_at,
         }))

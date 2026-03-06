@@ -6,4 +6,5 @@ pub mod faa_nasr;
 pub mod notams;
 pub mod openaip;
 pub mod our_airports;
+pub mod faa_adds_airspace;
 pub mod tfrs;
