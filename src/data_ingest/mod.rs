@@ -181,6 +181,10 @@ fn build_providers(config: &crate::config::DataIngestConfig) -> Vec<Arc<dyn prov
         providers.push(Arc::new(providers::tfrs::TfrProvider));
     }
 
+    if config.faa_airspace.enabled {
+        providers.push(Arc::new(providers::faa_adds_airspace::FaaClassAirspaceProvider));
+    }
+
     providers
 }
 
