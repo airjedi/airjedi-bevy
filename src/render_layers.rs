@@ -23,6 +23,7 @@ impl RenderCategory {
     pub const TILES_3D: usize = 6;     // Tile mesh quads (3D rendering)
     pub const GROUND: usize = 7;       // Ground plane (3D only)
     pub const SKY: usize = 8;          // Star field (3D only)
+    pub const AIRSPACE: usize = 9;     // Airspace volumes (2D and 3D)
     pub const UI: usize = 11;          // egui (unchanged)
 }
 
@@ -33,6 +34,7 @@ pub fn layers_2d_map() -> RenderLayers {
         RenderCategory::GIZMOS,
         RenderCategory::OVERLAYS_2D,
         RenderCategory::LABELS,
+        RenderCategory::AIRSPACE,
     ])
 }
 
@@ -59,5 +61,6 @@ pub fn layers_3d_world() -> RenderLayers {
         RenderCategory::TILES_3D,
         RenderCategory::GROUND,
         RenderCategory::SKY,
+        RenderCategory::AIRSPACE,
     ])
 }
