@@ -222,6 +222,8 @@ pub struct DataIngestConfig {
     pub notam: ProviderConfig,
     #[serde(default = "DataIngestConfig::default_tfr")]
     pub tfr: ProviderConfig,
+    #[serde(default = "DataIngestConfig::default_faa_airspace")]
+    pub faa_airspace: ProviderConfig,
 }
 
 impl DataIngestConfig {
@@ -246,6 +248,9 @@ impl DataIngestConfig {
     fn default_tfr() -> ProviderConfig {
         ProviderConfig { enabled: true, schedule: "0 */15 * * * *".into(), api_key: None, api_secret: None }
     }
+    fn default_faa_airspace() -> ProviderConfig {
+        ProviderConfig { enabled: false, schedule: "0 0 4 * * *".into(), api_key: None, api_secret: None }
+    }
 }
 
 impl Default for DataIngestConfig {
@@ -258,6 +263,7 @@ impl Default for DataIngestConfig {
             openaip: Self::default_openaip(),
             notam: Self::default_notam(),
             tfr: Self::default_tfr(),
+            faa_airspace: Self::default_faa_airspace(),
         }
     }
 }
