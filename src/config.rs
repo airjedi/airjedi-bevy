@@ -222,6 +222,8 @@ pub struct DataIngestConfig {
     pub notam: ProviderConfig,
     #[serde(default = "DataIngestConfig::default_tfr")]
     pub tfr: ProviderConfig,
+    #[serde(default = "DataIngestConfig::default_faa_airspace")]
+    pub faa_airspace: ProviderConfig,
 }
 
 impl DataIngestConfig {
@@ -246,6 +248,9 @@ impl DataIngestConfig {
     fn default_tfr() -> ProviderConfig {
         ProviderConfig { enabled: true, schedule: "0 */15 * * * *".into(), api_key: None, api_secret: None }
     }
+    fn default_faa_airspace() -> ProviderConfig {
+        ProviderConfig { enabled: true, schedule: "0 0 4 * * *".into(), api_key: None, api_secret: None }
+    }
 }
 
 impl Default for DataIngestConfig {
@@ -258,6 +263,7 @@ impl Default for DataIngestConfig {
             openaip: Self::default_openaip(),
             notam: Self::default_notam(),
             tfr: Self::default_tfr(),
+            faa_airspace: Self::default_faa_airspace(),
         }
     }
 }
@@ -352,6 +358,7 @@ pub struct SettingsUiState {
     pub trails_renderer_3d: TrailRenderer,
     pub data_ingest: DataIngestConfig,
     pub error_message: Option<String>,
+    pub layout_reset_requested: bool,
 }
 
 impl SettingsUiState {
@@ -567,6 +574,20 @@ pub fn render_settings_pane_content(
                     });
             });
         });
+    });
+
+    ui.add_space(12.0);
+
+    // Layout section
+    ui.collapsing("Layout", |ui| {
+        if ui.button("Reset Dock Layout").clicked() {
+            ui_state.layout_reset_requested = true;
+        }
+        ui.label(
+            egui::RichText::new("Restores all panels to their default positions")
+                .size(10.0)
+                .color(egui::Color32::GRAY),
+        );
     });
 
     ui.add_space(16.0);

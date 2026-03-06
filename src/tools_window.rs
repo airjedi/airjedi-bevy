@@ -219,6 +219,22 @@ pub fn render_airspace_tab(
         ui.checkbox(&mut display_state.show_restricted, "Restricted");
         ui.checkbox(&mut display_state.show_moa, "MOA");
         ui.checkbox(&mut display_state.show_tfr, "TFR");
+        ui.checkbox(&mut display_state.show_warning, "Warning");
+        ui.checkbox(&mut display_state.show_alert, "Alert");
+
+        ui.separator();
+        ui.add(egui::Slider::new(&mut display_state.opacity, 0.05..=1.0).text("Opacity"));
+
+        ui.horizontal(|ui| {
+            let mut use_filter = display_state.altitude_filter_ft.is_some();
+            if ui.checkbox(&mut use_filter, "Alt Filter").changed() {
+                display_state.altitude_filter_ft = if use_filter { Some(10000) } else { None };
+            }
+            if let Some(ref mut alt) = display_state.altitude_filter_ft {
+                ui.add(egui::DragValue::new(alt).range(0..=60000).suffix(" ft"));
+            }
+        });
+
         ui.separator();
         ui.checkbox(&mut display_state.show_labels, "Show Labels");
     }
@@ -358,7 +374,7 @@ pub fn render_view3d_tab(ui: &mut egui::Ui, state: &mut View3DState, time_state:
     });
     ui.horizontal(|ui| {
         ui.label("Alt Scale:");
-        ui.add(egui::Slider::new(&mut state.altitude_scale, 0.1..=10.0));
+        ui.add(egui::Slider::new(&mut state.altitude_scale, 0.1..=100.0));
     });
 
     ui.separator();
@@ -768,6 +784,14 @@ fn provider_entries() -> Vec<ProviderEntry> {
             needs_credentials: false,
             credentials_hint: "",
         },
+        ProviderEntry {
+            config_key: "faa_airspace",
+            display_name: "FAA Airspace",
+            description: "Class B/C and special use airspace from FAA ADDS",
+            category: ProviderCategory::Navigation,
+            needs_credentials: false,
+            credentials_hint: "",
+        },
     ]
 }
 
@@ -783,6 +807,7 @@ fn get_provider_config_mut<'a>(
         "openaip" => &mut config.openaip,
         "notam" => &mut config.notam,
         "tfr" => &mut config.tfr,
+        "faa_airspace" => &mut config.faa_airspace,
         _ => panic!("unknown provider config key: {}", key),
     }
 }

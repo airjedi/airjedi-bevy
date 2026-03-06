@@ -181,6 +181,10 @@ fn build_providers(config: &crate::config::DataIngestConfig) -> Vec<Arc<dyn prov
         providers.push(Arc::new(providers::tfrs::TfrProvider));
     }
 
+    if config.faa_airspace.enabled {
+        providers.push(Arc::new(providers::faa_adds_airspace::FaaClassAirspaceProvider));
+    }
+
     providers
 }
 
@@ -277,6 +281,7 @@ fn build_providers_for_key(key: &str) -> Vec<Arc<dyn provider::DataProvider>> {
         "openaip" => vec![Arc::new(providers::openaip::OpenAipProvider::new())],
         "notam" => vec![Arc::new(providers::notams::NotamProvider)],
         "tfr" => vec![Arc::new(providers::tfrs::TfrProvider)],
+        "faa_airspace" => vec![Arc::new(providers::faa_adds_airspace::FaaClassAirspaceProvider)],
         _ => vec![],
     }
 }

@@ -19,9 +19,18 @@
 //! for loading and rendering that can be filled in when data integration
 //! is implemented.
 
+use bevy::asset::RenderAssetUsages;
+use bevy::camera::visibility::RenderLayers;
+use bevy::ecs::message::MessageReader;
+use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
 use serde::{Deserialize, Serialize};
+
+use crate::data_ingest::canonical::CanonicalRecord;
+use crate::geo::CoordinateConverter;
+use crate::render_layers::RenderCategory;
+use crate::view3d::View3DState;
 
 /// Classification of airspace
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -188,6 +197,20 @@ impl Airspace {
     }
 }
 
+/// Generate a circular polygon approximation from a center point and radius in nm.
+fn generate_circle(center_lat: f64, center_lon: f64, radius_nm: f64, segments: usize) -> Vec<AirspacePoint> {
+    let mut points = Vec::with_capacity(segments + 1);
+    let deg_per_nm_lat = 1.0 / 60.0;
+    let deg_per_nm_lon = 1.0 / (60.0 * center_lat.to_radians().cos());
+    for i in 0..=segments {
+        let angle = 2.0 * std::f64::consts::PI * (i as f64) / (segments as f64);
+        let lat = center_lat + radius_nm * deg_per_nm_lat * angle.cos();
+        let lon = center_lon + radius_nm * deg_per_nm_lon * angle.sin();
+        points.push(AirspacePoint { latitude: lat, longitude: lon });
+    }
+    points
+}
+
 /// Resource storing loaded airspace data
 #[derive(Resource, Default)]
 pub struct AirspaceData {
@@ -197,6 +220,8 @@ pub struct AirspaceData {
     pub source: Option<String>,
     /// Whether data has been loaded
     pub loaded: bool,
+    /// Whether data has changed and meshes need regeneration
+    pub dirty: bool,
 }
 
 impl AirspaceData {
@@ -212,46 +237,37 @@ impl AirspaceData {
         Err("Airspace loading not yet implemented. Data sources to consider: OpenAIP, FAA NASR".to_string())
     }
 
-    /// Load sample airspace data for testing
+    /// Load sample airspace data for testing - realistic KICT Class C tiers.
     pub fn load_sample_data(&mut self) {
-        // Sample Class B airspace around a fictional airport
+        // KICT Class C inner ring: SFC to 5300 MSL (~5nm radius)
         self.airspaces.push(Airspace {
-            id: "SAMPLE_B".to_string(),
-            name: "Sample Class B".to_string(),
-            class: AirspaceClass::ClassB,
+            id: "KICT_C_INNER".to_string(),
+            name: "KICT Class C Inner".to_string(),
+            class: AirspaceClass::ClassC,
             floor: AltitudeReference::Surface,
-            ceiling: AltitudeReference::FL(100),
-            boundary: vec![
-                AirspacePoint { latitude: 37.75, longitude: -97.40 },
-                AirspacePoint { latitude: 37.75, longitude: -97.20 },
-                AirspacePoint { latitude: 37.60, longitude: -97.20 },
-                AirspacePoint { latitude: 37.60, longitude: -97.40 },
-            ],
-            controlling_agency: Some("Sample Approach".to_string()),
-            frequency: Some("123.45".to_string()),
+            ceiling: AltitudeReference::MSL(5300),
+            boundary: generate_circle(37.6499, -97.4331, 5.0, 36),
+            controlling_agency: Some("Wichita Approach".to_string()),
+            frequency: Some("118.2".to_string()),
             operating_times: None,
         });
 
-        // Sample restricted area
+        // KICT Class C outer ring: 2700 MSL to 5300 MSL (~10nm radius)
         self.airspaces.push(Airspace {
-            id: "R-SAMPLE".to_string(),
-            name: "Sample Restricted".to_string(),
-            class: AirspaceClass::Restricted,
-            floor: AltitudeReference::Surface,
-            ceiling: AltitudeReference::FL(180),
-            boundary: vec![
-                AirspacePoint { latitude: 37.80, longitude: -97.50 },
-                AirspacePoint { latitude: 37.80, longitude: -97.45 },
-                AirspacePoint { latitude: 37.85, longitude: -97.45 },
-                AirspacePoint { latitude: 37.85, longitude: -97.50 },
-            ],
-            controlling_agency: Some("Sample Military".to_string()),
-            frequency: None,
-            operating_times: Some("0800-1700 MON-FRI".to_string()),
+            id: "KICT_C_OUTER".to_string(),
+            name: "KICT Class C Outer".to_string(),
+            class: AirspaceClass::ClassC,
+            floor: AltitudeReference::MSL(2700),
+            ceiling: AltitudeReference::MSL(5300),
+            boundary: generate_circle(37.6499, -97.4331, 10.0, 48),
+            controlling_agency: Some("Wichita Approach".to_string()),
+            frequency: Some("118.2".to_string()),
+            operating_times: None,
         });
 
         self.loaded = true;
-        self.source = Some("Sample Data".to_string());
+        self.dirty = true;
+        self.source = Some("Sample Data (KICT)".to_string());
         info!("Loaded {} sample airspace definitions", self.airspaces.len());
     }
 
@@ -273,22 +289,60 @@ pub struct AirspaceDisplayState {
     pub show_restricted: bool,
     pub show_moa: bool,
     pub show_tfr: bool,
+    pub show_warning: bool,
+    pub show_alert: bool,
     /// Whether to show labels
     pub show_labels: bool,
+    /// Opacity for airspace meshes (0.0 - 1.0)
+    pub opacity: f32,
+    /// Optional altitude filter in feet (only show airspaces at this altitude)
+    pub altitude_filter_ft: Option<i32>,
 }
 
 impl Default for AirspaceDisplayState {
     fn default() -> Self {
         Self {
-            enabled: false,
+            enabled: true,
             show_class_b: true,
             show_class_c: true,
             show_class_d: true,
             show_restricted: true,
             show_moa: false,
             show_tfr: true,
+            show_warning: true,
+            show_alert: true,
             show_labels: true,
+            opacity: 0.10,
+            altitude_filter_ft: None,
         }
+    }
+}
+
+impl AirspaceDisplayState {
+    pub fn is_class_visible(&self, class: &AirspaceClass) -> bool {
+        if !self.enabled {
+            return false;
+        }
+        match class {
+            AirspaceClass::ClassB => self.show_class_b,
+            AirspaceClass::ClassC => self.show_class_c,
+            AirspaceClass::ClassD => self.show_class_d,
+            AirspaceClass::Restricted => self.show_restricted,
+            AirspaceClass::MOA => self.show_moa,
+            AirspaceClass::Warning => self.show_warning,
+            AirspaceClass::Alert => self.show_alert,
+            AirspaceClass::TFR => self.show_tfr,
+            _ => false,
+        }
+    }
+
+    pub fn passes_altitude_filter(&self, floor_ft: Option<i32>, ceiling_ft: Option<i32>) -> bool {
+        let Some(filter) = self.altitude_filter_ft else {
+            return true;
+        };
+        let floor = floor_ft.unwrap_or(0);
+        let ceiling = ceiling_ft.unwrap_or(60000);
+        filter >= floor && filter <= ceiling
     }
 }
 
@@ -296,6 +350,30 @@ impl Default for AirspaceDisplayState {
 #[derive(Component)]
 pub struct AirspaceBoundary {
     pub airspace_id: String,
+}
+
+/// Marker for spawned airspace mesh entities.
+#[derive(Component)]
+pub struct AirspaceMeshMarker {
+    pub airspace_id: String,
+}
+
+/// Tracks which airspaces have spawned meshes.
+#[derive(Resource, Default)]
+pub struct SpawnedAirspaces {
+    pub ids: std::collections::HashSet<String>,
+    pub was_3d: bool,
+    pub last_zoom: Option<u8>,
+}
+
+/// Timer for periodic airspace mesh refresh.
+#[derive(Resource)]
+pub struct AirspaceRefreshTimer(pub Timer);
+
+impl Default for AirspaceRefreshTimer {
+    fn default() -> Self {
+        Self(Timer::from_seconds(0.5, TimerMode::Repeating))
+    }
 }
 
 /// System to toggle airspace display
@@ -374,6 +452,468 @@ pub fn render_airspace_panel(
         });
 }
 
+/// Consume NavigationDataUpdated messages and load airspace records into AirspaceData.
+pub fn consume_airspace_data(
+    mut nav_events: MessageReader<crate::data_ingest::NavigationDataUpdated>,
+    mut airspace_data: ResMut<AirspaceData>,
+) {
+    for event in nav_events.read() {
+        let airspaces: Vec<Airspace> = event
+            .records
+            .iter()
+            .filter_map(|r| {
+                if let CanonicalRecord::Airspace(info) = r {
+                    Some(airspace_info_to_airspace(info))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if !airspaces.is_empty() {
+            info!("Loaded {} airspace definitions from data ingest", airspaces.len());
+            airspace_data.airspaces = airspaces;
+            airspace_data.loaded = true;
+            airspace_data.dirty = true;
+            airspace_data.source = Some("FAA ADDS".to_string());
+        }
+    }
+}
+
+fn airspace_info_to_airspace(info: &crate::data_ingest::canonical::AirspaceInfo) -> Airspace {
+    let class = match info.airspace_class.as_str() {
+        "ClassB" => AirspaceClass::ClassB,
+        "ClassC" => AirspaceClass::ClassC,
+        "ClassD" => AirspaceClass::ClassD,
+        "Restricted" => AirspaceClass::Restricted,
+        "MOA" => AirspaceClass::MOA,
+        "Warning" => AirspaceClass::Warning,
+        "Alert" => AirspaceClass::Alert,
+        "TFR" => AirspaceClass::TFR,
+        _ => AirspaceClass::ClassG,
+    };
+
+    let floor = parse_altitude_ref(info.lower_limit_ft, info.lower_altitude_ref.as_deref());
+    let ceiling = parse_altitude_ref(info.upper_limit_ft, info.upper_altitude_ref.as_deref());
+
+    Airspace {
+        id: info.name.clone(),
+        name: info.name.clone(),
+        class,
+        floor,
+        ceiling,
+        boundary: info
+            .polygon
+            .iter()
+            .map(|(lat, lon)| AirspacePoint {
+                latitude: *lat,
+                longitude: *lon,
+            })
+            .collect(),
+        controlling_agency: None,
+        frequency: None,
+        operating_times: None,
+    }
+}
+
+fn parse_altitude_ref(ft: Option<i32>, code: Option<&str>) -> AltitudeReference {
+    match (ft, code) {
+        (_, Some("SFC")) => AltitudeReference::Surface,
+        (_, Some("UNL")) => AltitudeReference::Unlimited,
+        (Some(v), Some("AGL")) => AltitudeReference::AGL(v),
+        (Some(v), Some("FL")) => AltitudeReference::FL(v as u16 / 100),
+        (Some(v), _) => AltitudeReference::MSL(v),
+        (None, _) => AltitudeReference::Surface,
+    }
+}
+
+/// Build a wall mesh (vertical fence) from a polygon boundary between floor and ceiling.
+fn build_wall_mesh(
+    boundary: &[AirspacePoint],
+    floor_z: f32,
+    ceiling_z: f32,
+    converter: &CoordinateConverter,
+) -> Mesh {
+    let n = boundary.len();
+    if n < 3 {
+        return Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
+    }
+
+    // Pre-compute 2D positions for all boundary points
+    let world_pts: Vec<bevy::math::Vec2> = boundary
+        .iter()
+        .map(|p| converter.latlon_to_world(p.latitude, p.longitude))
+        .collect();
+
+    // Capacity: walls (n*4 verts, n*6 idx) + 2 caps (n+1 verts each, n*3 idx each)
+    let wall_verts = n * 4;
+    let cap_verts = (n + 1) * 2;
+    let total_verts = wall_verts + cap_verts;
+    let wall_idx = n * 6;
+    let cap_idx = n * 3 * 2;
+    let total_idx = wall_idx + cap_idx;
+
+    let mut positions: Vec<[f32; 3]> = Vec::with_capacity(total_verts);
+    let mut normals: Vec<[f32; 3]> = Vec::with_capacity(total_verts);
+    let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(total_verts);
+    let mut indices: Vec<u32> = Vec::with_capacity(total_idx);
+
+    // --- Wall quads ---
+    for i in 0..n {
+        let j = (i + 1) % n;
+        let p0 = &world_pts[i];
+        let p1 = &world_pts[j];
+
+        let base_idx = positions.len() as u32;
+
+        // Y-up: x=east, y=altitude, z=-north
+        positions.push([p0.x, floor_z, -p0.y]);
+        positions.push([p1.x, floor_z, -p1.y]);
+        positions.push([p1.x, ceiling_z, -p1.y]);
+        positions.push([p0.x, ceiling_z, -p0.y]);
+
+        let edge = Vec3::new(p1.x - p0.x, 0.0, -(p1.y - p0.y));
+        let normal = edge.cross(Vec3::Y).normalize_or_zero();
+        for _ in 0..4 {
+            normals.push(normal.to_array());
+        }
+
+        uvs.push([0.0, 0.0]);
+        uvs.push([1.0, 0.0]);
+        uvs.push([1.0, 1.0]);
+        uvs.push([0.0, 1.0]);
+
+        indices.push(base_idx);
+        indices.push(base_idx + 1);
+        indices.push(base_idx + 2);
+        indices.push(base_idx);
+        indices.push(base_idx + 2);
+        indices.push(base_idx + 3);
+    }
+
+    // --- Top cap (ceiling) --- fan triangulation from centroid
+    let cx: f32 = world_pts.iter().map(|p| p.x).sum::<f32>() / n as f32;
+    let cy: f32 = world_pts.iter().map(|p| p.y).sum::<f32>() / n as f32;
+
+    let top_center_idx = positions.len() as u32;
+    positions.push([cx, ceiling_z, -cy]);
+    normals.push([0.0, 1.0, 0.0]);
+    uvs.push([0.5, 0.5]);
+
+    for p in &world_pts {
+        positions.push([p.x, ceiling_z, -p.y]);
+        normals.push([0.0, 1.0, 0.0]);
+        uvs.push([0.0, 0.0]);
+    }
+
+    for i in 0..n {
+        let j = (i + 1) % n;
+        indices.push(top_center_idx);
+        indices.push(top_center_idx + 1 + i as u32);
+        indices.push(top_center_idx + 1 + j as u32);
+    }
+
+    // --- Bottom cap (floor) --- fan triangulation, winding reversed
+    let bot_center_idx = positions.len() as u32;
+    positions.push([cx, floor_z, -cy]);
+    normals.push([0.0, -1.0, 0.0]);
+    uvs.push([0.5, 0.5]);
+
+    for p in &world_pts {
+        positions.push([p.x, floor_z, -p.y]);
+        normals.push([0.0, -1.0, 0.0]);
+        uvs.push([0.0, 0.0]);
+    }
+
+    for i in 0..n {
+        let j = (i + 1) % n;
+        indices.push(bot_center_idx);
+        indices.push(bot_center_idx + 1 + j as u32); // reversed winding
+        indices.push(bot_center_idx + 1 + i as u32);
+    }
+
+    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+    mesh.insert_indices(Indices::U32(indices));
+    mesh
+}
+
+/// Build a flat polygon mesh for 2D map rendering.
+fn build_flat_polygon_mesh(
+    boundary: &[AirspacePoint],
+    converter: &CoordinateConverter,
+) -> Mesh {
+    let n = boundary.len();
+    if n < 3 {
+        return Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
+    }
+
+    // Simple fan triangulation from centroid
+    let positions_2d: Vec<Vec2> = boundary
+        .iter()
+        .map(|p| converter.latlon_to_world(p.latitude, p.longitude))
+        .collect();
+
+    let cx: f32 = positions_2d.iter().map(|p| p.x).sum::<f32>() / n as f32;
+    let cy: f32 = positions_2d.iter().map(|p| p.y).sum::<f32>() / n as f32;
+
+    let mut positions: Vec<[f32; 3]> = Vec::with_capacity(n + 1);
+    let mut normals: Vec<[f32; 3]> = Vec::with_capacity(n + 1);
+    let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(n + 1);
+    let mut indices: Vec<u32> = Vec::with_capacity(n * 3);
+
+    // Center vertex
+    positions.push([cx, 0.01, -cy]); // slight Y offset above tiles
+    normals.push([0.0, 1.0, 0.0]);
+    uvs.push([0.5, 0.5]);
+
+    for p in &positions_2d {
+        positions.push([p.x, 0.01, -p.y]);
+        normals.push([0.0, 1.0, 0.0]);
+        uvs.push([0.0, 0.0]);
+    }
+
+    for i in 0..n {
+        let j = (i + 1) % n;
+        indices.push(0); // center
+        indices.push((i + 1) as u32);
+        indices.push((j + 1) as u32);
+    }
+
+    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+    mesh.insert_indices(Indices::U32(indices));
+    mesh
+}
+
+fn altitude_ref_to_ft(alt: &AltitudeReference) -> i32 {
+    match alt {
+        AltitudeReference::MSL(ft) => *ft,
+        AltitudeReference::AGL(ft) => *ft,
+        AltitudeReference::FL(fl) => *fl as i32 * 100,
+        AltitudeReference::Surface => 0,
+        AltitudeReference::Unlimited => 60000,
+    }
+}
+
+/// Check if airspace centroid is within rendering range (~250nm).
+fn is_in_range(airspace: &Airspace, camera_lat: f64, camera_lon: f64) -> bool {
+    let (centroid_lat, centroid_lon) = airspace.centroid();
+    let dlat = (centroid_lat - camera_lat).abs();
+    let dlon = (centroid_lon - camera_lon).abs();
+    // Rough degree-based check (~250nm = ~4 degrees at mid-latitudes)
+    dlat < 4.0 && dlon < 4.0
+}
+
+/// System to spawn/despawn airspace meshes based on visibility and distance.
+pub fn update_airspace_meshes(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut timer: ResMut<AirspaceRefreshTimer>,
+    mut airspace_data: ResMut<AirspaceData>,
+    display_state: Res<AirspaceDisplayState>,
+    view3d_state: Option<Res<View3DState>>,
+    map_state: Res<crate::map::MapState>,
+    tile_settings: Res<bevy_slippy_tiles::SlippyTilesSettings>,
+    mut spawned: ResMut<SpawnedAirspaces>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    existing_query: Query<(Entity, &AirspaceMeshMarker)>,
+) {
+    timer.0.tick(time.delta());
+
+    // Auto-load sample data when airspace is enabled but no data exists
+    if display_state.enabled && !airspace_data.loaded {
+        airspace_data.load_sample_data();
+    }
+
+    let needs_refresh = timer.0.just_finished()
+        || airspace_data.dirty
+        || (display_state.enabled && airspace_data.loaded && spawned.ids.is_empty());
+
+    if !needs_refresh {
+        return;
+    }
+
+    if airspace_data.dirty {
+        airspace_data.dirty = false;
+    }
+
+    if !display_state.enabled {
+        // Despawn all if disabled
+        for (entity, _) in existing_query.iter() {
+            commands.entity(entity).despawn();
+        }
+        spawned.ids.clear();
+        return;
+    }
+
+    let converter = CoordinateConverter::new(&tile_settings, map_state.zoom_level);
+    let is_3d = view3d_state
+        .as_ref()
+        .is_some_and(|v| v.mode == crate::view3d::ViewMode::Perspective3D);
+
+    // Despawn all meshes when switching between 2D and 3D modes
+    if is_3d != spawned.was_3d {
+        for (entity, _) in existing_query.iter() {
+            commands.entity(entity).despawn();
+        }
+        spawned.ids.clear();
+        spawned.was_3d = is_3d;
+    }
+
+    // Despawn all meshes when zoom level changes (positions are zoom-dependent)
+    if Some(map_state.zoom_level.to_u8()) != spawned.last_zoom {
+        for (entity, _) in existing_query.iter() {
+            commands.entity(entity).despawn();
+        }
+        spawned.ids.clear();
+        spawned.last_zoom = Some(map_state.zoom_level.to_u8());
+    }
+
+    let camera_lat = map_state.latitude;
+    let camera_lon = map_state.longitude;
+
+    // Despawn meshes for airspaces no longer visible
+    for (entity, marker) in existing_query.iter() {
+        let should_keep = airspace_data.airspaces.iter().any(|a| {
+            a.id == marker.airspace_id
+                && display_state.is_class_visible(&a.class)
+                && is_in_range(a, camera_lat, camera_lon)
+        });
+        if !should_keep {
+            commands.entity(entity).despawn();
+            spawned.ids.remove(&marker.airspace_id);
+        }
+    }
+
+    // Spawn meshes for newly visible airspaces
+    warn!(
+        "Airspace refresh: {} airspaces, camera ({:.4}, {:.4}), is_3d={}, spawned={}",
+        airspace_data.airspaces.len(), camera_lat, camera_lon, is_3d, spawned.ids.len()
+    );
+    for airspace in &airspace_data.airspaces {
+        if spawned.ids.contains(&airspace.id) {
+            continue;
+        }
+        if !display_state.is_class_visible(&airspace.class) {
+            warn!("  {} skipped: class not visible", airspace.id);
+            continue;
+        }
+        if !is_in_range(airspace, camera_lat, camera_lon) {
+            warn!("  {} skipped: out of range (centroid: {:?})", airspace.id, airspace.centroid());
+            continue;
+        }
+
+        let floor_ft = altitude_ref_to_ft(&airspace.floor);
+        let ceiling_ft = altitude_ref_to_ft(&airspace.ceiling);
+
+        if !display_state.passes_altitude_filter(Some(floor_ft), Some(ceiling_ft)) {
+            continue;
+        }
+
+        let mut color = airspace.class.color();
+        color.set_alpha(display_state.opacity);
+
+        let material = materials.add(StandardMaterial {
+            base_color: color,
+            alpha_mode: AlphaMode::Blend,
+            double_sided: true,
+            cull_mode: None,
+            unlit: true,
+            ..default()
+        });
+
+        if is_3d {
+            let v3d = view3d_state.as_ref().unwrap();
+            let ground_z = v3d.altitude_to_z(v3d.ground_elevation_ft);
+            // Floor/ceiling use altitude_to_z which includes View3DState::altitude_scale
+            // This ensures airspace volumes scale consistently with aircraft, camera, etc.
+            let floor_z = if floor_ft == 0 {
+                ground_z
+            } else {
+                v3d.altitude_to_z(floor_ft)
+            };
+            let ceiling_z = v3d.altitude_to_z(ceiling_ft);
+            let mesh = build_wall_mesh(&airspace.boundary, floor_z, ceiling_z, &converter);
+
+            commands.spawn((
+                Mesh3d(meshes.add(mesh)),
+                MeshMaterial3d(material),
+                Transform::IDENTITY,
+                Visibility::default(),
+                RenderLayers::layer(RenderCategory::AIRSPACE),
+                AirspaceMeshMarker {
+                    airspace_id: airspace.id.clone(),
+                },
+            ));
+        } else {
+            // In 2D mode, just mark as spawned - gizmos handle the rendering
+            commands.spawn(AirspaceMeshMarker {
+                airspace_id: airspace.id.clone(),
+            });
+        }
+
+        spawned.ids.insert(airspace.id.clone());
+        warn!("  SPAWNED airspace mesh: {} (floor={} ceil={} is_3d={})", airspace.id, floor_ft, ceiling_ft, is_3d);
+    }
+}
+
+
+/// Draw airspace boundaries as gizmo lines in 2D mode.
+pub fn draw_airspace_gizmos(
+    mut gizmos: Gizmos,
+    airspace_data: Res<AirspaceData>,
+    display_state: Res<AirspaceDisplayState>,
+    view3d_state: Option<Res<View3DState>>,
+    map_state: Res<crate::map::MapState>,
+    tile_settings: Res<bevy_slippy_tiles::SlippyTilesSettings>,
+) {
+    if !display_state.enabled || !airspace_data.loaded {
+        return;
+    }
+
+    let is_3d = view3d_state
+        .as_ref()
+        .is_some_and(|v| v.mode == crate::view3d::ViewMode::Perspective3D);
+
+    // Only draw gizmos in 2D mode; 3D uses mesh walls
+    if is_3d {
+        return;
+    }
+
+    let converter = CoordinateConverter::new(&tile_settings, map_state.zoom_level);
+
+    for airspace in &airspace_data.airspaces {
+        if !display_state.is_class_visible(&airspace.class) {
+            continue;
+        }
+
+        let color = airspace.class.color();
+        let n = airspace.boundary.len();
+        if n < 3 {
+            continue;
+        }
+
+        for i in 0..n {
+            let j = (i + 1) % n;
+            let p0 = converter.latlon_to_world(
+                airspace.boundary[i].latitude,
+                airspace.boundary[i].longitude,
+            );
+            let p1 = converter.latlon_to_world(
+                airspace.boundary[j].latitude,
+                airspace.boundary[j].longitude,
+            );
+            gizmos.line_2d(p0, p1, color);
+        }
+    }
+}
+
 /// Plugin for airspace functionality
 pub struct AirspacePlugin;
 
@@ -381,7 +921,14 @@ impl Plugin for AirspacePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<AirspaceData>()
             .init_resource::<AirspaceDisplayState>()
-            .add_systems(Update, toggle_airspace_display);
+            .init_resource::<SpawnedAirspaces>()
+            .init_resource::<AirspaceRefreshTimer>()
+            .add_systems(Update, (
+                toggle_airspace_display,
+                consume_airspace_data,
+                update_airspace_meshes,
+                draw_airspace_gizmos,
+            ));
         // Airspace panel is rendered via the consolidated Tools window (tools_window.rs)
     }
 }

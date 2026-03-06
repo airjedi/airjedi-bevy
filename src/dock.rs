@@ -84,6 +84,8 @@ pub struct DockTreeState {
     /// Container tile IDs for auto-collapse when all children are hidden.
     pub bottom_tabs_id: TileId,
     pub right_tabs_id: TileId,
+    /// When true, the dock layout resets to defaults on the next frame.
+    pub reset_requested: bool,
     /// Captured each frame from MapViewport pane for camera viewport adjustment
     pub map_viewport_rect: Option<egui::Rect>,
 }
@@ -91,7 +93,6 @@ pub struct DockTreeState {
 /// Panes grouped in the bottom tab container.
 const BOTTOM_PANES: &[DockPane] = &[
     DockPane::Coverage,
-    DockPane::Airspace,
     DockPane::DataSources,
     DockPane::Export,
     DockPane::Recording,
@@ -101,6 +102,7 @@ const BOTTOM_PANES: &[DockPane] = &[
 const RIGHT_PANES: &[DockPane] = &[
     DockPane::AircraftList,
     DockPane::AircraftDetail,
+    DockPane::Airspace,
     DockPane::Bookmarks,
     DockPane::Stats,
     DockPane::Settings,
@@ -139,19 +141,19 @@ impl Default for DockTreeState {
             pane_tile_ids.insert(pane, id);
         }
 
-        // Bottom tabs: Coverage, Airspace, DataSources, Export, Recording
+        // Bottom tabs: Coverage, DataSources, Export, Recording
         let bottom_tabs_id = tiles.insert_tab_tile(vec![
             pane_tile_ids[&DockPane::Coverage],
-            pane_tile_ids[&DockPane::Airspace],
             pane_tile_ids[&DockPane::DataSources],
             pane_tile_ids[&DockPane::Export],
             pane_tile_ids[&DockPane::Recording],
         ]);
 
-        // Right tabs: AircraftList, AircraftDetail, Bookmarks, Stats, Settings, View3D, Debug, Inspector
+        // Right tabs: AircraftList, AircraftDetail, Airspace, Bookmarks, Stats, Settings, Ingest, View3D, Debug, Inspector
         let right_tabs_id = tiles.insert_tab_tile(vec![
             pane_tile_ids[&DockPane::AircraftList],
             pane_tile_ids[&DockPane::AircraftDetail],
+            pane_tile_ids[&DockPane::Airspace],
             pane_tile_ids[&DockPane::Bookmarks],
             pane_tile_ids[&DockPane::Stats],
             pane_tile_ids[&DockPane::Settings],
@@ -207,6 +209,7 @@ impl Default for DockTreeState {
             pane_tile_ids,
             bottom_tabs_id,
             right_tabs_id,
+            reset_requested: false,
             map_viewport_rect: None,
         }
     }
@@ -754,6 +757,19 @@ pub fn render_dock_tree(world: &mut World) {
 
     // 3. Use resource_scope for DockTreeState so DockBehavior can hold &mut World
     world.resource_scope(|world, mut dock_state: Mut<DockTreeState>| {
+        // 3a. Handle layout reset request (from Settings panel button)
+        {
+            let mut settings_ui = world.resource_mut::<SettingsUiState>();
+            if settings_ui.layout_reset_requested {
+                settings_ui.layout_reset_requested = false;
+                dock_state.reset_requested = true;
+            }
+        }
+        if dock_state.reset_requested {
+            *dock_state = DockTreeState::default();
+            info!("Dock layout reset to defaults");
+        }
+
         // 4. Sync UiPanelManager state to dock tile visibility
         {
             let panels = world.resource::<UiPanelManager>();
