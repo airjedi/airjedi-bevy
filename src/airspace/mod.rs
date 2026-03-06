@@ -19,9 +19,12 @@
 //! for loading and rendering that can be filled in when data integration
 //! is implemented.
 
+use bevy::ecs::message::MessageReader;
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
 use serde::{Deserialize, Serialize};
+
+use crate::data_ingest::canonical::CanonicalRecord;
 
 /// Classification of airspace
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -197,6 +200,8 @@ pub struct AirspaceData {
     pub source: Option<String>,
     /// Whether data has been loaded
     pub loaded: bool,
+    /// Whether data has changed and meshes need regeneration
+    pub dirty: bool,
 }
 
 impl AirspaceData {
@@ -251,6 +256,7 @@ impl AirspaceData {
         });
 
         self.loaded = true;
+        self.dirty = true;
         self.source = Some("Sample Data".to_string());
         info!("Loaded {} sample airspace definitions", self.airspaces.len());
     }
@@ -273,8 +279,14 @@ pub struct AirspaceDisplayState {
     pub show_restricted: bool,
     pub show_moa: bool,
     pub show_tfr: bool,
+    pub show_warning: bool,
+    pub show_alert: bool,
     /// Whether to show labels
     pub show_labels: bool,
+    /// Opacity for airspace meshes (0.0 - 1.0)
+    pub opacity: f32,
+    /// Optional altitude filter in feet (only show airspaces at this altitude)
+    pub altitude_filter_ft: Option<i32>,
 }
 
 impl Default for AirspaceDisplayState {
@@ -287,8 +299,40 @@ impl Default for AirspaceDisplayState {
             show_restricted: true,
             show_moa: false,
             show_tfr: true,
+            show_warning: true,
+            show_alert: true,
             show_labels: true,
+            opacity: 0.3,
+            altitude_filter_ft: None,
         }
+    }
+}
+
+impl AirspaceDisplayState {
+    pub fn is_class_visible(&self, class: &AirspaceClass) -> bool {
+        if !self.enabled {
+            return false;
+        }
+        match class {
+            AirspaceClass::ClassB => self.show_class_b,
+            AirspaceClass::ClassC => self.show_class_c,
+            AirspaceClass::ClassD => self.show_class_d,
+            AirspaceClass::Restricted => self.show_restricted,
+            AirspaceClass::MOA => self.show_moa,
+            AirspaceClass::Warning => self.show_warning,
+            AirspaceClass::Alert => self.show_alert,
+            AirspaceClass::TFR => self.show_tfr,
+            _ => false,
+        }
+    }
+
+    pub fn passes_altitude_filter(&self, floor_ft: Option<i32>, ceiling_ft: Option<i32>) -> bool {
+        let Some(filter) = self.altitude_filter_ft else {
+            return true;
+        };
+        let floor = floor_ft.unwrap_or(0);
+        let ceiling = ceiling_ft.unwrap_or(60000);
+        filter >= floor && filter <= ceiling
     }
 }
 
@@ -374,6 +418,81 @@ pub fn render_airspace_panel(
         });
 }
 
+/// Consume NavigationDataUpdated messages and load airspace records into AirspaceData.
+pub fn consume_airspace_data(
+    mut nav_events: MessageReader<crate::data_ingest::NavigationDataUpdated>,
+    mut airspace_data: ResMut<AirspaceData>,
+) {
+    for event in nav_events.read() {
+        let airspaces: Vec<Airspace> = event
+            .records
+            .iter()
+            .filter_map(|r| {
+                if let CanonicalRecord::Airspace(info) = r {
+                    Some(airspace_info_to_airspace(info))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if !airspaces.is_empty() {
+            info!("Loaded {} airspace definitions from data ingest", airspaces.len());
+            airspace_data.airspaces = airspaces;
+            airspace_data.loaded = true;
+            airspace_data.dirty = true;
+            airspace_data.source = Some("FAA ADDS".to_string());
+        }
+    }
+}
+
+fn airspace_info_to_airspace(info: &crate::data_ingest::canonical::AirspaceInfo) -> Airspace {
+    let class = match info.airspace_class.as_str() {
+        "ClassB" => AirspaceClass::ClassB,
+        "ClassC" => AirspaceClass::ClassC,
+        "ClassD" => AirspaceClass::ClassD,
+        "Restricted" => AirspaceClass::Restricted,
+        "MOA" => AirspaceClass::MOA,
+        "Warning" => AirspaceClass::Warning,
+        "Alert" => AirspaceClass::Alert,
+        "TFR" => AirspaceClass::TFR,
+        _ => AirspaceClass::ClassG,
+    };
+
+    let floor = parse_altitude_ref(info.lower_limit_ft, info.lower_altitude_ref.as_deref());
+    let ceiling = parse_altitude_ref(info.upper_limit_ft, info.upper_altitude_ref.as_deref());
+
+    Airspace {
+        id: info.name.clone(),
+        name: info.name.clone(),
+        class,
+        floor,
+        ceiling,
+        boundary: info
+            .polygon
+            .iter()
+            .map(|(lat, lon)| AirspacePoint {
+                latitude: *lat,
+                longitude: *lon,
+            })
+            .collect(),
+        controlling_agency: None,
+        frequency: None,
+        operating_times: None,
+    }
+}
+
+fn parse_altitude_ref(ft: Option<i32>, code: Option<&str>) -> AltitudeReference {
+    match (ft, code) {
+        (_, Some("SFC")) => AltitudeReference::Surface,
+        (_, Some("UNL")) => AltitudeReference::Unlimited,
+        (Some(v), Some("AGL")) => AltitudeReference::AGL(v),
+        (Some(v), Some("FL")) => AltitudeReference::FL(v as u16 / 100),
+        (Some(v), _) => AltitudeReference::MSL(v),
+        (None, _) => AltitudeReference::Surface,
+    }
+}
+
 /// Plugin for airspace functionality
 pub struct AirspacePlugin;
 
@@ -381,7 +500,10 @@ impl Plugin for AirspacePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<AirspaceData>()
             .init_resource::<AirspaceDisplayState>()
-            .add_systems(Update, toggle_airspace_display);
+            .add_systems(Update, (
+                toggle_airspace_display,
+                consume_airspace_data,
+            ));
         // Airspace panel is rendered via the consolidated Tools window (tools_window.rs)
     }
 }
