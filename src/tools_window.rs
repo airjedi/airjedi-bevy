@@ -768,6 +768,14 @@ fn provider_entries() -> Vec<ProviderEntry> {
             needs_credentials: false,
             credentials_hint: "",
         },
+        ProviderEntry {
+            config_key: "faa_airspace",
+            display_name: "FAA Airspace",
+            description: "Class B/C and special use airspace from FAA ADDS",
+            category: ProviderCategory::Navigation,
+            needs_credentials: false,
+            credentials_hint: "",
+        },
     ]
 }
 
@@ -783,6 +791,7 @@ fn get_provider_config_mut<'a>(
         "openaip" => &mut config.openaip,
         "notam" => &mut config.notam,
         "tfr" => &mut config.tfr,
+        "faa_airspace" => &mut config.faa_airspace,
         _ => panic!("unknown provider config key: {}", key),
     }
 }
