@@ -219,6 +219,22 @@ pub fn render_airspace_tab(
         ui.checkbox(&mut display_state.show_restricted, "Restricted");
         ui.checkbox(&mut display_state.show_moa, "MOA");
         ui.checkbox(&mut display_state.show_tfr, "TFR");
+        ui.checkbox(&mut display_state.show_warning, "Warning");
+        ui.checkbox(&mut display_state.show_alert, "Alert");
+
+        ui.separator();
+        ui.add(egui::Slider::new(&mut display_state.opacity, 0.05..=1.0).text("Opacity"));
+
+        ui.horizontal(|ui| {
+            let mut use_filter = display_state.altitude_filter_ft.is_some();
+            if ui.checkbox(&mut use_filter, "Alt Filter").changed() {
+                display_state.altitude_filter_ft = if use_filter { Some(10000) } else { None };
+            }
+            if let Some(ref mut alt) = display_state.altitude_filter_ft {
+                ui.add(egui::DragValue::new(alt).range(0..=60000).suffix(" ft"));
+            }
+        });
+
         ui.separator();
         ui.checkbox(&mut display_state.show_labels, "Show Labels");
     }
