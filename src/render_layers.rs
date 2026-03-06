@@ -34,7 +34,6 @@ pub fn layers_2d_map() -> RenderLayers {
         RenderCategory::GIZMOS,
         RenderCategory::OVERLAYS_2D,
         RenderCategory::LABELS,
-        RenderCategory::AIRSPACE,
     ])
 }
 

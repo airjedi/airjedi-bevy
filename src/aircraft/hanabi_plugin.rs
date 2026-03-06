@@ -14,6 +14,7 @@ impl Plugin for HanabiEffectsPlugin {
             hanabi_selection::manage_selection_fog,
             hanabi_selection::sync_fog_position,
         ));
+        app.init_resource::<hanabi_trails::TrailZoomTracker>();
         app.add_systems(Update, (
             hanabi_trails::spawn_trail_effects,
             hanabi_trails::update_trail_particles,

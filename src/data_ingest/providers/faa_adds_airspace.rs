@@ -1,3 +1,4 @@
+use bevy::prelude::*;
 use chrono::Utc;
 use serde_json::Value;
 
@@ -32,24 +33,66 @@ impl DataProvider for FaaClassAirspaceProvider {
     }
 
     fn fetch(&self, _ctx: &FetchContext) -> Result<RawFetchResult, ProviderError> {
-        // Bulk fetch — no bounding box, get all B/C + SUA
-        let url = format!(
-            "{}?where={}&outFields=*&f=geojson",
-            FAA_ADDS_AIRSPACE_URL,
-            "CLASS+IN+('B','C')+OR+TYPE+IN+('R','MOA','W','A')"
-        );
+        // Fetch all Class B/C + SUA using pagination (200 features per page)
+        // to avoid overwhelming reqwest with the full 28+ MB response.
+        let where_clause = "CLASS%20IN%20(%27B%27%2C%27C%27)%20OR%20TYPE_CODE%20IN%20(%27R%27%2C%27MOA%27%2C%27W%27%2C%27A%27)";
+        let fields = "IDENT,NAME,CLASS,TYPE_CODE,LOCAL_TYPE,UPPER_VAL,UPPER_CODE,LOWER_VAL,LOWER_CODE";
+        let page_size = 200;
 
-        let response = reqwest::blocking::get(&url)
-            .map_err(|e| ProviderError::Network(format!("FAA ADDS airspace fetch failed: {}", e)))?;
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(120))
+            .build()
+            .map_err(|e| ProviderError::Network(format!("Failed to create HTTP client: {}", e)))?;
 
-        let bytes = response
-            .bytes()
-            .map_err(|e| ProviderError::Network(format!("Failed to read response: {}", e)))?;
+        let mut all_features: Vec<serde_json::Value> = Vec::new();
+        let mut offset = 0;
+
+        loop {
+            let url = format!(
+                "{}?where={}&outFields={}&f=geojson&geometryPrecision=4&resultRecordCount={}&resultOffset={}",
+                FAA_ADDS_AIRSPACE_URL, where_clause, fields, page_size, offset,
+            );
+
+            let response = client.get(&url).send()
+                .map_err(|e| ProviderError::Network(format!("FAA ADDS fetch failed (offset {}): {}", offset, e)))?;
+
+            let bytes = response.bytes()
+                .map_err(|e| ProviderError::Network(format!("Failed to read response (offset {}): {}", offset, e)))?;
+
+            let page: serde_json::Value = serde_json::from_slice(&bytes)
+                .map_err(|e| ProviderError::Parse(format!("Invalid JSON (offset {}): {}", offset, e)))?;
+
+            let features = page["features"].as_array();
+            let count = features.map(|f| f.len()).unwrap_or(0);
+
+            if let Some(feats) = features {
+                all_features.extend(feats.iter().cloned());
+            }
+
+            info!("FAA ADDS airspace: fetched {} features (offset {}, total so far {})",
+                count, offset, all_features.len());
+
+            if count < page_size {
+                break; // last page
+            }
+            offset += page_size;
+        }
+
+        // Assemble into a single GeoJSON FeatureCollection
+        let geojson = serde_json::json!({
+            "type": "FeatureCollection",
+            "features": all_features,
+        });
+
+        let data = serde_json::to_vec(&geojson)
+            .map_err(|e| ProviderError::Parse(format!("Failed to serialize combined GeoJSON: {}", e)))?;
+
+        let source = format!("{}?where={} ({} features)", FAA_ADDS_AIRSPACE_URL, where_clause, all_features.len());
 
         Ok(RawFetchResult {
-            data: bytes.to_vec(),
+            data,
             content_type: Some("application/json".to_string()),
-            source: url,
+            source,
         })
     }
 
@@ -91,24 +134,34 @@ impl PipelineStage for FaaAirspaceParseStage {
             let ident = props["IDENT"].as_str().unwrap_or("UNKNOWN");
             let name = props["NAME"].as_str().unwrap_or(ident);
             let class = props["CLASS"].as_str().unwrap_or("");
-            let type_code = props["TYPE"].as_str().unwrap_or("");
+            let type_code = props["TYPE_CODE"].as_str().unwrap_or("");
+            let local_type = props["LOCAL_TYPE"].as_str().unwrap_or("");
 
-            // Altitude values are in hundreds of feet
-            let upper_val = props["UPPER_VAL"].as_i64().map(|v| (v * 100) as i32);
-            let lower_val = props["LOWER_VAL"].as_i64().map(|v| (v * 100) as i32);
+            // Altitude values are already in feet (not hundreds)
+            let upper_val = props["UPPER_VAL"].as_i64().map(|v| v as i32);
+            let lower_val = props["LOWER_VAL"].as_i64().map(|v| v as i32);
             let upper_code = props["UPPER_CODE"].as_str().map(String::from);
             let lower_code = props["LOWER_CODE"].as_str().map(String::from);
 
             // Determine airspace class string for canonical record
+            // CLASS field: "B", "C", "D", "E", "Other", or null
+            // LOCAL_TYPE field: "CLASS_B", "CLASS_C", "CLASS_D", "CLASS_E", "MODE C", etc.
+            // TYPE_CODE field: "CLASS", "EXCLUSION", "MODE-C", "TRSA", "R", "MOA", "W", "A", etc.
             let airspace_class = match class {
                 "B" => "ClassB",
                 "C" => "ClassC",
+                "D" => "ClassD",
                 _ => match type_code {
                     "R" => "Restricted",
                     "MOA" => "MOA",
                     "W" => "Warning",
                     "A" => "Alert",
-                    _ => continue, // skip unknown types
+                    _ => match local_type {
+                        "CLASS_B" => "ClassB",
+                        "CLASS_C" => "ClassC",
+                        "CLASS_D" => "ClassD",
+                        _ => continue, // skip unknown types
+                    },
                 },
             };
 
@@ -183,14 +236,15 @@ mod tests {
             "features": [{
                 "type": "Feature",
                 "properties": {
-                    "IDENT": "KICT",
-                    "NAME": "WICHITA",
+                    "IDENT": "ICT",
+                    "NAME": "WICHITA MID-CONTINENT AIRPORT CLASS C",
                     "CLASS": "C",
-                    "UPPER_VAL": 53,
+                    "UPPER_VAL": 5300,
                     "UPPER_CODE": "MSL",
                     "LOWER_VAL": 0,
                     "LOWER_CODE": "SFC",
-                    "TYPE": ""
+                    "TYPE_CODE": "CLASS",
+                    "LOCAL_TYPE": "CLASS_C"
                 },
                 "geometry": {
                     "type": "Polygon",
@@ -216,7 +270,7 @@ mod tests {
 
         assert_eq!(data.records.len(), 1);
         if let CanonicalRecord::Airspace(ref info) = data.records[0] {
-            assert!(info.name.contains("KICT"));
+            assert!(info.name.contains("ICT"));
             assert_eq!(info.airspace_class, "ClassC");
             assert_eq!(info.upper_limit_ft, Some(5300));
             assert_eq!(info.lower_limit_ft, Some(0));
@@ -238,11 +292,12 @@ mod tests {
                     "IDENT": "R-2508",
                     "NAME": "CHINA LAKE",
                     "CLASS": "",
-                    "UPPER_VAL": 999,
+                    "UPPER_VAL": 99900,
                     "UPPER_CODE": "MSL",
                     "LOWER_VAL": 0,
                     "LOWER_CODE": "SFC",
-                    "TYPE": "R"
+                    "TYPE_CODE": "R",
+                    "LOCAL_TYPE": "R"
                 },
                 "geometry": {
                     "type": "Polygon",

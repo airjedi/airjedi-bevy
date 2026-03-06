@@ -41,6 +41,14 @@ pub fn spawn_scheduler(
                 .build()
                 .expect("failed to create tokio runtime for data ingest scheduler");
 
+            // Run all providers immediately BEFORE entering the async runtime.
+            // Providers use reqwest::blocking which creates its own internal
+            // tokio runtime — calling it inside rt.block_on() causes a panic
+            // ("Cannot drop a runtime in a context where blocking is not allowed").
+            for provider in &providers {
+                run_provider(provider, &shared_context, &tx);
+            }
+
             rt.block_on(async move {
                 let sched = JobScheduler::new().await
                     .expect("failed to create job scheduler");
@@ -51,9 +59,6 @@ pub fn spawn_scheduler(
                     let sender = tx.clone();
                     let name = provider.name().to_string();
                     let schedule = provider.schedule().to_string();
-
-                    // Run immediately on startup
-                    run_provider(&p, &ctx, &sender);
 
                     // Then schedule for periodic execution
                     let job = Job::new_async(schedule.as_str(), move |_uuid, _lock| {
