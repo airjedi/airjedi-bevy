@@ -19,12 +19,18 @@
 //! for loading and rendering that can be filled in when data integration
 //! is implemented.
 
+use bevy::asset::RenderAssetUsages;
+use bevy::camera::visibility::RenderLayers;
 use bevy::ecs::message::MessageReader;
+use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
 use serde::{Deserialize, Serialize};
 
 use crate::data_ingest::canonical::CanonicalRecord;
+use crate::geo::CoordinateConverter;
+use crate::render_layers::RenderCategory;
+use crate::view3d::View3DState;
 
 /// Classification of airspace
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -342,6 +348,28 @@ pub struct AirspaceBoundary {
     pub airspace_id: String,
 }
 
+/// Marker for spawned airspace mesh entities.
+#[derive(Component)]
+pub struct AirspaceMeshMarker {
+    pub airspace_id: String,
+}
+
+/// Tracks which airspaces have spawned meshes.
+#[derive(Resource, Default)]
+pub struct SpawnedAirspaces {
+    pub ids: std::collections::HashSet<String>,
+}
+
+/// Timer for periodic airspace mesh refresh.
+#[derive(Resource)]
+pub struct AirspaceRefreshTimer(pub Timer);
+
+impl Default for AirspaceRefreshTimer {
+    fn default() -> Self {
+        Self(Timer::from_seconds(0.5, TimerMode::Repeating))
+    }
+}
+
 /// System to toggle airspace display
 pub fn toggle_airspace_display(
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -493,6 +521,248 @@ fn parse_altitude_ref(ft: Option<i32>, code: Option<&str>) -> AltitudeReference 
     }
 }
 
+/// Build a wall mesh (vertical fence) from a polygon boundary between floor and ceiling.
+fn build_wall_mesh(
+    boundary: &[AirspacePoint],
+    floor_z: f32,
+    ceiling_z: f32,
+    converter: &CoordinateConverter,
+) -> Mesh {
+    let n = boundary.len();
+    if n < 2 {
+        return Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
+    }
+
+    let mut positions: Vec<[f32; 3]> = Vec::with_capacity(n * 4);
+    let mut normals: Vec<[f32; 3]> = Vec::with_capacity(n * 4);
+    let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(n * 4);
+    let mut indices: Vec<u32> = Vec::with_capacity(n * 6);
+
+    for i in 0..n {
+        let j = (i + 1) % n;
+
+        let p0 = converter.latlon_to_world(boundary[i].latitude, boundary[i].longitude);
+        let p1 = converter.latlon_to_world(boundary[j].latitude, boundary[j].longitude);
+
+        // Y-up: x=east, y=altitude, z=-north
+        let base_idx = positions.len() as u32;
+
+        // Bottom-left, bottom-right, top-right, top-left
+        positions.push([p0.x, floor_z, -p0.y]);
+        positions.push([p1.x, floor_z, -p1.y]);
+        positions.push([p1.x, ceiling_z, -p1.y]);
+        positions.push([p0.x, ceiling_z, -p0.y]);
+
+        // Normal pointing outward (cross product of edge x up)
+        let edge = Vec3::new(p1.x - p0.x, 0.0, -(p1.y - p0.y));
+        let up = Vec3::Y;
+        let normal = edge.cross(up).normalize_or_zero();
+        for _ in 0..4 {
+            normals.push(normal.to_array());
+        }
+
+        uvs.push([0.0, 0.0]);
+        uvs.push([1.0, 0.0]);
+        uvs.push([1.0, 1.0]);
+        uvs.push([0.0, 1.0]);
+
+        // Two triangles per quad
+        indices.push(base_idx);
+        indices.push(base_idx + 1);
+        indices.push(base_idx + 2);
+        indices.push(base_idx);
+        indices.push(base_idx + 2);
+        indices.push(base_idx + 3);
+    }
+
+    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+    mesh.insert_indices(Indices::U32(indices));
+    mesh
+}
+
+/// Build a flat polygon mesh for 2D map rendering.
+fn build_flat_polygon_mesh(
+    boundary: &[AirspacePoint],
+    converter: &CoordinateConverter,
+) -> Mesh {
+    let n = boundary.len();
+    if n < 3 {
+        return Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
+    }
+
+    // Simple fan triangulation from centroid
+    let positions_2d: Vec<Vec2> = boundary
+        .iter()
+        .map(|p| converter.latlon_to_world(p.latitude, p.longitude))
+        .collect();
+
+    let cx: f32 = positions_2d.iter().map(|p| p.x).sum::<f32>() / n as f32;
+    let cy: f32 = positions_2d.iter().map(|p| p.y).sum::<f32>() / n as f32;
+
+    let mut positions: Vec<[f32; 3]> = Vec::with_capacity(n + 1);
+    let mut normals: Vec<[f32; 3]> = Vec::with_capacity(n + 1);
+    let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(n + 1);
+    let mut indices: Vec<u32> = Vec::with_capacity(n * 3);
+
+    // Center vertex
+    positions.push([cx, 0.01, -cy]); // slight Y offset above tiles
+    normals.push([0.0, 1.0, 0.0]);
+    uvs.push([0.5, 0.5]);
+
+    for p in &positions_2d {
+        positions.push([p.x, 0.01, -p.y]);
+        normals.push([0.0, 1.0, 0.0]);
+        uvs.push([0.0, 0.0]);
+    }
+
+    for i in 0..n {
+        let j = (i + 1) % n;
+        indices.push(0); // center
+        indices.push((i + 1) as u32);
+        indices.push((j + 1) as u32);
+    }
+
+    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+    mesh.insert_indices(Indices::U32(indices));
+    mesh
+}
+
+fn altitude_ref_to_ft(alt: &AltitudeReference) -> i32 {
+    match alt {
+        AltitudeReference::MSL(ft) => *ft,
+        AltitudeReference::AGL(ft) => *ft,
+        AltitudeReference::FL(fl) => *fl as i32 * 100,
+        AltitudeReference::Surface => 0,
+        AltitudeReference::Unlimited => 60000,
+    }
+}
+
+/// Check if airspace centroid is within rendering range (~250nm).
+fn is_in_range(airspace: &Airspace, camera_lat: f64, camera_lon: f64) -> bool {
+    let (centroid_lat, centroid_lon) = airspace.centroid();
+    let dlat = (centroid_lat - camera_lat).abs();
+    let dlon = (centroid_lon - camera_lon).abs();
+    // Rough degree-based check (~250nm = ~4 degrees at mid-latitudes)
+    dlat < 4.0 && dlon < 4.0
+}
+
+/// System to spawn/despawn airspace meshes based on visibility and distance.
+pub fn update_airspace_meshes(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut timer: ResMut<AirspaceRefreshTimer>,
+    mut airspace_data: ResMut<AirspaceData>,
+    display_state: Res<AirspaceDisplayState>,
+    view3d_state: Option<Res<View3DState>>,
+    map_state: Res<crate::map::MapState>,
+    tile_settings: Res<bevy_slippy_tiles::SlippyTilesSettings>,
+    mut spawned: ResMut<SpawnedAirspaces>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    existing_query: Query<(Entity, &AirspaceMeshMarker)>,
+) {
+    timer.0.tick(time.delta());
+    let needs_refresh = timer.0.just_finished() || airspace_data.dirty;
+
+    if !needs_refresh {
+        return;
+    }
+
+    if airspace_data.dirty {
+        airspace_data.dirty = false;
+    }
+
+    if !display_state.enabled || !airspace_data.loaded {
+        // Despawn all if disabled
+        for (entity, _) in existing_query.iter() {
+            commands.entity(entity).despawn();
+        }
+        spawned.ids.clear();
+        return;
+    }
+
+    let converter = CoordinateConverter::new(&tile_settings, map_state.zoom_level);
+    let is_3d = view3d_state
+        .as_ref()
+        .is_some_and(|v| v.mode == crate::view3d::ViewMode::Perspective3D);
+
+    let camera_lat = map_state.latitude;
+    let camera_lon = map_state.longitude;
+
+    // Despawn meshes for airspaces no longer visible
+    for (entity, marker) in existing_query.iter() {
+        let should_keep = airspace_data.airspaces.iter().any(|a| {
+            a.id == marker.airspace_id
+                && display_state.is_class_visible(&a.class)
+                && is_in_range(a, camera_lat, camera_lon)
+        });
+        if !should_keep {
+            commands.entity(entity).despawn();
+            spawned.ids.remove(&marker.airspace_id);
+        }
+    }
+
+    // Spawn meshes for newly visible airspaces
+    for airspace in &airspace_data.airspaces {
+        if spawned.ids.contains(&airspace.id) {
+            continue;
+        }
+        if !display_state.is_class_visible(&airspace.class) {
+            continue;
+        }
+        if !is_in_range(airspace, camera_lat, camera_lon) {
+            continue;
+        }
+
+        let floor_ft = altitude_ref_to_ft(&airspace.floor);
+        let ceiling_ft = altitude_ref_to_ft(&airspace.ceiling);
+
+        if !display_state.passes_altitude_filter(Some(floor_ft), Some(ceiling_ft)) {
+            continue;
+        }
+
+        let mut color = airspace.class.color();
+        color.set_alpha(display_state.opacity);
+
+        let material = materials.add(StandardMaterial {
+            base_color: color,
+            alpha_mode: AlphaMode::Blend,
+            double_sided: true,
+            cull_mode: None,
+            unlit: true,
+            ..default()
+        });
+
+        let mesh = if is_3d {
+            let v3d = view3d_state.as_ref().unwrap();
+            let floor_z = v3d.altitude_to_z(floor_ft);
+            let ceiling_z = v3d.altitude_to_z(ceiling_ft);
+            build_wall_mesh(&airspace.boundary, floor_z, ceiling_z, &converter)
+        } else {
+            build_flat_polygon_mesh(&airspace.boundary, &converter)
+        };
+
+        commands.spawn((
+            Mesh3d(meshes.add(mesh)),
+            MeshMaterial3d(material),
+            Transform::IDENTITY,
+            Visibility::default(),
+            RenderLayers::layer(RenderCategory::AIRSPACE),
+            AirspaceMeshMarker {
+                airspace_id: airspace.id.clone(),
+            },
+        ));
+
+        spawned.ids.insert(airspace.id.clone());
+    }
+}
+
 /// Plugin for airspace functionality
 pub struct AirspacePlugin;
 
@@ -500,9 +770,12 @@ impl Plugin for AirspacePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<AirspaceData>()
             .init_resource::<AirspaceDisplayState>()
+            .init_resource::<SpawnedAirspaces>()
+            .init_resource::<AirspaceRefreshTimer>()
             .add_systems(Update, (
                 toggle_airspace_display,
                 consume_airspace_data,
+                update_airspace_meshes,
             ));
         // Airspace panel is rendered via the consolidated Tools window (tools_window.rs)
     }
