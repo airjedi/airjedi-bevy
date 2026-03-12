@@ -12,12 +12,10 @@ use bevy::camera::{CameraOutputMode, Exposure};
 use bevy::camera::visibility::RenderLayers;
 use bevy::pbr::{AtmosphereSettings, DistanceFog, FogFalloff, StandardMaterial};
 use bevy::render::render_resource::BlendState;
-use bevy::render::view::Hdr;
 
 use super::View3DState;
 use crate::map::MapState;
 use crate::RenderCategory;
-use crate::render_layers;
 
 /// Z-depth for the star field sprite (behind tiles at z=0.1)
 const STAR_Z: f32 = -1.0;
@@ -551,17 +549,16 @@ pub fn sync_time_offset(
 /// mode transitions to avoid non-deterministic render pipeline failures on Metal.
 /// The atmosphere is visually toggled via scene_units_to_m (near-zero = invisible).
 pub fn manage_atmosphere_camera(
-    mut commands: Commands,
     state: Res<View3DState>,
-    mut camera_3d: Query<(Entity, &mut Camera, &mut AtmosphereSettings, &mut DistanceFog), (With<crate::AircraftCamera>, Without<crate::MapCamera>)>,
-    mut camera_2d: Query<(Entity, &mut Camera), (With<crate::MapCamera>, Without<Camera3d>)>,
+    mut camera_3d: Query<(&mut Camera, &mut AtmosphereSettings, &mut DistanceFog), (With<crate::AircraftCamera>, Without<crate::MapCamera>)>,
+    mut camera_2d: Query<&mut Camera, (With<crate::MapCamera>, Without<Camera3d>)>,
     mut ground_query: Query<(&mut Transform, &mut Visibility), With<GroundPlane>>,
     mut last_3d: Local<Option<bool>>,
 ) {
-    let Ok((cam3d_entity, mut cam3d, mut atmo_settings, mut fog)) = camera_3d.single_mut() else {
+    let Ok((mut cam3d, mut atmo_settings, mut fog)) = camera_3d.single_mut() else {
         return;
     };
-    let Ok((cam2d_entity, mut cam2d)) = camera_2d.single_mut() else {
+    let Ok(mut cam2d) = camera_2d.single_mut() else {
         return;
     };
 
@@ -597,11 +594,9 @@ pub fn manage_atmosphere_camera(
             clear_color: ClearColorConfig::None,
         };
 
+        // Ground plane visible in 3D (direct mutation, no deferred command)
         if *last_3d != Some(true) {
             *last_3d = Some(true);
-            // These are the only deferred commands, and they run once per
-            // mode switch. Camera3d already has layers_3d_world from spawn.
-            commands.entity(cam2d_entity).insert(render_layers::layers_3d_overlay());
             if let Ok((_, mut gp_vis)) = ground_query.single_mut() {
                 *gp_vis = Visibility::Inherited;
             }
@@ -623,7 +618,6 @@ pub fn manage_atmosphere_camera(
             cam3d.output_mode = CameraOutputMode::default();
             cam2d.clear_color = ClearColorConfig::Default;
             cam2d.output_mode = CameraOutputMode::default();
-            commands.entity(cam2d_entity).insert(render_layers::layers_2d_map());
             if let Ok((_, mut gp_vis)) = ground_query.single_mut() {
                 *gp_vis = Visibility::Hidden;
             }

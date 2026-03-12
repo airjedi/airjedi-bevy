@@ -394,7 +394,7 @@ pub(crate) fn setup_map(
             ..default()
         },
         MapCamera,
-        render_layers::layers_2d_map(),
+        render_layers::layers_camera2d_all(),
     ));
 
     // Create shared ScatteringMedium for Atmosphere (needed before Camera3d spawn).
