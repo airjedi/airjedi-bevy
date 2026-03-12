@@ -548,13 +548,27 @@ pub fn sync_time_offset(
 /// are present on Camera3d from startup. NO deferred commands are used during
 /// mode transitions to avoid non-deterministic render pipeline failures on Metal.
 /// The atmosphere is visually toggled via scene_units_to_m (near-zero = invisible).
+///
+/// Includes a pipeline warmup workaround: Bevy's atmosphere render nodes
+/// (AtmosphereLutsNode, RenderSkyNode) silently skip rendering when their GPU
+/// pipelines aren't compiled yet. On Metal/macOS, async shader compilation means
+/// the 5 atmosphere pipelines (4 compute + 1 render) may not be ready for the
+/// first several frames after app launch. The workaround suppresses the atmosphere
+/// (scene_units_to_m near-zero) for the first ~1s of 3D mode, then switches to
+/// the real value. This ensures the pipelines are compiled before the atmosphere
+/// starts rendering, avoiding a permanently black sky.
 pub fn manage_atmosphere_camera(
     state: Res<View3DState>,
     mut camera_3d: Query<(&mut Camera, &mut AtmosphereSettings, &mut DistanceFog), (With<crate::AircraftCamera>, Without<crate::MapCamera>)>,
     mut camera_2d: Query<&mut Camera, (With<crate::MapCamera>, Without<Camera3d>)>,
     mut ground_query: Query<(&mut Transform, &mut Visibility), With<GroundPlane>>,
     mut last_3d: Local<Option<bool>>,
+    mut warmup_frames: Local<u32>,
 ) {
+    // Number of frames to keep atmosphere suppressed after entering 3D mode,
+    // giving Metal time to compile the atmosphere compute/render pipelines.
+    const WARMUP_FRAME_COUNT: u32 = 60;
+
     let Ok((mut cam3d, mut atmo_settings, mut fog)) = camera_3d.single_mut() else {
         return;
     };
@@ -564,21 +578,31 @@ pub fn manage_atmosphere_camera(
 
     if state.is_3d_active() {
         let show_atmo = state.atmosphere_enabled;
+        let warming_up = *warmup_frames < WARMUP_FRAME_COUNT;
 
-        if show_atmo {
+        if show_atmo && !warming_up {
             cam3d.clear_color = ClearColorConfig::Default;
             let scene_units_to_m = 0.3 * 1000.0 / (super::PIXEL_SCALE * state.altitude_scale);
             atmo_settings.scene_units_to_m = scene_units_to_m;
             atmo_settings.aerial_view_lut_max_distance = 200.0;
-            // Update fog distances
             fog.falloff = FogFalloff::Linear {
                 start: state.visibility_range * 0.7,
                 end: state.visibility_range,
             };
+        } else if show_atmo && warming_up {
+            // During warmup: keep atmosphere active but at a tiny scale so the
+            // render nodes run (building LUTs) without producing visible output.
+            // This primes the pipeline so it's ready when warmup ends.
+            cam3d.clear_color = ClearColorConfig::Custom(Color::BLACK);
+            atmo_settings.scene_units_to_m = 0.0001;
+            atmo_settings.aerial_view_lut_max_distance = 200.0;
+            fog.falloff = FogFalloff::Linear {
+                start: 999999.0,
+                end: 999999.0,
+            };
         } else {
             cam3d.clear_color = ClearColorConfig::Custom(Color::BLACK);
             atmo_settings.scene_units_to_m = 0.0001;
-            // Push fog out of view when atmosphere disabled
             fog.falloff = FogFalloff::Linear {
                 start: 999999.0,
                 end: 999999.0,
@@ -597,9 +621,15 @@ pub fn manage_atmosphere_camera(
         // Ground plane visible in 3D (direct mutation, no deferred command)
         if *last_3d != Some(true) {
             *last_3d = Some(true);
+            *warmup_frames = 0;
             if let Ok((_, mut gp_vis)) = ground_query.single_mut() {
                 *gp_vis = Visibility::Inherited;
             }
+        }
+
+        // Increment warmup counter
+        if *warmup_frames < WARMUP_FRAME_COUNT {
+            *warmup_frames += 1;
         }
     } else {
         // 2D mode: suppress atmosphere + fog visually
@@ -614,6 +644,7 @@ pub fn manage_atmosphere_camera(
 
         if *last_3d != Some(false) {
             *last_3d = Some(false);
+            *warmup_frames = 0;
             cam3d.clear_color = ClearColorConfig::Custom(Color::NONE);
             cam3d.output_mode = CameraOutputMode::default();
             cam2d.clear_color = ClearColorConfig::Default;
