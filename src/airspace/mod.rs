@@ -690,6 +690,51 @@ fn build_flat_polygon_mesh(
     mesh
 }
 
+/// Build a line-loop mesh for outlining the top and bottom edges of an airspace volume.
+fn build_outline_mesh(
+    boundary: &[AirspacePoint],
+    floor_z: f32,
+    ceiling_z: f32,
+    converter: &CoordinateConverter,
+) -> Mesh {
+    let n = boundary.len();
+    if n < 3 {
+        return Mesh::new(PrimitiveTopology::LineList, RenderAssetUsages::default());
+    }
+
+    let world_pts: Vec<Vec2> = boundary
+        .iter()
+        .map(|p| converter.latlon_to_world(p.latitude, p.longitude))
+        .collect();
+
+    // 2 edges (top + bottom) * n segments * 2 endpoints per line
+    let mut positions: Vec<[f32; 3]> = Vec::with_capacity(n * 4);
+
+    for i in 0..n {
+        let j = (i + 1) % n;
+        let p0 = &world_pts[i];
+        let p1 = &world_pts[j];
+
+        // Top edge segment
+        positions.push([p0.x, ceiling_z, -p0.y]);
+        positions.push([p1.x, ceiling_z, -p1.y]);
+
+        // Bottom edge segment
+        positions.push([p0.x, floor_z, -p0.y]);
+        positions.push([p1.x, floor_z, -p1.y]);
+    }
+
+    let mut mesh = Mesh::new(PrimitiveTopology::LineList, RenderAssetUsages::default());
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+    mesh
+}
+
+/// Marker for spawned airspace outline entities.
+#[derive(Component)]
+pub struct AirspaceOutlineMarker {
+    pub airspace_id: String,
+}
+
 fn altitude_ref_to_ft(alt: &AltitudeReference) -> i32 {
     match alt {
         AltitudeReference::MSL(ft) => *ft,
@@ -723,6 +768,7 @@ pub fn update_airspace_meshes(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     existing_query: Query<(Entity, &AirspaceMeshMarker)>,
+    outline_query: Query<(Entity, &AirspaceOutlineMarker)>,
 ) {
     timer.0.tick(time.delta());
 
@@ -743,11 +789,19 @@ pub fn update_airspace_meshes(
         airspace_data.dirty = false;
     }
 
-    if !display_state.enabled {
-        // Despawn all if disabled
+    let despawn_all = |commands: &mut Commands,
+                       existing_query: &Query<(Entity, &AirspaceMeshMarker)>,
+                       outline_query: &Query<(Entity, &AirspaceOutlineMarker)>| {
         for (entity, _) in existing_query.iter() {
             commands.entity(entity).despawn();
         }
+        for (entity, _) in outline_query.iter() {
+            commands.entity(entity).despawn();
+        }
+    };
+
+    if !display_state.enabled {
+        despawn_all(&mut commands, &existing_query, &outline_query);
         spawned.ids.clear();
         return;
     }
@@ -759,18 +813,14 @@ pub fn update_airspace_meshes(
 
     // Despawn all meshes when switching between 2D and 3D modes
     if is_3d != spawned.was_3d {
-        for (entity, _) in existing_query.iter() {
-            commands.entity(entity).despawn();
-        }
+        despawn_all(&mut commands, &existing_query, &outline_query);
         spawned.ids.clear();
         spawned.was_3d = is_3d;
     }
 
     // Despawn all meshes when zoom level changes (positions are zoom-dependent)
     if Some(map_state.zoom_level.to_u8()) != spawned.last_zoom {
-        for (entity, _) in existing_query.iter() {
-            commands.entity(entity).despawn();
-        }
+        despawn_all(&mut commands, &existing_query, &outline_query);
         spawned.ids.clear();
         spawned.last_zoom = Some(map_state.zoom_level.to_u8());
     }
@@ -788,6 +838,16 @@ pub fn update_airspace_meshes(
         if !should_keep {
             commands.entity(entity).despawn();
             spawned.ids.remove(&marker.airspace_id);
+        }
+    }
+    for (entity, marker) in outline_query.iter() {
+        let should_keep = airspace_data.airspaces.iter().any(|a| {
+            a.id == marker.airspace_id
+                && display_state.is_class_visible(&a.class)
+                && is_in_range(a, camera_lat, camera_lon)
+        });
+        if !should_keep {
+            commands.entity(entity).despawn();
         }
     }
 
@@ -853,6 +913,27 @@ pub fn update_airspace_meshes(
                     airspace_id: airspace.id.clone(),
                 },
             ));
+
+            // Spawn outline as a line mesh on the same render layer
+            let outline_mesh = build_outline_mesh(&airspace.boundary, floor_z, ceiling_z, &converter);
+            let mut outline_color = airspace.class.color();
+            outline_color.set_alpha((display_state.opacity * 3.0).min(0.6));
+            let outline_material = materials.add(StandardMaterial {
+                base_color: outline_color,
+                alpha_mode: AlphaMode::Blend,
+                unlit: true,
+                ..default()
+            });
+            commands.spawn((
+                Mesh3d(meshes.add(outline_mesh)),
+                MeshMaterial3d(outline_material),
+                Transform::IDENTITY,
+                Visibility::default(),
+                RenderLayers::layer(RenderCategory::AIRSPACE),
+                AirspaceOutlineMarker {
+                    airspace_id: airspace.id.clone(),
+                },
+            ));
         } else {
             // In 2D mode, just mark as spawned - gizmos handle the rendering
             commands.spawn(AirspaceMeshMarker {
@@ -883,7 +964,7 @@ pub fn draw_airspace_gizmos(
         .as_ref()
         .is_some_and(|v| v.mode == crate::view3d::ViewMode::Perspective3D);
 
-    // Only draw gizmos in 2D mode; 3D uses mesh walls
+    // In 3D mode, outlines are spawned as line meshes on the AIRSPACE render layer
     if is_3d {
         return;
     }
@@ -895,7 +976,8 @@ pub fn draw_airspace_gizmos(
             continue;
         }
 
-        let color = airspace.class.color();
+        let mut outline_color = airspace.class.color();
+        outline_color.set_alpha((display_state.opacity * 3.0).min(0.6));
         let n = airspace.boundary.len();
         if n < 3 {
             continue;
@@ -911,7 +993,7 @@ pub fn draw_airspace_gizmos(
                 airspace.boundary[j].latitude,
                 airspace.boundary[j].longitude,
             );
-            gizmos.line_2d(p0, p1, color);
+            gizmos.line_2d(p0, p1, outline_color);
         }
     }
 }
