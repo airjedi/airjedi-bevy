@@ -625,12 +625,12 @@ pub fn manage_atmosphere_camera(
     }
 }
 
-/// Update atmosphere scale when altitude_scale changes.
+/// Update atmosphere scale when altitude_scale changes (3D mode only).
 pub fn update_atmosphere_scale(
     state: Res<View3DState>,
     mut settings_query: Query<&mut AtmosphereSettings, With<Camera3d>>,
 ) {
-    if !state.is_changed() {
+    if !state.is_changed() || !state.is_3d_active() || !state.atmosphere_enabled {
         return;
     }
     let Ok(mut settings) = settings_query.single_mut() else {
