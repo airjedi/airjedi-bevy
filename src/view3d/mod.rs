@@ -817,12 +817,19 @@ pub fn update_aircraft_3d_transform(
     mut label_query: Query<(&crate::AircraftLabel, &mut Visibility)>,
 ) {
     if state.is_3d_active() {
+        // Tile mesh quads sit at ground_y in Y-up space. Aircraft must always
+        // render above tiles to avoid being occluded by opaque tile depth writes.
+        // Add a small offset (10 units) above ground to clear depth precision
+        // limits at grazing angles on Metal (~4 units at FL300).
+        let ground_y = state.altitude_to_z(state.ground_elevation_ft);
+        let min_aircraft_y = ground_y + 10.0;
+
         for (aircraft, mut transform) in aircraft_query.iter_mut() {
             // Read pixel positions set by update_aircraft_positions (Z-up)
             let px = transform.translation.x;
             let py = transform.translation.y;
             let alt = aircraft.altitude.unwrap_or(0);
-            let alt_y = state.altitude_to_z(alt); // same scale, now used as Y
+            let alt_y = state.altitude_to_z(alt).max(min_aircraft_y);
 
             // Remap to Y-up: (px, py, alt_z) -> (px, alt_y, -py)
             transform.translation = Vec3::new(px, alt_y, -py);

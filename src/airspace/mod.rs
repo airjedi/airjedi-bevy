@@ -833,10 +833,12 @@ pub fn update_airspace_meshes(
             let ground_z = v3d.altitude_to_z(v3d.ground_elevation_ft);
             // Floor/ceiling use altitude_to_z which includes View3DState::altitude_scale
             // This ensures airspace volumes scale consistently with aircraft, camera, etc.
+            // Offset floor slightly above ground so airspace walls aren't
+            // occluded by opaque tile mesh quads at the same depth.
             let floor_z = if floor_ft == 0 {
-                ground_z
+                ground_z + 5.0
             } else {
-                v3d.altitude_to_z(floor_ft)
+                v3d.altitude_to_z(floor_ft).max(ground_z + 5.0)
             };
             let ceiling_z = v3d.altitude_to_z(ceiling_ft);
             let mesh = build_wall_mesh(&airspace.boundary, floor_z, ceiling_z, &converter);

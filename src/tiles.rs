@@ -1038,11 +1038,15 @@ fn sync_tile_mesh_transforms(
     }
 }
 
-/// Hide tile sprites in 3D mode so Camera2d shows nothing for tiles.
+/// Hide ALL tile sprites in 3D mode so Camera2d shows nothing for tiles.
+/// Camera2d subscribes to TILES_2D at startup (can't change at runtime
+/// without deferred commands that break Metal). Any visible tile sprite
+/// would render on Camera2d (order 1) and paint over Camera3d's aircraft.
+/// Sets sprite alpha to 0 for ALL tiles, not just those with mesh quads.
 /// In 2D mode this is a no-op since sprites already have correct alpha.
 fn hide_tile_sprites_in_3d(
     view3d_state: Res<view3d::View3DState>,
-    mut tile_query: Query<&mut Sprite, (With<MapTile>, With<TileMeshQuad>)>,
+    mut tile_query: Query<&mut Sprite, With<MapTile>>,
 ) {
     if !view3d_state.is_3d_active() {
         return;
