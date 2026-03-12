@@ -46,6 +46,18 @@ pub fn layers_3d_overlay() -> RenderLayers {
     ])
 }
 
+/// All layers Camera2d might ever need (union of 2D map + 3D overlay).
+/// Used at startup to avoid deferred render-layer commands during mode switches.
+/// Extra layers in 3D mode are harmless since tile sprites are hidden.
+pub fn layers_camera2d_all() -> RenderLayers {
+    RenderLayers::from_layers(&[
+        RenderCategory::TILES_2D,
+        RenderCategory::GIZMOS,
+        RenderCategory::OVERLAYS_2D,
+        RenderCategory::LABELS,
+    ])
+}
+
 /// Layers the Aircraft Camera (Camera3d) subscribes to in 2D mode.
 /// Layer 0 covers aircraft meshes, lights, and SceneRoot children.
 pub fn layers_2d_aircraft() -> RenderLayers {
