@@ -397,12 +397,18 @@ pub(crate) fn setup_map(
         render_layers::layers_2d_map(),
     ));
 
+    // Create shared ScatteringMedium for Atmosphere (needed before Camera3d spawn).
+    let medium = scattering_mediums.add(ScatteringMedium::earthlike(256, 256));
+    commands.insert_resource(AtmosphereMediumHandle(medium.clone()));
+
     // Set up 3D camera for aircraft models (renders on top of 2D).
-    // Stays on default layer 0 so it sees 3D meshes (SceneRoot children inherit layer 0)
-    // but NOT gizmos (layer 2).
-    // Alpha-blends over Camera2d so only opaque aircraft pixels show;
-    // transparent areas let tiles through. manage_atmosphere_camera
-    // swaps output_mode and order when entering/leaving 3D mode.
+    // Atmosphere + Hdr + DepthPrepass are kept always-on to avoid
+    // component insertion/removal that causes non-deterministic render
+    // failures on Metal. manage_atmosphere_camera adjusts the
+    // AtmosphereSettings.scene_units_to_m between near-zero (2D) and
+    // the real value (3D) instead of adding/removing components.
+    let mut atmo = bevy::pbr::Atmosphere::earthlike(medium);
+    atmo.ground_albedo = Vec3::ZERO;
     commands.spawn((
         Name::new("Aircraft Camera"),
         Camera3d::default(),
@@ -414,11 +420,28 @@ pub(crate) fn setup_map(
         },
         Projection::Orthographic(OrthographicProjection::default_2d()),
         Transform::default(),
-        // Explicitly enable mesh picking on this camera so the picking backend
-        // generates rays from it in all modes (2D and 3D). Without this marker,
-        // the backend may skip this camera when its projection/output mode changes.
         bevy::picking::mesh_picking::MeshPickingCamera,
-        render_layers::layers_2d_aircraft(),
+        // Start with 3D world layers - harmless in 2D mode since 3D-only
+        // objects (tile quads, ground plane) are hidden or don't exist yet.
+        // Avoids deferred render-layer commands during 2D->3D transition.
+        render_layers::layers_3d_world(),
+        atmo,
+        bevy::pbr::AtmosphereSettings {
+            scene_units_to_m: 0.0001,
+            aerial_view_lut_max_distance: 200.0,
+            ..default()
+        },
+        bevy::light::AtmosphereEnvironmentMapLight::default(),
+        bevy::camera::Exposure { ev100: 9.0 },
+        bevy::pbr::DistanceFog {
+            color: Color::srgba(0.10, 0.10, 0.12, 1.0),
+            directional_light_color: Color::NONE,
+            directional_light_exponent: 30.0,
+            falloff: bevy::pbr::FogFalloff::Linear {
+                start: 3500.0,
+                end: 5000.0,
+            },
+        },
     ));
 
     // Dedicated UI camera for egui. Renders last (order 100) with no clear so it
@@ -467,10 +490,6 @@ pub(crate) fn setup_map(
         view3d::sky::MoonLight,
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.5, 2.0, 0.0)),
     ));
-
-    // Create shared ScatteringMedium for Atmosphere components
-    let medium = scattering_mediums.add(ScatteringMedium::earthlike(256, 256));
-    commands.insert_resource(AtmosphereMediumHandle(medium));
 
     // Set up centralized tile cache (creates cache dir + symlink into assets/)
     tile_cache::setup_tile_cache();

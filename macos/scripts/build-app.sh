@@ -16,7 +16,8 @@ MACOS_BIN_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 
 BINARY_NAME="airjedi_bevy"
-BINARY_PATH="$ROOT_DIR/target/release/$BINARY_NAME"
+BUILD_MODE="${BUILD_MODE:-release}"
+BINARY_PATH="$ROOT_DIR/target/$BUILD_MODE/$BINARY_NAME"
 ICNS_FILE="$MACOS_DIR/icons/AppIcon.icns"
 PLIST_TEMPLATE="$MACOS_DIR/Info.plist.template"
 
@@ -25,12 +26,16 @@ VERSION=$(grep '^version' "$ROOT_DIR/Cargo.toml" | head -1 | sed 's/.*"\(.*\)".*
 
 echo "Building $APP_NAME v$VERSION..."
 
-# Step 1: Build release binary
-echo "Step 1: Building release binary..."
-(cd "$ROOT_DIR" && cargo build --release --no-default-features -F hanabi)
+# Step 1: Build binary
+echo "Step 1: Building $BUILD_MODE binary..."
+if [ "$BUILD_MODE" = "release" ]; then
+    (cd "$ROOT_DIR" && cargo build --release --no-default-features -F hanabi)
+else
+    (cd "$ROOT_DIR" && cargo build)
+fi
 
 if [ ! -f "$BINARY_PATH" ]; then
-    echo "Error: Release binary not found at $BINARY_PATH"
+    echo "Error: Binary not found at $BINARY_PATH"
     exit 1
 fi
 

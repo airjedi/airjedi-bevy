@@ -10,8 +10,7 @@
 use bevy::prelude::*;
 use bevy::camera::{CameraOutputMode, Exposure};
 use bevy::camera::visibility::RenderLayers;
-use bevy::pbr::{Atmosphere, AtmosphereSettings, DistanceFog, FogFalloff, StandardMaterial};
-use bevy::light::AtmosphereEnvironmentMapLight;
+use bevy::pbr::{AtmosphereSettings, DistanceFog, FogFalloff, StandardMaterial};
 use bevy::render::render_resource::BlendState;
 use bevy::render::view::Hdr;
 
@@ -32,7 +31,8 @@ pub struct StarField;
 pub struct GroundPlane;
 
 /// Resource tracking current sun position
-#[derive(Resource)]
+#[derive(Resource, Reflect)]
+#[reflect(Resource)]
 pub struct SunState {
     /// Sun elevation in degrees (-90 to 90, negative = below horizon)
     pub elevation: f32,
@@ -50,10 +50,15 @@ impl Default for SunState {
 }
 
 /// Controls whether the app uses real wall-clock time or a manual override.
-#[derive(Resource)]
+#[derive(Resource, Reflect)]
+#[reflect(Resource)]
 pub struct TimeState {
+    #[reflect(ignore)]
     pub override_time: Option<chrono::DateTime<chrono::FixedOffset>>,
     pub utc_offset_hours: f32,
+    /// Set via BRP to override the local hour (0.0-24.0). Calls set_hour()
+    /// internally. Resets to -1 after applying.
+    pub override_hour: f32,
 }
 
 impl Default for TimeState {
@@ -61,6 +66,7 @@ impl Default for TimeState {
         Self {
             override_time: None,
             utc_offset_hours: 0.0,
+            override_hour: -1.0,
         }
     }
 }
@@ -522,7 +528,7 @@ pub fn update_moon_position(
     }
 }
 
-/// Keep time offset in sync with map longitude.
+/// Keep time offset in sync with map longitude, and apply BRP override_hour.
 pub fn sync_time_offset(
     map_state: Res<MapState>,
     mut time_state: ResMut<TimeState>,
@@ -531,21 +537,28 @@ pub fn sync_time_offset(
     if (time_state.utc_offset_hours - new_offset).abs() > 0.01 {
         time_state.utc_offset_hours = new_offset;
     }
+    // Apply BRP-triggered hour override
+    if time_state.override_hour >= 0.0 {
+        let hour = time_state.override_hour;
+        time_state.set_hour(hour);
+        time_state.override_hour = -1.0;
+    }
 }
 
-/// Manage Atmosphere component on Camera3d based on 3D mode state.
-/// In 3D mode, Camera3d renders first (order=0) with atmosphere painting the sky.
-/// Camera2d renders on top (order=1) with tiles composited over.
+/// Manage atmosphere and camera settings based on 2D/3D mode.
+/// All components (Atmosphere, Hdr, DepthPrepass, DistanceFog, render layers)
+/// are present on Camera3d from startup. NO deferred commands are used during
+/// mode transitions to avoid non-deterministic render pipeline failures on Metal.
+/// The atmosphere is visually toggled via scene_units_to_m (near-zero = invisible).
 pub fn manage_atmosphere_camera(
     mut commands: Commands,
     state: Res<View3DState>,
-    sun_state: Res<SunState>,
-    medium_handle: Option<Res<crate::AtmosphereMediumHandle>>,
-    mut camera_3d: Query<(Entity, &mut Camera, Option<&Atmosphere>), With<Camera3d>>,
+    mut camera_3d: Query<(Entity, &mut Camera, &mut AtmosphereSettings, &mut DistanceFog), (With<crate::AircraftCamera>, Without<crate::MapCamera>)>,
     mut camera_2d: Query<(Entity, &mut Camera), (With<crate::MapCamera>, Without<Camera3d>)>,
     mut ground_query: Query<(&mut Transform, &mut Visibility), With<GroundPlane>>,
+    mut last_3d: Local<Option<bool>>,
 ) {
-    let Ok((cam3d_entity, mut cam3d, has_atmo)) = camera_3d.single_mut() else {
+    let Ok((cam3d_entity, mut cam3d, mut atmo_settings, mut fog)) = camera_3d.single_mut() else {
         return;
     };
     let Ok((cam2d_entity, mut cam2d)) = camera_2d.single_mut() else {
@@ -553,109 +566,67 @@ pub fn manage_atmosphere_camera(
     };
 
     if state.is_3d_active() {
-        // Atmosphere is kept always-present while in 3D mode. Adding/removing
-        // the Atmosphere component across the day/night threshold disrupts
-        // Bevy's HDR rendering pipeline, causing tiles to go black.
-        // With the thin atmosphere (15km, 0.3x scale), nighttime scattering
-        // is naturally minimal so the sky stays dark without removal.
         let show_atmo = state.atmosphere_enabled;
 
         if show_atmo {
             cam3d.clear_color = ClearColorConfig::Default;
+            let scene_units_to_m = 0.3 * 1000.0 / (super::PIXEL_SCALE * state.altitude_scale);
+            atmo_settings.scene_units_to_m = scene_units_to_m;
+            atmo_settings.aerial_view_lut_max_distance = 200.0;
+            // Update fog distances
+            fog.falloff = FogFalloff::Linear {
+                start: state.visibility_range * 0.7,
+                end: state.visibility_range,
+            };
         } else {
             cam3d.clear_color = ClearColorConfig::Custom(Color::BLACK);
+            atmo_settings.scene_units_to_m = 0.0001;
+            // Push fog out of view when atmosphere disabled
+            fog.falloff = FogFalloff::Linear {
+                start: 999999.0,
+                end: 999999.0,
+            };
         }
 
-        // Add atmosphere components once when entering 3D (or re-enabling)
-        if show_atmo && has_atmo.is_none() {
-            // Scale factor reduced (0.3x) to shorten effective atmospheric path
-            // lengths, suppressing the bright Mie scattering band at the horizon.
-            let scene_units_to_m = 0.3 * 1000.0 / (super::PIXEL_SCALE * state.altitude_scale);
-            if let Some(ref medium_handle) = medium_handle {
-                let mut atmo = Atmosphere::earthlike(medium_handle.0.clone());
-                // Zero ground albedo hides the below-horizon atmosphere
-                // rendering so only the sky dome is visible.
-                atmo.ground_albedo = Vec3::ZERO;
-                // Use default earthlike top_radius (100km). The 0.3x
-                // scene_units_to_m already reduces effective scattering.
-                commands.entity(cam3d_entity).insert((
-                    atmo,
-                    AtmosphereSettings {
-                        scene_units_to_m,
-                        // Limit aerial perspective range to prevent the
-                        // atmosphere post-process from hazing the ground
-                        // plane into a bright band at the horizon.
-                        aerial_view_lut_max_distance: 500.0,
-                        ..default()
-                    },
-                    AtmosphereEnvironmentMapLight::default(),
-                    Exposure { ev100: 9.0 },
-                    DistanceFog {
-                        // Dark fog color matching CartoDB dark basemap tiles
-                        // to avoid a bright band at the horizon.
-                        color: Color::srgba(0.10, 0.10, 0.12, 1.0),
-                        directional_light_color: Color::NONE,
-                        directional_light_exponent: 30.0,
-                        falloff: FogFalloff::Linear {
-                            start: state.visibility_range * 0.4,
-                            end: state.visibility_range,
-                        },
-                    },
-                ));
-            }
-        } else if !show_atmo && has_atmo.is_some() {
-            // User disabled atmosphere via checkbox — remove all components
-            commands.entity(cam3d_entity)
-                .remove::<Atmosphere>()
-                .remove::<AtmosphereSettings>()
-                .remove::<AtmosphereEnvironmentMapLight>()
-                .remove::<Exposure>()
-                .remove::<DistanceFog>();
-        }
-        // 3D mode: Camera3d renders first (base), Camera2d overlays on top
+        // Camera ordering and compositing (all direct mutations)
         cam3d.order = 0;
         cam2d.order = 1;
-        commands.entity(cam3d_entity).insert(render_layers::layers_3d_world());
-        // Camera2d composites gizmos and labels on top with alpha blending
         cam2d.clear_color = ClearColorConfig::Custom(Color::NONE);
         cam2d.output_mode = CameraOutputMode::Write {
             blend_state: Some(BlendState::ALPHA_BLENDING),
             clear_color: ClearColorConfig::None,
         };
-        commands.entity(cam2d_entity).insert(render_layers::layers_3d_overlay());
-        // Ground plane visible as a depth backstop — it writes depth everywhere
-        // below the horizon so the atmosphere post-process never treats those
-        // pixels as sky. Tile mesh quads render on top of it.
-        if let Ok((_, mut gp_vis)) = ground_query.single_mut() {
-            *gp_vis = Visibility::Inherited;
+
+        if *last_3d != Some(true) {
+            *last_3d = Some(true);
+            // These are the only deferred commands, and they run once per
+            // mode switch. Camera3d already has layers_3d_world from spawn.
+            commands.entity(cam2d_entity).insert(render_layers::layers_3d_overlay());
+            if let Ok((_, mut gp_vis)) = ground_query.single_mut() {
+                *gp_vis = Visibility::Inherited;
+            }
         }
     } else {
-        if has_atmo.is_some() {
-            // Remove all 3D atmosphere/rendering components AND the Hdr marker.
-            // Atmosphere has #[require(Hdr)] so adding it auto-inserts Hdr,
-            // but removing Atmosphere does NOT remove Hdr. The leftover Hdr
-            // forces Camera3d into HDR rendering mode, which breaks compositing
-            // with Camera2d's LDR output and makes aircraft invisible.
-            commands.entity(cam3d_entity)
-                .remove::<Atmosphere>()
-                .remove::<AtmosphereSettings>()
-                .remove::<AtmosphereEnvironmentMapLight>()
-                .remove::<Exposure>()
-                .remove::<DistanceFog>()
-                .remove::<Hdr>();
-        }
-        // 2D mode: Camera2d renders first (base), Camera3d overlays aircraft on top
+        // 2D mode: suppress atmosphere + fog visually
+        atmo_settings.scene_units_to_m = 0.0001;
+        fog.falloff = FogFalloff::Linear {
+            start: 999999.0,
+            end: 999999.0,
+        };
+
         cam2d.order = 0;
         cam3d.order = 1;
-        cam3d.clear_color = ClearColorConfig::Custom(Color::NONE);
-        cam3d.output_mode = CameraOutputMode::default();
-        commands.entity(cam3d_entity).insert(render_layers::layers_2d_aircraft());
-        // Camera2d in 2D mode: default clear, renders tiles/gizmos/overlays/labels
-        cam2d.clear_color = ClearColorConfig::Default;
-        cam2d.output_mode = CameraOutputMode::default();
-        commands.entity(cam2d_entity).insert(render_layers::layers_2d_map());
-        if let Ok((_, mut gp_vis)) = ground_query.single_mut() {
-            *gp_vis = Visibility::Hidden;
+
+        if *last_3d != Some(false) {
+            *last_3d = Some(false);
+            cam3d.clear_color = ClearColorConfig::Custom(Color::NONE);
+            cam3d.output_mode = CameraOutputMode::default();
+            cam2d.clear_color = ClearColorConfig::Default;
+            cam2d.output_mode = CameraOutputMode::default();
+            commands.entity(cam2d_entity).insert(render_layers::layers_2d_map());
+            if let Ok((_, mut gp_vis)) = ground_query.single_mut() {
+                *gp_vis = Visibility::Hidden;
+            }
         }
     }
 }
@@ -730,23 +701,16 @@ pub fn update_exposure_for_time(
     let elev = sun_state.elevation;
 
     // EV100: 13.0 at full day, ramp down through twilight to 2.0 at night.
-    // The low night value crushes residual atmosphere scattering at the
-    // horizon to near-invisible (atmosphere is kept always-present in 3D).
     let ev = if elev > 10.0 {
         13.0
     } else if elev > 0.0 {
-        // Low sun: 11..13
-        11.0 + 2.0 * (elev / 10.0)
+        // Low sun: 5..13
+        5.0 + 8.0 * (elev / 10.0)
     } else if elev > -6.0 {
-        // Civil twilight: 5..11
-        5.0 + 6.0 * ((elev + 6.0) / 6.0)
-    } else if elev > -12.0 {
-        // Nautical twilight: 3..5
-        3.0 + 2.0 * ((elev + 12.0) / 6.0)
-    } else if elev > -18.0 {
-        // Astronomical twilight: 2..3
-        2.0 + 1.0 * ((elev + 18.0) / 6.0)
+        // Civil twilight: 2..5
+        2.0 + 3.0 * ((elev + 6.0) / 6.0)
     } else {
+        // Night
         2.0
     };
 
@@ -801,16 +765,18 @@ pub fn update_ground_plane_color(
         return;
     };
 
-    // Daytime base color matches dark CartoDB tiles (0.15, 0.15, 0.18).
-    // Below the horizon, fade to black.
     let factor = if sun_state.elevation > 6.0 {
         1.0
     } else if sun_state.elevation > 0.0 {
         sun_state.elevation / 6.0
     } else {
-        0.0
+        0.3
     };
 
-    material.base_color = Color::srgb(0.15 * factor, 0.15 * factor, 0.18 * factor);
+    material.base_color = Color::srgb(
+        0.15 * factor,
+        0.15 * factor,
+        0.18 * factor,
+    );
 }
 

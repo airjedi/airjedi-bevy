@@ -86,6 +86,11 @@ impl Default for AltitudeChangeTracker {
     }
 }
 
+/// Fixed emissive boost for 3D tile materials. With emissive_exposure_weight=0.0
+/// the emissive bypasses both per-material and global exposure in the tonemapping
+/// pass, so a fixed multiplier gives consistent brightness at any EV.
+const TILE_EMISSIVE_BOOST: f32 = 8.0;
+
 // =============================================================================
 // Plugin
 // =============================================================================
@@ -938,10 +943,16 @@ fn sync_tile_mesh_quads(
                 continue;
             }
 
+            // Emissive material with exposure_weight=0.0 bypasses all
+            // camera exposure so tiles render at consistent brightness.
+            let m = TILE_EMISSIVE_BOOST;
             let material = materials.add(StandardMaterial {
-                base_color_texture: Some(sprite.image.clone()),
-                base_color: Color::WHITE,
-                unlit: true,
+                base_color: Color::BLACK,
+                emissive: bevy::color::LinearRgba::new(m, m, m, 1.0),
+                emissive_texture: Some(sprite.image.clone()),
+                emissive_exposure_weight: 0.0,
+                perceptual_roughness: 1.0,
+                metallic: 0.0,
                 alpha_mode: AlphaMode::Opaque,
                 ..default()
             });

@@ -538,21 +538,43 @@ pub fn update_3d_camera(
         tf_2d.rotation = rotation * tf_3d.rotation;
         *proj_2d = Projection::Perspective(perspective);
     } else {
-        // Transition: interpolate Camera3d in Y-up, derive Camera2d
-        let overhead_yup = Vec3::new(
-            center_yup.x,
-            center_yup.y + matching_height,
-            center_yup.z,
-        );
+        // Transition: arc the camera from overhead to orbit, always looking at center.
+        //
+        // Interpolate XZ position linearly but arc the altitude so the camera
+        // stays high and sweeps down in a gentle curve. This prevents the
+        // camera from showing the entire map or dipping below ground.
+        let orbit_pos = orbit_yup.translation;
+        let start_height = matching_height.max(orbit_pos.y - center_yup.y);
+        let end_height = orbit_pos.y - center_yup.y;
 
-        // Compute the correct "looking straight down" rotation for overhead position.
-        // Use NEG_Z as up vector (north) since Y (world up) is collinear with the look direction.
-        let overhead_rotation = Transform::from_translation(overhead_yup)
-            .looking_at(center_yup, Vec3::NEG_Z)
+        // Enforce minimum 5,000 ft AGL during transition
+        let min_height = state.altitude_to_z(5_000);
+
+        // Arc: blend heights with a sine curve so the camera stays high
+        // through mid-transition, then descends to the orbit altitude.
+        // At t=0: start_height, at t=0.5: biased toward start, at t=1: end_height
+        let arc_blend = (t * std::f32::consts::FRAC_PI_2).sin(); // 0→1, slow start fast end
+        let height = start_height + (end_height - start_height) * arc_blend;
+        let height = height.max(min_height);
+
+        // XZ: lerp horizontally from directly above to the orbit offset
+        let start_xz = Vec3::new(center_yup.x, 0.0, center_yup.z);
+        let end_xz = Vec3::new(orbit_pos.x, 0.0, orbit_pos.z);
+        let xz = start_xz.lerp(end_xz, t);
+
+        tf_3d.translation = Vec3::new(xz.x, center_yup.y + height, xz.z);
+
+        // Always look at the orbit center for a stable transition
+        let up = if height > (orbit_pos - center_yup).length() * 0.95 {
+            // Near-overhead: use north as up to avoid gimbal flip
+            Vec3::NEG_Z
+        } else {
+            Vec3::Y
+        };
+        tf_3d.rotation = Transform::from_translation(tf_3d.translation)
+            .looking_at(center_yup, up)
             .rotation;
 
-        tf_3d.translation = overhead_yup.lerp(orbit_yup.translation, t);
-        tf_3d.rotation = overhead_rotation.slerp(orbit_yup.rotation, t);
         *proj_3d = Projection::Perspective(perspective.clone());
 
         // Derive Camera2d from Camera3d
@@ -947,6 +969,8 @@ pub struct View3DPlugin;
 impl Plugin for View3DPlugin {
     fn build(&self, app: &mut App) {
         app.register_type::<View3DState>()
+            .register_type::<sky::SunState>()
+            .register_type::<sky::TimeState>()
             .init_resource::<View3DState>()
             .init_resource::<sky::SunState>()
             .init_resource::<sky::MoonState>()
