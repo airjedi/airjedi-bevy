@@ -57,7 +57,7 @@ The application uses Bevy's ECS architecture with a plugin-based modular design.
 | Module | Purpose |
 |--------|---------|
 | `src/main.rs` | App setup, plugin registration, constants, `setup_map` |
-| `src/camera.rs` | Dual-camera system (MapCamera 2D + AircraftCamera 3D), aircraft position/label updates |
+| `src/camera.rs` | Triple-camera system (MapCamera 2D + AircraftCamera 3D HDR + AircraftCamera2d 3D non-HDR), aircraft position/label updates |
 | `src/zoom.rs` | Two-tier zoom: continuous camera zoom + discrete tile zoom levels |
 | `src/input.rs` | Pan/drag handling with Mercator projection conversion |
 | `src/tiles.rs` | Tile lifecycle, multi-resolution bands, fade-in/out, 3D mesh quads |
@@ -96,14 +96,16 @@ The application uses Bevy's ECS architecture with a plugin-based modular design.
 | `src/export/` | `ExportPlugin` | Data export functionality |
 | `src/data/` | — | Background data downloading |
 
-### Dual Camera Architecture
+### Camera Architecture
 
-The app uses three cameras:
-1. **MapCamera** (`Camera2d`): Map tiles, sprites, text. Layers 0 + 2 (gizmos).
-2. **AircraftCamera** (`Camera3d`): 3D aircraft models. Alpha-blends over MapCamera. Switches between orthographic (2D mode) and perspective (3D mode).
-3. **UI Camera** (`Camera2d`, order 100): Dedicated egui camera, layer 11 only.
+The app uses four cameras. The HDR pipeline on AircraftCamera outputs alpha=1 for all pixels (due to the atmosphere sky pass), making it impossible to alpha-composite over Camera2d's tiles. AircraftCamera2d solves this by rendering aircraft in 2D mode without HDR.
 
-In 3D mode, Camera3d operates in Y-up space; Camera2d derives its transform via rotation for tile rendering.
+1. **MapCamera** (`Camera2d`): Map tiles, sprites, text. Layers 1 (tiles), 2 (gizmos), 4 (overlays), 5 (labels).
+2. **AircraftCamera** (`Camera3d`, HDR): 3D aircraft models with Atmosphere/HDR pipeline. Active in 3D mode (order 0, renders sky + aircraft + tile meshes). In 2D mode, stays active but uses `CameraOutputMode::Skip` (atmosphere systems panic if camera is deactivated). Layer 0 + 6-9.
+3. **AircraftCamera2d** (`Camera3d`, non-HDR): Lightweight camera for rendering aircraft in 2D mode. Alpha-blends over MapCamera with `ClearColorConfig::None` (must NOT use `Default` or it erases tiles). Active only in 2D mode (order 1). Layer 0 only.
+4. **UI Camera** (`Camera2d`, order 100): Dedicated egui camera, layer 11 only.
+
+In 3D mode, AircraftCamera (order 0) renders first, then MapCamera (order 1) alpha-blends gizmos/labels on top. In 2D mode, MapCamera (order 0) renders tiles first, then AircraftCamera2d (order 1) alpha-blends aircraft on top. `manage_atmosphere_camera` in `src/view3d/sky.rs` toggles between these configurations on mode transitions.
 
 ### Key Resources
 
