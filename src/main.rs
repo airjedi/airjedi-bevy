@@ -1,4 +1,4 @@
-use bevy::{prelude::*, camera::visibility::RenderLayers, gizmos::config::{DefaultGizmoConfigGroup, GizmoConfigStore}, light::SunDisk, pbr::ScatteringMedium};
+use bevy::{prelude::*, camera::{CameraOutputMode, visibility::RenderLayers}, gizmos::config::{DefaultGizmoConfigGroup, GizmoConfigStore}, light::SunDisk, pbr::ScatteringMedium};
 use bevy_slippy_tiles::*;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
@@ -444,6 +444,29 @@ pub(crate) fn setup_map(
                 end: 5000.0,
             },
         },
+    ));
+
+    // Lightweight Camera3d for rendering aircraft in 2D mode (no HDR/Atmosphere).
+    // The HDR pipeline on AircraftCamera produces opaque output that can't be
+    // alpha-composited over Camera2d's tiles. This non-HDR camera alpha-blends
+    // correctly. Starts inactive; manage_atmosphere_camera toggles it.
+    commands.spawn((
+        Name::new("Aircraft Camera 2D"),
+        Camera3d::default(),
+        camera::AircraftCamera2d,
+        Camera {
+            order: 2,
+            is_active: false,
+            clear_color: ClearColorConfig::Custom(Color::NONE),
+            output_mode: CameraOutputMode::Write {
+                blend_state: Some(bevy::render::render_resource::BlendState::ALPHA_BLENDING),
+                clear_color: ClearColorConfig::None,
+            },
+            ..default()
+        },
+        Projection::Orthographic(OrthographicProjection::default_2d()),
+        Transform::default(),
+        RenderLayers::layer(render_layers::RenderCategory::DEFAULT),
     ));
 
     // Dedicated UI camera for egui. Renders last (order 100) with no clear so it
