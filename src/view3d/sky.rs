@@ -559,8 +559,9 @@ pub fn sync_time_offset(
 /// starts rendering, avoiding a permanently black sky.
 pub fn manage_atmosphere_camera(
     state: Res<View3DState>,
-    mut camera_3d: Query<(&mut Camera, &mut AtmosphereSettings, &mut DistanceFog), (With<crate::AircraftCamera>, Without<crate::MapCamera>)>,
+    mut camera_3d: Query<(&mut Camera, &mut AtmosphereSettings, &mut DistanceFog), (With<crate::AircraftCamera>, Without<crate::MapCamera>, Without<crate::camera::AircraftCamera2d>)>,
     mut camera_2d: Query<&mut Camera, (With<crate::MapCamera>, Without<Camera3d>)>,
+    mut camera_ac2d: Query<&mut Camera, (With<crate::camera::AircraftCamera2d>, Without<crate::AircraftCamera>, Without<crate::MapCamera>)>,
     mut ground_query: Query<(&mut Transform, &mut Visibility), With<GroundPlane>>,
     mut last_3d: Local<Option<bool>>,
     mut warmup_frames: Local<u32>,
@@ -622,6 +623,12 @@ pub fn manage_atmosphere_camera(
         if *last_3d != Some(true) {
             *last_3d = Some(true);
             *warmup_frames = 0;
+            // Restore HDR camera output (was Skip in 2D mode)
+            cam3d.output_mode = CameraOutputMode::default();
+            // Deactivate the non-HDR aircraft camera
+            if let Ok(mut cam_ac2d) = camera_ac2d.single_mut() {
+                cam_ac2d.is_active = false;
+            }
             if let Ok((_, mut gp_vis)) = ground_query.single_mut() {
                 *gp_vis = Visibility::Inherited;
             }
@@ -632,21 +639,30 @@ pub fn manage_atmosphere_camera(
             *warmup_frames += 1;
         }
     } else {
-        // 2D mode: suppress atmosphere + fog visually
+        // 2D mode: suppress atmosphere + fog visually on the HDR camera
         atmo_settings.scene_units_to_m = 0.0001;
         fog.falloff = FogFalloff::Linear {
             start: 999999.0,
             end: 999999.0,
         };
 
+        // Skip the HDR camera's output - its pipeline produces opaque output
+        // that can't alpha-composite over Camera2d's tiles. The camera stays
+        // active so atmosphere systems don't panic.
+        cam3d.output_mode = CameraOutputMode::Skip;
+
+        // Activate the lightweight non-HDR aircraft camera instead.
+        // It alpha-blends correctly over Camera2d.
+        if let Ok(mut cam_ac2d) = camera_ac2d.single_mut() {
+            cam_ac2d.is_active = true;
+            cam_ac2d.order = 1;
+        }
+
         cam2d.order = 0;
-        cam3d.order = 1;
 
         if *last_3d != Some(false) {
             *last_3d = Some(false);
             *warmup_frames = 0;
-            cam3d.clear_color = ClearColorConfig::Custom(Color::NONE);
-            cam3d.output_mode = CameraOutputMode::default();
             cam2d.clear_color = ClearColorConfig::Default;
             cam2d.output_mode = CameraOutputMode::default();
             if let Ok((_, mut gp_vis)) = ground_query.single_mut() {

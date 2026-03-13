@@ -22,9 +22,13 @@ pub(crate) const BASE_ROT_YUP: Quat = Quat::from_xyzw(0.0, 1.0, 0.0, 0.0); // 18
 // Components and Resources
 // =============================================================================
 
-/// Marker for the 3D camera that renders aircraft models.
+/// Marker for the 3D camera that renders aircraft models (HDR, with Atmosphere).
 #[derive(Component)]
 pub(crate) struct AircraftCamera;
+
+/// Marker for the lightweight 3D camera that renders aircraft in 2D mode (no HDR).
+#[derive(Component)]
+pub(crate) struct AircraftCamera2d;
 
 /// Marker for the primary 2D map camera (distinguishes it from the egui UI camera).
 #[derive(Component)]
@@ -161,19 +165,27 @@ fn update_camera_position(
 /// In 3D mode, update_3d_camera handles both cameras directly.
 fn sync_aircraft_camera(
     view3d_state: Res<view3d::View3DState>,
-    camera_2d: Query<(&Transform, &Projection), (With<MapCamera>, Without<AircraftCamera>)>,
-    mut camera_3d: Query<(&mut Transform, &mut Projection), (With<AircraftCamera>, Without<Camera2d>)>,
+    camera_2d: Query<(&Transform, &Projection), (With<MapCamera>, Without<AircraftCamera>, Without<AircraftCamera2d>)>,
+    mut camera_3d: Query<(&mut Transform, &mut Projection), (With<AircraftCamera>, Without<AircraftCamera2d>, Without<Camera2d>)>,
+    mut camera_ac2d: Query<(&mut Transform, &mut Projection), (With<AircraftCamera2d>, Without<AircraftCamera>, Without<MapCamera>)>,
 ) {
     // In 3D mode or during transitions, update_3d_camera owns both cameras
     if view3d_state.is_3d_active() || view3d_state.is_transitioning() {
         return;
     }
 
-    let (Ok((t2, p2)), Ok((mut t3, mut p3))) = (camera_2d.single(), camera_3d.single_mut()) else {
+    let Ok((t2, p2)) = camera_2d.single() else {
         return;
     };
-    *t3 = *t2;
-    *p3 = p2.clone();
+    // Sync both aircraft cameras to Camera2d's view
+    if let Ok((mut t3, mut p3)) = camera_3d.single_mut() {
+        *t3 = *t2;
+        *p3 = p2.clone();
+    }
+    if let Ok((mut t, mut p)) = camera_ac2d.single_mut() {
+        *t = *t2;
+        *p = p2.clone();
+    }
 }
 
 // =============================================================================
