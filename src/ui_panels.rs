@@ -47,7 +47,7 @@ impl PanelId {
             PanelId::Ingest => "I",
             PanelId::Debug => "`",
             PanelId::Inspector => "F12",
-            PanelId::Help => "H",
+            PanelId::Help => "?",
         }
     }
 

@@ -1016,7 +1016,8 @@ impl Plugin for View3DPlugin {
                 .after(update_3d_camera)
                 .after(update_tile_elevation))
             .add_systems(Update, update_distance_fog
-                .after(animate_view_transition));
+                .after(animate_view_transition))
+            .add_systems(Update, crate::hud::render_camera_hud);
         // 3D view settings panel is rendered via the consolidated Tools window (tools_window.rs)
     }
 }

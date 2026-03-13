@@ -70,7 +70,7 @@ pub fn render_toolbar(
 
                 toolbar_button(ui, &mut panels, PanelId::Debug, regular::HASH, "Debug (`)", active_color, inactive_color, active_bg);
                 toolbar_button(ui, &mut panels, PanelId::Inspector, regular::MAGNIFYING_GLASS, "Inspector (F12)", active_color, inactive_color, active_bg);
-                toolbar_button(ui, &mut panels, PanelId::Help, regular::QUESTION, "Help (H)", active_color, inactive_color, active_bg);
+                toolbar_button(ui, &mut panels, PanelId::Help, regular::QUESTION, "Help (?)", active_color, inactive_color, active_bg);
 
                 // -- Clear Cache button (action, not a panel toggle) --
                 let icon_dim = to_egui_color32(theme.text_dim());

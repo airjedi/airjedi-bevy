@@ -3,6 +3,7 @@ use bevy_egui::EguiContexts;
 
 use crate::aircraft::{AircraftListState, DetailPanelState, CameraFollowState, StatsPanelState};
 use crate::config::{AppConfig, SettingsUiState};
+use crate::hud::HudState;
 use crate::ui_panels::{UiPanelManager, PanelId};
 use crate::{MapState, ZoomState, Aircraft};
 
@@ -30,6 +31,7 @@ pub fn handle_keyboard_shortcuts(
     app_config: Res<AppConfig>,
     aircraft_query: Query<&Aircraft>,
     mut contexts: EguiContexts,
+    mut hud_state: ResMut<HudState>,
 ) {
     // Check if egui wants keyboard input (e.g., typing in a text field)
     if let Ok(ctx) = contexts.ctx_mut() {
@@ -96,8 +98,13 @@ pub fn handle_keyboard_shortcuts(
         panels.toggle_panel(PanelId::Ingest);
     }
 
-    // H - Toggle help overlay
-    if keyboard.just_pressed(KeyCode::KeyH) {
+    // H - Toggle camera HUD
+    if keyboard.just_pressed(KeyCode::KeyH) && !shift {
+        hud_state.visible = !hud_state.visible;
+    }
+
+    // ? (Shift+/) - Toggle help overlay
+    if keyboard.just_pressed(KeyCode::Slash) && shift {
         panels.toggle_panel(PanelId::Help);
     }
 
@@ -322,11 +329,12 @@ M     Measurement mode
 E     Export data panel
 V     Toggle coverage tracking
 3     Toggle 3D view mode
+H     Toggle camera HUD (3D)
 Esc   Deselect / cancel follow
 F     Follow selected aircraft
 C     Center on selected
 +/-   Zoom in / out
-H     Toggle this help
+?     Toggle this help
 `     Toggle debug panel
 F12   Toggle inspector
 R     Reset view
