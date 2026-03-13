@@ -35,6 +35,7 @@ mod render_layers;
 mod input;
 mod zoom;
 mod camera;
+mod hud;
 mod build_info;
 pub(crate) mod theme;
 pub(crate) mod widgets;
@@ -213,6 +214,7 @@ fn main() {
         .init_resource::<dock::DockTreeState>()
         .init_resource::<inspector::InspectorState>()
         .init_resource::<statusbar::StatusBarState>()
+        .init_resource::<hud::HudState>()
         .register_type::<MapState>()
         .register_type::<ZoomState>()
         .insert_resource(ZoomState::new())
