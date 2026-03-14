@@ -36,6 +36,7 @@ mod input;
 mod zoom;
 mod camera;
 mod hud;
+mod debug_3d_hud;
 mod build_info;
 pub(crate) mod theme;
 pub(crate) mod widgets;
