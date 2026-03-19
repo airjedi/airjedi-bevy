@@ -1003,13 +1003,14 @@ impl Plugin for View3DPlugin {
             .add_systems(Update, sky::update_sun_position.after(sky::sync_time_offset))
             .add_systems(Update, sky::update_moon_position.after(sky::sync_time_offset))
             .add_systems(Update, sky::update_star_visibility)
-            .add_systems(Update, sky::manage_atmosphere_camera
+            .add_systems(Update, sky::manage_camera_mode
                 .after(animate_view_transition)
                 .after(update_3d_camera)
                 .after(sky::update_sun_position))
             .add_systems(Update, sky::sync_ground_plane.after(update_3d_camera))
+            .add_systems(Update, sky::sync_sky_dome.after(update_3d_camera))
+            .add_systems(Update, sky::update_sky_dome_colors.after(sky::update_sun_position))
             .add_systems(Update, sky::update_ground_plane_color.after(sky::update_sun_position))
-            .add_systems(Update, sky::update_atmosphere_scale)
             .add_systems(Update, sky::update_exposure_for_time.after(sky::update_sun_position))
             .add_systems(Update, sky::update_fog_color_for_time.after(sky::update_sun_position))
             .add_systems(Update, fade_distant_sprites

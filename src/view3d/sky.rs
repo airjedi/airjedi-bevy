@@ -10,7 +10,7 @@
 use bevy::prelude::*;
 use bevy::camera::{CameraOutputMode, Exposure};
 use bevy::camera::visibility::RenderLayers;
-use bevy::pbr::{AtmosphereSettings, DistanceFog, FogFalloff, StandardMaterial};
+use bevy::pbr::{DistanceFog, FogFalloff, StandardMaterial};
 use bevy::render::render_resource::BlendState;
 
 use super::View3DState;
@@ -27,6 +27,17 @@ pub struct StarField;
 /// Marker component for the ground plane mesh
 #[derive(Component)]
 pub struct GroundPlane;
+
+/// Marker component for the gradient sky dome mesh
+#[derive(Component)]
+pub struct SkyDome;
+
+/// Number of latitude rings in the sky dome hemisphere
+const SKY_DOME_RINGS: u32 = 16;
+/// Number of segments around each ring
+const SKY_DOME_SEGMENTS: u32 = 32;
+/// Radius of the sky dome (large enough to surround the camera)
+const SKY_DOME_RADIUS: f32 = 100_000.0;
 
 /// Resource tracking current sun position
 #[derive(Resource, Reflect)]
@@ -218,11 +229,19 @@ fn compute_moon_position(
     )
 }
 
-/// No-op: sky visibility is handled entirely through star field sprite visibility.
-/// Kept as a system entry point for future atmospheric effects.
+/// Toggle sky dome visibility based on 3D mode.
 pub fn update_sky_visibility(
-    _state: Res<View3DState>,
+    state: Res<View3DState>,
+    mut sky_query: Query<&mut Visibility, With<SkyDome>>,
 ) {
+    let Ok(mut vis) = sky_query.single_mut() else {
+        return;
+    };
+    *vis = if state.is_3d_active() {
+        Visibility::Inherited
+    } else {
+        Visibility::Hidden
+    };
 }
 
 /// Keep star field sprite centered on Camera2d and scaled to fill the viewport.
@@ -308,6 +327,151 @@ pub fn setup_sky(
         RenderLayers::layer(RenderCategory::GROUND),
     ));
 
+    // Spawn gradient sky dome — replaces Bevy's Atmosphere sky rendering.
+    // An inverted hemisphere with vertex colors that update based on sun position.
+    let sky_mesh = meshes.add(generate_sky_dome_mesh());
+    let sky_material = materials.add(StandardMaterial {
+        unlit: true,
+        cull_mode: None, // Render inside faces
+        ..default()
+    });
+    commands.spawn((
+        Name::new("Sky Dome"),
+        SkyDome,
+        Mesh3d(sky_mesh),
+        MeshMaterial3d(sky_material),
+        Pickable::IGNORE,
+        Transform::from_xyz(0.0, 0.0, 0.0),
+        Visibility::Hidden,
+        RenderLayers::layer(RenderCategory::SKY),
+    ));
+}
+
+/// Generate a hemisphere mesh for the sky dome with vertex colors.
+/// The mesh is an inverted dome (normals pointing inward) centered at origin.
+/// Vertices go from horizon (ring 0) to zenith (top vertex).
+fn generate_sky_dome_mesh() -> Mesh {
+    let mut positions = Vec::new();
+    let mut normals = Vec::new();
+    let mut colors = Vec::new();
+    let mut indices = Vec::new();
+
+    // Generate rings from horizon (0°) to zenith (90°)
+    for ring in 0..=SKY_DOME_RINGS {
+        let elevation = (ring as f32 / SKY_DOME_RINGS as f32) * std::f32::consts::FRAC_PI_2;
+        let y = SKY_DOME_RADIUS * elevation.sin();
+        let ring_radius = SKY_DOME_RADIUS * elevation.cos();
+
+        for seg in 0..=SKY_DOME_SEGMENTS {
+            let angle = (seg as f32 / SKY_DOME_SEGMENTS as f32) * std::f32::consts::TAU;
+            let x = ring_radius * angle.cos();
+            let z = ring_radius * angle.sin();
+
+            positions.push([x, y, z]);
+            // Inward-facing normals
+            let n = Vec3::new(-x, -y, -z).normalize();
+            normals.push([n.x, n.y, n.z]);
+            // Default: daytime blue gradient (will be updated by system)
+            let t = ring as f32 / SKY_DOME_RINGS as f32;
+            let r = 0.4 * (1.0 - t) + 0.15 * t;
+            let g = 0.5 * (1.0 - t) + 0.3 * t;
+            let b = 0.7 * (1.0 - t) + 0.8 * t;
+            colors.push([r, g, b, 1.0]);
+        }
+    }
+
+    // Generate triangle indices
+    for ring in 0..SKY_DOME_RINGS {
+        for seg in 0..SKY_DOME_SEGMENTS {
+            let stride = SKY_DOME_SEGMENTS + 1;
+            let a = ring * stride + seg;
+            let b = a + 1;
+            let c = (ring + 1) * stride + seg;
+            let d = c + 1;
+            // Wind triangles so inward-facing side is front
+            indices.push(a);
+            indices.push(c);
+            indices.push(b);
+            indices.push(b);
+            indices.push(c);
+            indices.push(d);
+        }
+    }
+
+    let mut mesh = Mesh::new(
+        bevy::mesh::PrimitiveTopology::TriangleList,
+        bevy::asset::RenderAssetUsages::default(),
+    );
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
+    mesh.insert_indices(bevy::mesh::Indices::U32(indices));
+    mesh
+}
+
+/// Update sky dome vertex colors based on sun elevation.
+/// Horizon is warmer/lighter, zenith is deeper blue. At night, everything darkens.
+pub fn update_sky_dome_colors(
+    sun_state: Res<SunState>,
+    state: Res<View3DState>,
+    sky_query: Query<&Mesh3d, With<SkyDome>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+) {
+    if !state.is_3d_active() {
+        return;
+    }
+    let Ok(mesh_handle) = sky_query.single() else {
+        return;
+    };
+    let Some(mesh) = meshes.get_mut(&mesh_handle.0) else {
+        return;
+    };
+
+    let elev = sun_state.elevation;
+
+    // Day factor: 1.0 at full day (sun > 10°), 0.0 at deep night (< -12°)
+    let day = if elev > 10.0 {
+        1.0
+    } else if elev > -12.0 {
+        (elev + 12.0) / 22.0
+    } else {
+        0.0
+    };
+
+    // Sunset/sunrise warmth factor: peaks when sun is near horizon
+    let warmth = if elev > -2.0 && elev < 8.0 {
+        1.0 - ((elev - 3.0) / 5.0).abs().min(1.0)
+    } else {
+        0.0
+    };
+
+    let mut colors = Vec::new();
+    for ring in 0..=SKY_DOME_RINGS {
+        let t = ring as f32 / SKY_DOME_RINGS as f32; // 0=horizon, 1=zenith
+
+        // Day colors: horizon → zenith
+        let day_r = 0.55 * (1.0 - t) + 0.15 * t;
+        let day_g = 0.65 * (1.0 - t) + 0.35 * t;
+        let day_b = 0.85 * (1.0 - t) + 0.95 * t;
+
+        // Night colors
+        let night_r = 0.02 * (1.0 - t) + 0.01 * t;
+        let night_g = 0.02 * (1.0 - t) + 0.01 * t;
+        let night_b = 0.06 * (1.0 - t) + 0.04 * t;
+
+        // Sunset warmth (strongest at horizon)
+        let warm_r = 0.9 * (1.0 - t).powi(2) * warmth;
+        let warm_g = 0.3 * (1.0 - t).powi(2) * warmth;
+
+        let r = (night_r + (day_r - night_r) * day + warm_r).clamp(0.0, 1.0);
+        let g = (night_g + (day_g - night_g) * day + warm_g).clamp(0.0, 1.0);
+        let b = (night_b + (day_b - night_b) * day).clamp(0.0, 1.0);
+
+        for _seg in 0..=SKY_DOME_SEGMENTS {
+            colors.push([r, g, b, 1.0]);
+        }
+    }
+    mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
 }
 
 /// Generate a procedural star texture as an Image.
@@ -543,34 +707,24 @@ pub fn sync_time_offset(
     }
 }
 
-/// Manage atmosphere and camera settings based on 2D/3D mode.
-/// All components (Atmosphere, Hdr, DepthPrepass, DistanceFog, render layers)
-/// are present on Camera3d from startup. NO deferred commands are used during
-/// mode transitions to avoid non-deterministic render pipeline failures on Metal.
-/// The atmosphere is visually toggled via scene_units_to_m (near-zero = invisible).
+/// Manage camera settings based on 2D/3D mode.
 ///
-/// Includes a pipeline warmup workaround: Bevy's atmosphere render nodes
-/// (AtmosphereLutsNode, RenderSkyNode) silently skip rendering when their GPU
-/// pipelines aren't compiled yet. On Metal/macOS, async shader compilation means
-/// the 5 atmosphere pipelines (4 compute + 1 render) may not be ready for the
-/// first several frames after app launch. The workaround suppresses the atmosphere
-/// (scene_units_to_m near-zero) for the first ~1s of 3D mode, then switches to
-/// the real value. This ensures the pipelines are compiled before the atmosphere
-/// starts rendering, avoiding a permanently black sky.
-pub fn manage_atmosphere_camera(
+/// Camera2d (order 0) renders map tiles, gizmos, labels as the base layer.
+/// Camera3d (order 1) alpha-blends 3D content on top via CameraOutputMode::Write.
+/// Without Atmosphere/HDR, Camera3d's output supports alpha compositing natively.
+///
+/// NOTE: Bevy's Atmosphere component was removed due to multi-camera HDR
+/// tonemapping bugs on Metal (#18901, #18902, #17530) that non-deterministically
+/// produce a black screen. A gradient sky dome mesh replaces the atmosphere sky.
+/// See the tech debt GitHub issue for restoration plan.
+pub fn manage_camera_mode(
     state: Res<View3DState>,
-    mut camera_3d: Query<(&mut Camera, &mut AtmosphereSettings, &mut DistanceFog), (With<crate::AircraftCamera>, Without<crate::MapCamera>, Without<crate::camera::AircraftCamera2d>)>,
+    mut camera_3d: Query<(&mut Camera, &mut DistanceFog), (With<crate::AircraftCamera>, Without<crate::MapCamera>)>,
     mut camera_2d: Query<&mut Camera, (With<crate::MapCamera>, Without<Camera3d>)>,
-    mut camera_ac2d: Query<&mut Camera, (With<crate::camera::AircraftCamera2d>, Without<crate::AircraftCamera>, Without<crate::MapCamera>)>,
     mut ground_query: Query<(&mut Transform, &mut Visibility), With<GroundPlane>>,
     mut last_3d: Local<Option<bool>>,
-    mut warmup_frames: Local<u32>,
 ) {
-    // Number of frames to keep atmosphere suppressed after entering 3D mode,
-    // giving Metal time to compile the atmosphere compute/render pipelines.
-    const WARMUP_FRAME_COUNT: u32 = 60;
-
-    let Ok((mut cam3d, mut atmo_settings, mut fog)) = camera_3d.single_mut() else {
+    let Ok((mut cam3d, mut fog)) = camera_3d.single_mut() else {
         return;
     };
     let Ok(mut cam2d) = camera_2d.single_mut() else {
@@ -578,91 +732,33 @@ pub fn manage_atmosphere_camera(
     };
 
     if state.is_3d_active() {
-        let show_atmo = state.atmosphere_enabled;
-        let warming_up = *warmup_frames < WARMUP_FRAME_COUNT;
-
-        if show_atmo && !warming_up {
-            cam3d.clear_color = ClearColorConfig::Default;
-            let scene_units_to_m = 0.3 * 1000.0 / (super::PIXEL_SCALE * state.altitude_scale);
-            atmo_settings.scene_units_to_m = scene_units_to_m;
-            atmo_settings.aerial_view_lut_max_distance = 200.0;
-            fog.falloff = FogFalloff::Linear {
-                start: state.visibility_range * 0.7,
-                end: state.visibility_range,
-            };
-        } else if show_atmo && warming_up {
-            // During warmup: keep atmosphere active but at a tiny scale so the
-            // render nodes run (building LUTs) without producing visible output.
-            // This primes the pipeline so it's ready when warmup ends.
-            cam3d.clear_color = ClearColorConfig::Custom(Color::BLACK);
-            atmo_settings.scene_units_to_m = 0.0001;
-            atmo_settings.aerial_view_lut_max_distance = 200.0;
-            fog.falloff = FogFalloff::Linear {
-                start: 999999.0,
-                end: 999999.0,
-            };
-        } else {
-            cam3d.clear_color = ClearColorConfig::Custom(Color::BLACK);
-            atmo_settings.scene_units_to_m = 0.0001;
-            fog.falloff = FogFalloff::Linear {
-                start: 999999.0,
-                end: 999999.0,
-            };
-        }
-
-        // Camera ordering and compositing (all direct mutations)
-        cam3d.order = 0;
-        cam2d.order = 1;
-        cam2d.clear_color = ClearColorConfig::Custom(Color::NONE);
-        cam2d.output_mode = CameraOutputMode::Write {
-            blend_state: Some(BlendState::ALPHA_BLENDING),
-            clear_color: ClearColorConfig::None,
+        fog.falloff = FogFalloff::Linear {
+            start: state.visibility_range * 0.4,
+            end: state.visibility_range,
         };
 
-        // Ground plane visible in 3D (direct mutation, no deferred command)
+        // Camera ordering: Camera2d base (order 0), Camera3d overlay (order 1)
+        cam2d.order = 0;
+        cam3d.order = 1;
+
         if *last_3d != Some(true) {
             *last_3d = Some(true);
-            *warmup_frames = 0;
-            // Restore HDR camera output (was Skip in 2D mode)
-            cam3d.output_mode = CameraOutputMode::default();
-            // Deactivate the non-HDR aircraft camera
-            if let Ok(mut cam_ac2d) = camera_ac2d.single_mut() {
-                cam_ac2d.is_active = false;
-            }
             if let Ok((_, mut gp_vis)) = ground_query.single_mut() {
                 *gp_vis = Visibility::Inherited;
             }
         }
-
-        // Increment warmup counter
-        if *warmup_frames < WARMUP_FRAME_COUNT {
-            *warmup_frames += 1;
-        }
     } else {
-        // 2D mode: suppress atmosphere + fog visually on the HDR camera
-        atmo_settings.scene_units_to_m = 0.0001;
+        // 2D mode: disable fog, Camera2d is primary
         fog.falloff = FogFalloff::Linear {
             start: 999999.0,
             end: 999999.0,
         };
 
-        // Skip the HDR camera's output - its pipeline produces opaque output
-        // that can't alpha-composite over Camera2d's tiles. The camera stays
-        // active so atmosphere systems don't panic.
-        cam3d.output_mode = CameraOutputMode::Skip;
-
-        // Activate the lightweight non-HDR aircraft camera instead.
-        // It alpha-blends correctly over Camera2d.
-        if let Ok(mut cam_ac2d) = camera_ac2d.single_mut() {
-            cam_ac2d.is_active = true;
-            cam_ac2d.order = 1;
-        }
-
         cam2d.order = 0;
+        cam3d.order = 1;
 
         if *last_3d != Some(false) {
             *last_3d = Some(false);
-            *warmup_frames = 0;
             cam2d.clear_color = ClearColorConfig::Default;
             cam2d.output_mode = CameraOutputMode::default();
             if let Ok((_, mut gp_vis)) = ground_query.single_mut() {
@@ -672,20 +768,6 @@ pub fn manage_atmosphere_camera(
     }
 }
 
-/// Update atmosphere scale when altitude_scale changes (3D mode only).
-pub fn update_atmosphere_scale(
-    state: Res<View3DState>,
-    mut settings_query: Query<&mut AtmosphereSettings, With<Camera3d>>,
-) {
-    if !state.is_changed() || !state.is_3d_active() || !state.atmosphere_enabled {
-        return;
-    }
-    let Ok(mut settings) = settings_query.single_mut() else {
-        return;
-    };
-    settings.scene_units_to_m = 0.3 * 1000.0 / (super::PIXEL_SCALE * state.altitude_scale);
-}
-
 /// Blend DistanceFog color between daytime blue-gray and nighttime dark
 /// based on sun elevation, so the fog matches the scene lighting.
 pub fn update_fog_color_for_time(
@@ -693,7 +775,7 @@ pub fn update_fog_color_for_time(
     state: Res<View3DState>,
     mut fog_query: Query<&mut DistanceFog, With<Camera3d>>,
 ) {
-    if !state.is_3d_active() || !state.atmosphere_enabled {
+    if !state.is_3d_active() {
         return;
     }
     let Ok(mut fog) = fog_query.single_mut() else {
@@ -732,7 +814,7 @@ pub fn update_exposure_for_time(
     state: Res<View3DState>,
     mut camera_query: Query<&mut Exposure, With<Camera3d>>,
 ) {
-    if !state.is_3d_active() || !state.atmosphere_enabled {
+    if !state.is_3d_active() {
         return;
     }
     let Ok(mut exposure) = camera_query.single_mut() else {
@@ -786,6 +868,24 @@ pub fn sync_ground_plane(
     } else {
         *gp_vis = Visibility::Hidden;
     }
+}
+
+/// Keep sky dome centered on Camera3d so it always surrounds the viewer.
+pub fn sync_sky_dome(
+    state: Res<View3DState>,
+    camera_query: Query<&Transform, (With<crate::AircraftCamera>, Without<SkyDome>)>,
+    mut sky_query: Query<&mut Transform, (With<SkyDome>, Without<crate::AircraftCamera>)>,
+) {
+    if !state.is_3d_active() {
+        return;
+    }
+    let Ok(cam_tf) = camera_query.single() else {
+        return;
+    };
+    let Ok(mut sky_tf) = sky_query.single_mut() else {
+        return;
+    };
+    sky_tf.translation = cam_tf.translation;
 }
 
 /// Darken the ground plane at night so it doesn't create a gray band
