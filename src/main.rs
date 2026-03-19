@@ -1,4 +1,4 @@
-use bevy::{prelude::*, camera::{CameraOutputMode, visibility::RenderLayers}, gizmos::config::{DefaultGizmoConfigGroup, GizmoConfigStore}, light::SunDisk, pbr::ScatteringMedium};
+use bevy::{prelude::*, camera::{CameraOutputMode, visibility::RenderLayers}, gizmos::config::{DefaultGizmoConfigGroup, GizmoConfigStore}, light::SunDisk};
 use bevy_slippy_tiles::*;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
@@ -367,17 +367,16 @@ pub(crate) fn setup_map(
     mut tile_settings: ResMut<SlippyTilesSettings>,
     app_config: Res<config::AppConfig>,
     mut egui_settings: ResMut<EguiGlobalSettings>,
-    mut scattering_mediums: ResMut<Assets<ScatteringMedium>>,
 ) {
     // Prevent bevy_egui from auto-attaching to Camera2d. We use a dedicated UI
     // camera so egui stays visible when Camera2d switches to perspective in 3D mode.
     egui_settings.auto_create_primary_context = false;
 
     // Use Visible instead of the default VisibleInView for mesh picking.
-    // Our dual-camera architecture (Camera3d with Atmosphere post-processing,
-    // Camera2d overlay with alpha blending) means ViewVisibility isn't computed
-    // correctly for Camera3d's entities. 3D mode picking is handled by a
-    // manual MeshRayCast system (pick_aircraft_3d) instead.
+    // Our dual-camera architecture (Camera3d overlay with alpha blending,
+    // Camera2d base) means ViewVisibility isn't computed correctly for
+    // Camera3d's entities. 3D mode picking is handled by a manual
+    // MeshRayCast system (pick_aircraft_3d) instead.
     commands.insert_resource(bevy::picking::mesh_picking::MeshPickingSettings {
         require_markers: false,
         ray_cast_visibility: RayCastVisibility::Visible,
@@ -399,64 +398,22 @@ pub(crate) fn setup_map(
         render_layers::layers_camera2d_all(),
     ));
 
-    // Create shared ScatteringMedium for Atmosphere (needed before Camera3d spawn).
-    let medium = scattering_mediums.add(ScatteringMedium::earthlike(256, 256));
-    commands.insert_resource(AtmosphereMediumHandle(medium.clone()));
-
     // Set up 3D camera for aircraft models (renders on top of 2D).
-    // Atmosphere + Hdr + DepthPrepass are kept always-on to avoid
-    // component insertion/removal that causes non-deterministic render
-    // failures on Metal. manage_atmosphere_camera adjusts the
-    // AtmosphereSettings.scene_units_to_m between near-zero (2D) and
-    // the real value (3D) instead of adding/removing components.
-    let mut atmo = bevy::pbr::Atmosphere::earthlike(medium);
-    atmo.ground_albedo = Vec3::ZERO;
+    // No Atmosphere component — Bevy 0.18's atmosphere triggers multi-camera
+    // HDR tonemapping bugs on Metal (#18901, #18902, #17530) that non-
+    // deterministically produce a black screen. A gradient sky dome mesh
+    // replaces the atmosphere sky visually. See GitHub issue for tech debt.
+    //
+    // Without Atmosphere/HDR, this camera's output supports alpha compositing
+    // over Camera2d, eliminating the need for the separate AircraftCamera2d.
+    // Camera2d (order 0) renders first; this camera (order 1) alpha-blends
+    // on top via CameraOutputMode::Write.
     commands.spawn((
         Name::new("Aircraft Camera"),
         Camera3d::default(),
         AircraftCamera,
         Camera {
             order: 1,
-            clear_color: ClearColorConfig::Custom(Color::NONE),
-            ..default()
-        },
-        Projection::Orthographic(OrthographicProjection::default_2d()),
-        Transform::default(),
-        bevy::picking::mesh_picking::MeshPickingCamera,
-        // Start with 3D world layers - harmless in 2D mode since 3D-only
-        // objects (tile quads, ground plane) are hidden or don't exist yet.
-        // Avoids deferred render-layer commands during 2D->3D transition.
-        render_layers::layers_3d_world(),
-        atmo,
-        bevy::pbr::AtmosphereSettings {
-            scene_units_to_m: 0.0001,
-            aerial_view_lut_max_distance: 200.0,
-            ..default()
-        },
-        bevy::light::AtmosphereEnvironmentMapLight::default(),
-        bevy::camera::Exposure { ev100: 9.0 },
-        bevy::pbr::DistanceFog {
-            color: Color::srgba(0.10, 0.10, 0.12, 1.0),
-            directional_light_color: Color::NONE,
-            directional_light_exponent: 30.0,
-            falloff: bevy::pbr::FogFalloff::Linear {
-                start: 3500.0,
-                end: 5000.0,
-            },
-        },
-    ));
-
-    // Lightweight Camera3d for rendering aircraft in 2D mode (no HDR/Atmosphere).
-    // The HDR pipeline on AircraftCamera produces opaque output that can't be
-    // alpha-composited over Camera2d's tiles. This non-HDR camera alpha-blends
-    // correctly. Starts inactive; manage_atmosphere_camera toggles it.
-    commands.spawn((
-        Name::new("Aircraft Camera 2D"),
-        Camera3d::default(),
-        camera::AircraftCamera2d,
-        Camera {
-            order: 2,
-            is_active: false,
             clear_color: ClearColorConfig::Custom(Color::NONE),
             output_mode: CameraOutputMode::Write {
                 blend_state: Some(bevy::render::render_resource::BlendState::ALPHA_BLENDING),
@@ -466,7 +423,17 @@ pub(crate) fn setup_map(
         },
         Projection::Orthographic(OrthographicProjection::default_2d()),
         Transform::default(),
-        RenderLayers::layer(render_layers::RenderCategory::DEFAULT),
+        bevy::picking::mesh_picking::MeshPickingCamera,
+        render_layers::layers_3d_world(),
+        bevy::pbr::DistanceFog {
+            color: Color::srgba(0.10, 0.10, 0.12, 1.0),
+            directional_light_color: Color::NONE,
+            directional_light_exponent: 30.0,
+            falloff: bevy::pbr::FogFalloff::Linear {
+                start: 3500.0,
+                end: 5000.0,
+            },
+        },
     ));
 
     // Dedicated UI camera for egui. Renders last (order 100) with no clear so it
@@ -547,9 +514,6 @@ pub(crate) fn setup_map(
     commands.insert_resource(map_state);
 }
 
-/// Holds the shared Handle<ScatteringMedium> for Atmosphere components.
-#[derive(Resource)]
-pub struct AtmosphereMediumHandle(pub Handle<ScatteringMedium>);
 
 pub fn clear_tile_cache() {
     tile_cache::clear_tile_cache();
