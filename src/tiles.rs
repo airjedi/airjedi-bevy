@@ -751,7 +751,8 @@ fn cull_offscreen_tiles(
 
         // Widen margin during active altitude changes so tiles survive
         // long enough for replacements to load.  Cooldown of ~0.5s.
-        let margin = if alt_tracker.idle_secs < 0.5 { 4.0 } else { 2.5 };
+        // Base margin 3.5x covers the full perspective view to the horizon.
+        let margin = if alt_tracker.idle_secs < 0.5 { 5.0 } else { 3.5 };
         let hw = half_width_at_horizon * margin;
         let hh = far_ground_dist.max(center_ground_dist) * margin;
 
