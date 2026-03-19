@@ -449,19 +449,19 @@ pub fn update_sky_dome_colors(
     for ring in 0..=SKY_DOME_RINGS {
         let t = ring as f32 / SKY_DOME_RINGS as f32; // 0=horizon, 1=zenith
 
-        // Day colors: horizon → zenith
-        let day_r = 0.55 * (1.0 - t) + 0.15 * t;
-        let day_g = 0.65 * (1.0 - t) + 0.35 * t;
-        let day_b = 0.85 * (1.0 - t) + 0.95 * t;
+        // Day colors: horizon (hazy light blue) → zenith (deep blue)
+        let day_r = 0.70 * (1.0 - t) + 0.25 * t;
+        let day_g = 0.80 * (1.0 - t) + 0.50 * t;
+        let day_b = 0.95 * (1.0 - t) + 1.00 * t;
 
-        // Night colors
-        let night_r = 0.02 * (1.0 - t) + 0.01 * t;
-        let night_g = 0.02 * (1.0 - t) + 0.01 * t;
-        let night_b = 0.06 * (1.0 - t) + 0.04 * t;
+        // Night colors: horizon (dark blue-gray) → zenith (near black)
+        let night_r = 0.04 * (1.0 - t) + 0.01 * t;
+        let night_g = 0.04 * (1.0 - t) + 0.02 * t;
+        let night_b = 0.10 * (1.0 - t) + 0.06 * t;
 
-        // Sunset warmth (strongest at horizon)
-        let warm_r = 0.9 * (1.0 - t).powi(2) * warmth;
-        let warm_g = 0.3 * (1.0 - t).powi(2) * warmth;
+        // Sunset/sunrise warmth (strongest at horizon, fades by 30° elevation)
+        let warm_r = 1.0 * (1.0 - t).powi(3) * warmth;
+        let warm_g = 0.4 * (1.0 - t).powi(3) * warmth;
 
         let r = (night_r + (day_r - night_r) * day + warm_r).clamp(0.0, 1.0);
         let g = (night_g + (day_g - night_g) * day + warm_g).clamp(0.0, 1.0);
@@ -793,13 +793,12 @@ pub fn update_fog_color_for_time(
         0.0
     };
 
-    // Day: subtle blue-gray, low opacity. Night: dark, high opacity.
-    // Both color and alpha animate so daytime fog is barely visible
-    // while nighttime fog blends smoothly into the dark scene.
-    let r = 0.10 + 0.30 * t;
-    let g = 0.10 + 0.35 * t;
-    let b = 0.12 + 0.38 * t;
-    let a = 0.8 - 0.5 * t; // Night: 0.8, Day: 0.3
+    // Day: hazy blue matching sky horizon. Night: dark matching tiles.
+    // Fog should blend tiles into the sky dome seamlessly at distance.
+    let r = 0.08 + 0.55 * t;
+    let g = 0.08 + 0.65 * t;
+    let b = 0.10 + 0.80 * t;
+    let a = 0.85 - 0.55 * t; // Night: 0.85, Day: 0.3
     fog.color = Color::srgba(r, g, b, a);
 }
 
@@ -888,8 +887,8 @@ pub fn sync_sky_dome(
     sky_tf.translation = cam_tf.translation;
 }
 
-/// Darken the ground plane at night so it doesn't create a gray band
-/// against the black sky at the horizon.
+/// Blend ground plane color between day (hazy blue-gray matching sky horizon)
+/// and night (dark matching CartoDB tiles) based on sun elevation.
 pub fn update_ground_plane_color(
     sun_state: Res<SunState>,
     state: Res<View3DState>,
@@ -906,18 +905,19 @@ pub fn update_ground_plane_color(
         return;
     };
 
-    let factor = if sun_state.elevation > 6.0 {
+    let elev = sun_state.elevation;
+    let day = if elev > 10.0 {
         1.0
-    } else if sun_state.elevation > 0.0 {
-        sun_state.elevation / 6.0
+    } else if elev > -6.0 {
+        (elev + 6.0) / 16.0
     } else {
-        0.3
+        0.0
     };
 
-    material.base_color = Color::srgb(
-        0.15 * factor,
-        0.15 * factor,
-        0.18 * factor,
-    );
+    // Day: hazy blue-gray matching sky horizon. Night: dark CartoDB tile color.
+    let r = 0.078 + (0.45 - 0.078) * day;
+    let g = 0.082 + (0.52 - 0.082) * day;
+    let b = 0.094 + (0.60 - 0.094) * day;
+    material.base_color = Color::srgb(r, g, b);
 }
 
