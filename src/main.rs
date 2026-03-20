@@ -31,6 +31,7 @@ mod statusbar;
 mod paths;
 mod tile_cache;
 mod tiles;
+mod terrain;
 mod render_layers;
 mod input;
 mod zoom;
@@ -231,7 +232,7 @@ fn main() {
             rate_limit_requests: 24,       // CartoDB/ESRI CDNs handle this easily; OSM is more restrictive
             ..default()
         })
-        .add_plugins((zoom::ZoomPlugin, tiles::TilesPlugin, input::InputPlugin, camera::CameraPlugin))
+        .add_plugins((zoom::ZoomPlugin, tiles::TilesPlugin, terrain::TerrainPlugin, input::InputPlugin, camera::CameraPlugin))
         .add_systems(Startup, (setup_debug_logger, setup_map, configure_gizmo_layers))
         .add_systems(bevy_egui::EguiPrimaryContextPass, (
             theme::apply_egui_theme,

@@ -491,11 +491,12 @@ impl<'a> Behavior<DockPane> for DockBehavior<'a> {
                 render_pane_with_bg(bg, ui, |ui| {
                     let mut state = SystemState::<(
                         ResMut<View3DState>,
+                        ResMut<crate::terrain::TerrainState>,
                         ResMut<TimeState>,
                         Res<SunState>,
                     )>::new(world);
-                    let (mut view3d, mut time, sun) = state.get_mut(world);
-                    tools_window::render_view3d_tab(ui, &mut view3d, &mut time, &sun);
+                    let (mut view3d, mut terrain, mut time, sun) = state.get_mut(world);
+                    tools_window::render_view3d_tab(ui, &mut view3d, &mut terrain, &mut time, &sun);
                 });
             }
 

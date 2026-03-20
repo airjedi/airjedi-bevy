@@ -13,6 +13,7 @@ use crate::data_sources::DataSourceManager;
 use crate::export::{ExportState, ExportFormat};
 use crate::recording::{RecordingState, PlaybackState};
 use crate::view3d::{View3DState, ViewMode, sky::{TimeState, SunState}};
+use crate::terrain::TerrainState;
 use crate::theme::{AppTheme, to_egui_color32, to_egui_color32_alpha};
 
 /// Which tab is currently active in the tools window.
@@ -51,6 +52,7 @@ pub fn render_tools_window(
     mut recording: ResMut<RecordingState>,
     mut playback: ResMut<PlaybackState>,
     mut view3d_state: ResMut<View3DState>,
+    mut terrain_state: ResMut<TerrainState>,
     mut time_state: ResMut<TimeState>,
     sun_state: Res<SunState>,
     theme: Res<AppTheme>,
@@ -120,7 +122,7 @@ pub fn render_tools_window(
                         ToolsTab::DataSources => render_data_sources_tab(ui, &mut datasource_mgr),
                         ToolsTab::Export => render_export_tab(ui, &mut export_state),
                         ToolsTab::Recording => render_recording_tab(ui, &mut recording, &mut playback),
-                        ToolsTab::View3D => render_view3d_tab(ui, &mut view3d_state, &mut time_state, &sun_state),
+                        ToolsTab::View3D => render_view3d_tab(ui, &mut view3d_state, &mut terrain_state, &mut time_state, &sun_state),
                         ToolsTab::Ingest => render_ingest_tab(ui, ingest_status.as_deref(), &mut app_config, ingest_ui.as_deref_mut()),
                     }
                 });
@@ -339,7 +341,7 @@ pub fn render_export_tab(ui: &mut egui::Ui, export_state: &mut ExportState) {
     }
 }
 
-pub fn render_view3d_tab(ui: &mut egui::Ui, state: &mut View3DState, time_state: &mut TimeState, sun_state: &SunState) {
+pub fn render_view3d_tab(ui: &mut egui::Ui, state: &mut View3DState, terrain: &mut TerrainState, time_state: &mut TimeState, sun_state: &SunState) {
     ui.colored_label(egui::Color32::YELLOW, "This feature is in research/prototype stage");
     ui.separator();
 
@@ -413,6 +415,24 @@ pub fn render_view3d_tab(ui: &mut egui::Ui, state: &mut View3DState, time_state:
             ui.add(egui::Slider::new(&mut state.visibility_range, 1000.0..=20000.0)
                 .suffix(" units")
                 .logarithmic(true));
+        });
+    }
+
+    ui.separator();
+    ui.label("Terrain:");
+
+    ui.checkbox(&mut terrain.enabled, "Enable 3D terrain");
+
+    if terrain.enabled {
+        ui.horizontal(|ui| {
+            ui.label("Resolution:");
+            egui::ComboBox::from_id_salt("terrain_res")
+                .selected_text(format!("{}x{}", terrain.mesh_resolution, terrain.mesh_resolution))
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut terrain.mesh_resolution, 16, "16x16");
+                    ui.selectable_value(&mut terrain.mesh_resolution, 32, "32x32");
+                    ui.selectable_value(&mut terrain.mesh_resolution, 64, "64x64");
+                });
         });
     }
 
@@ -823,6 +843,7 @@ mod tests {
     /// requires View3DState, TimeState, and SunState parameters.
     struct View3DTabTestState {
         view3d: View3DState,
+        terrain: crate::terrain::TerrainState,
         time: TimeState,
         sun: SunState,
     }
@@ -831,6 +852,7 @@ mod tests {
         fn default() -> Self {
             Self {
                 view3d: View3DState::default(),
+                terrain: crate::terrain::TerrainState::default(),
                 time: TimeState::default(),
                 sun: SunState::default(),
             }
@@ -865,7 +887,7 @@ mod tests {
     fn test_view3d_tab_shows_pitch_label() {
         let harness = Harness::new_ui_state(
             |ui, state: &mut View3DTabTestState| {
-                render_view3d_tab(ui, &mut state.view3d, &mut state.time, &state.sun);
+                render_view3d_tab(ui, &mut state.view3d, &mut state.terrain, &mut state.time, &state.sun);
             },
             View3DTabTestState::default(),
         );
@@ -877,7 +899,7 @@ mod tests {
     fn test_view3d_tab_shows_altitude_label() {
         let harness = Harness::new_ui_state(
             |ui, state: &mut View3DTabTestState| {
-                render_view3d_tab(ui, &mut state.view3d, &mut state.time, &state.sun);
+                render_view3d_tab(ui, &mut state.view3d, &mut state.terrain, &mut state.time, &state.sun);
             },
             View3DTabTestState::default(),
         );
@@ -889,7 +911,7 @@ mod tests {
     fn test_view3d_tab_shows_mode_selectable_labels() {
         let harness = Harness::new_ui_state(
             |ui, state: &mut View3DTabTestState| {
-                render_view3d_tab(ui, &mut state.view3d, &mut state.time, &state.sun);
+                render_view3d_tab(ui, &mut state.view3d, &mut state.terrain, &mut state.time, &state.sun);
             },
             View3DTabTestState::default(),
         );
