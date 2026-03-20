@@ -6,6 +6,7 @@
 
 pub(crate) mod provider;
 pub(crate) mod heightmap;
+pub(crate) mod material;
 pub(crate) mod mesh;
 
 use std::collections::HashMap;
@@ -186,7 +187,8 @@ pub(crate) struct TerrainPlugin;
 
 impl Plugin for TerrainPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<TerrainState>()
+        app.add_plugins(MaterialPlugin::<material::TerrainMaterial>::default())
+            .init_resource::<TerrainState>()
             .init_resource::<TerrainMeshCache>()
             .init_resource::<EvictionTimer>()
             .insert_resource(HeightmapCache::new(TerrainProvider::default()))

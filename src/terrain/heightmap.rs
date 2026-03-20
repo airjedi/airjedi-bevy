@@ -10,11 +10,14 @@ use super::provider::TerrainProvider;
 pub(crate) type TileKey = (u8, u32, u32);
 
 /// Decoded heightmap data for a single terrain tile.
-/// Contains a 256x256 grid of elevation values in meters.
+/// Contains a 256x256 grid of elevation values in meters,
+/// plus the raw RGB pixel data for GPU texture upload.
 pub(crate) struct HeightmapData {
     width: u32,
     height: u32,
     elevations: Vec<f32>,
+    /// Raw RGB pixel data (3 bytes per pixel) for GPU texture creation.
+    pub raw_rgb: Vec<u8>,
     pub min_elevation: f32,
     pub max_elevation: f32,
 }
@@ -28,6 +31,34 @@ impl HeightmapData {
     /// Height of the heightmap grid in pixels.
     pub(crate) fn height(&self) -> usize {
         self.height as usize
+    }
+
+    /// Create a Bevy `Image` from the raw RGB data for GPU texture upload.
+    /// The shader decodes the Terrarium format from the RGB channels.
+    pub(crate) fn to_gpu_image(&self) -> bevy::prelude::Image {
+        use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+        use bevy::asset::RenderAssetUsages;
+
+        // Convert RGB → RGBA (GPU textures require 4 channels)
+        let mut rgba = Vec::with_capacity((self.width * self.height * 4) as usize);
+        for chunk in self.raw_rgb.chunks(3) {
+            rgba.push(chunk[0]);
+            rgba.push(chunk[1]);
+            rgba.push(chunk[2]);
+            rgba.push(255);
+        }
+
+        Image::new(
+            Extent3d {
+                width: self.width,
+                height: self.height,
+                depth_or_array_layers: 1,
+            },
+            TextureDimension::D2,
+            rgba,
+            TextureFormat::Rgba8Unorm,
+            RenderAssetUsages::RENDER_WORLD,
+        )
     }
 
     /// Sample the elevation at pixel coordinates (x, y) in meters.
@@ -213,10 +244,12 @@ fn fetch_and_decode(
             max_elev = max_elev.max(elev);
             elevations.push(elev);
         }
+        let raw_rgb = img.as_raw().clone();
         let _ = sender.send((key, HeightmapData {
             width: w,
             height: h,
             elevations,
+            raw_rgb,
             min_elevation: min_elev,
             max_elevation: max_elev,
         }));
