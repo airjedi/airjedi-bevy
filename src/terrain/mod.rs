@@ -517,16 +517,24 @@ fn create_gpu_terrain_tiles(
         (With<MapTile>, Without<GpuTerrainTile>),
     >,
     mut mesh_query: Query<(&mut Mesh3d, &mut MeshMaterial3d<bevy::pbr::StandardMaterial>)>,
-    // Existing GPU terrain tiles — for cleanup
-    gpu_tiles: Query<(Entity, &TileMeshQuad), (With<MapTile>, With<GpuTerrainTile>)>,
+    // Existing GPU terrain tiles — for cleanup (has Sprite via MapTile)
+    mut gpu_tiles: Query<(Entity, &TileMeshQuad, &mut TileFadeState, &mut Sprite), (With<MapTile>, With<GpuTerrainTile>)>,
+    // GPU terrain companion entities to despawn on cleanup
+    gpu_companions: Query<Entity, With<GpuTerrainCompanion>>,
     quad_mesh: Option<Res<crate::tiles::TileQuadMesh>>,
 ) {
     // Only active when GPU terrain is enabled
     if !terrain_state.enabled || !terrain_state.gpu_terrain || !view3d_state.is_3d_active() {
-        // Cleanup: unhide StandardMaterial companions and remove markers
-        for (entity, mesh_quad) in gpu_tiles.iter() {
-            commands.entity(mesh_quad.0).try_insert(Visibility::Visible);
+        // Cleanup: remove markers, reset sprite fade so tiles re-appear in 2D,
+        // and despawn GPU companion entities
+        for (entity, _mesh_quad, mut fade_state, mut sprite) in gpu_tiles.iter_mut() {
+            // Reset alpha so animate_tile_fades will re-fade the sprite in
+            fade_state.alpha = 0.0;
+            sprite.color = Color::srgba(1.0, 1.0, 1.0, 0.0);
             commands.entity(entity).try_remove::<GpuTerrainTile>();
+        }
+        for companion in gpu_companions.iter() {
+            commands.entity(companion).despawn();
         }
         return;
     }
@@ -575,9 +583,9 @@ fn create_gpu_terrain_tiles(
             heightmap_texture: Some(heightmap_handle),
         });
 
-        // Hide the original StandardMaterial companion (tiles.rs still manages its
-        // transform and lifecycle) and spawn a separate TerrainMaterial entity.
-        commands.entity(mesh_quad.0).insert(Visibility::Hidden);
+        // The original StandardMaterial companion stays visible (tiles.rs manages its
+        // lifecycle). The TerrainMaterial companion renders on the same layer and
+        // covers it via depth testing — both are opaque at the same position.
 
         let pos_yup = view3d::zup_to_yup(transform.translation);
 
