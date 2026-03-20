@@ -23,11 +23,11 @@ struct TerrainParams {
     transition_factor: f32,
 }
 
-@group(1) @binding(0) var<uniform> params: TerrainParams;
-@group(1) @binding(1) var satellite_texture: texture_2d<f32>;
-@group(1) @binding(2) var satellite_sampler: sampler;
-@group(1) @binding(3) var heightmap_texture: texture_2d<f32>;
-@group(1) @binding(4) var heightmap_sampler: sampler;
+@group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> params: TerrainParams;
+@group(#{MATERIAL_BIND_GROUP}) @binding(1) var satellite_texture: texture_2d<f32>;
+@group(#{MATERIAL_BIND_GROUP}) @binding(2) var satellite_sampler: sampler;
+@group(#{MATERIAL_BIND_GROUP}) @binding(3) var heightmap_texture: texture_2d<f32>;
+@group(#{MATERIAL_BIND_GROUP}) @binding(4) var heightmap_sampler: sampler;
 
 // Decode Terrarium PNG pixel to elevation in meters.
 // Terrarium encoding: height = R*256 + G + B/256 - 32768
