@@ -33,6 +33,8 @@ use provider::TerrainProvider;
 pub(crate) struct TerrainState {
     /// Whether terrain mesh generation is enabled (vs flat tile quads).
     pub enabled: bool,
+    /// Use GPU vertex displacement (Phase 2) instead of CPU meshes (Phase 1).
+    pub gpu_terrain: bool,
     /// Base mesh resolution for nearest tiles (vertices per side: 32 or 64).
     pub mesh_resolution: u32,
 }
@@ -40,7 +42,8 @@ pub(crate) struct TerrainState {
 impl Default for TerrainState {
     fn default() -> Self {
         Self {
-            enabled: false, // Start disabled, user opt-in
+            enabled: false,
+            gpu_terrain: false,
             mesh_resolution: 32,
         }
     }
@@ -98,6 +101,17 @@ impl TerrainMeshCache {
         removed
     }
 }
+
+/// Cache of GPU heightmap texture handles, keyed by tile coordinates.
+#[derive(Resource, Default)]
+pub(crate) struct HeightmapTextureCache {
+    textures: HashMap<TileKey, Handle<Image>>,
+}
+
+/// Shared grid mesh for GPU terrain tiles.
+/// All GPU terrain tiles use the same mesh — displacement happens in the shader.
+#[derive(Resource)]
+pub(crate) struct TerrainGridMesh(pub Handle<Mesh>);
 
 /// Timer that controls how often cache eviction runs.
 #[derive(Resource)]
@@ -190,9 +204,11 @@ impl Plugin for TerrainPlugin {
         app.add_plugins(MaterialPlugin::<material::TerrainMaterial>::default())
             .init_resource::<TerrainState>()
             .init_resource::<TerrainMeshCache>()
+            .init_resource::<HeightmapTextureCache>()
             .init_resource::<EvictionTimer>()
             .insert_resource(HeightmapCache::new(TerrainProvider::default()))
             .register_type::<TerrainState>()
+            .add_systems(Startup, setup_terrain_grid_mesh)
             .add_systems(
                 Update,
                 heightmap::poll_heightmap_completions,
@@ -221,6 +237,11 @@ impl Plugin for TerrainPlugin {
                 Update,
                 animate_terrain_displacement
                     .after(crate::tiles::sync_tile_mesh_transforms),
+            )
+            .add_systems(
+                Update,
+                create_gpu_terrain_tiles
+                    .after(heightmap::request_heightmaps_for_tiles),
             );
     }
 }
@@ -441,5 +462,127 @@ fn animate_terrain_displacement(
             // Scale Y by transition factor. X and Z stay as set by sync_tile_mesh_transforms.
             mesh_tf.scale.y = t;
         }
+    }
+}
+
+/// Marker for GPU-terrain companion entities using `TerrainMaterial`.
+#[derive(Component)]
+struct GpuTerrainTile;
+
+/// Create the shared grid mesh used by all GPU terrain tiles.
+fn setup_terrain_grid_mesh(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
+    // 64x64 grid — same resolution as the highest CPU LOD tier.
+    // Vertex displacement happens in the shader, so one mesh fits all tiles.
+    let mesh = Mesh::from(Plane3d::new(Vec3::Y, Vec2::splat(constants::DEFAULT_TILE_PIXELS / 2.0)))
+        .with_generated_tangents()
+        .expect("Plane3d tangent generation");
+    commands.insert_resource(TerrainGridMesh(meshes.add(mesh)));
+}
+
+/// GPU terrain path: for tiles with available heightmaps, replace the flat
+/// `TileQuad3d` companion with a `TerrainMaterial` entity that performs
+/// vertex displacement in the shader.
+///
+/// Only runs when `terrain_state.gpu_terrain` is true.
+fn create_gpu_terrain_tiles(
+    mut commands: Commands,
+    terrain_state: Res<TerrainState>,
+    view3d_state: Res<View3DState>,
+    map_state: Res<MapState>,
+    tile_settings: Res<bevy_slippy_tiles::SlippyTilesSettings>,
+    heightmap_cache: Res<HeightmapCache>,
+    grid_mesh: Option<Res<TerrainGridMesh>>,
+    mut heightmap_textures: ResMut<HeightmapTextureCache>,
+    mut images: ResMut<Assets<Image>>,
+    mut terrain_materials: ResMut<Assets<material::TerrainMaterial>>,
+    // Tiles with mesh quads but no GPU terrain yet
+    tiles_to_upgrade: Query<
+        (Entity, &Sprite, &Transform, &TileFadeState, &TileMeshQuad),
+        (With<MapTile>, Without<GpuTerrainTile>),
+    >,
+    mut mesh_query: Query<(&mut Mesh3d, &mut MeshMaterial3d<bevy::pbr::StandardMaterial>)>,
+    // Existing GPU terrain tiles — for cleanup
+    gpu_tiles: Query<(Entity, &TileMeshQuad), (With<MapTile>, With<GpuTerrainTile>)>,
+    quad_mesh: Option<Res<crate::tiles::TileQuadMesh>>,
+) {
+    // Only active when GPU terrain is enabled
+    if !terrain_state.enabled || !terrain_state.gpu_terrain || !view3d_state.is_3d_active() {
+        // Cleanup: remove GpuTerrainTile markers when disabled
+        // (the StandardMaterial companion entities remain managed by tiles.rs)
+        for (entity, _) in gpu_tiles.iter() {
+            commands.entity(entity).try_remove::<GpuTerrainTile>();
+        }
+        return;
+    }
+
+    let Some(grid_mesh) = grid_mesh else { return };
+
+    let altitude_scale = view3d::PIXEL_SCALE * view3d_state.altitude_scale;
+    let transition_factor = match view3d_state.transition {
+        TransitionState::Idle => 1.0,
+        TransitionState::TransitioningTo3D { progress } => progress * progress * (3.0 - 2.0 * progress),
+        TransitionState::TransitioningTo2D { progress } => {
+            let s = 1.0 - progress;
+            s * s * (3.0 - 2.0 * s)
+        }
+    };
+
+    let current_zoom = map_state.zoom_level.to_u8();
+
+    for (tile_entity, sprite, transform, fade_state, mesh_quad) in tiles_to_upgrade.iter() {
+        if fade_state.tile_zoom != current_zoom {
+            continue;
+        }
+
+        let tile_key = tile_key_from_transform(transform, fade_state, &tile_settings, map_state.zoom_level);
+
+        // Need heightmap data for this tile
+        let Some(heightmap) = heightmap_cache.get(&tile_key) else {
+            continue;
+        };
+
+        // Get or create GPU texture for this heightmap
+        let heightmap_handle = heightmap_textures.textures
+            .entry(tile_key)
+            .or_insert_with(|| images.add(heightmap.to_gpu_image()))
+            .clone();
+
+        // Create TerrainMaterial for this tile
+        let terrain_mat = terrain_materials.add(material::TerrainMaterial {
+            params: material::TerrainParams {
+                elevation_scale: altitude_scale,
+                texel_size: 1.0 / heightmap.width() as f32,
+                emissive_boost: 8.0, // Match TILE_EMISSIVE_BOOST
+                transition_factor,
+            },
+            satellite_texture: Some(sprite.image.clone()),
+            heightmap_texture: Some(heightmap_handle),
+        });
+
+        // Replace the StandardMaterial companion with TerrainMaterial.
+        // We need to despawn the old companion and spawn a new one with TerrainMaterial
+        // because MeshMaterial3d<StandardMaterial> and MeshMaterial3d<TerrainMaterial>
+        // are different component types.
+        let old_companion = mesh_quad.0;
+        let pos_yup = view3d::zup_to_yup(transform.translation);
+
+        let new_companion = commands.spawn((
+            crate::tiles::TileQuad3d,
+            Mesh3d(grid_mesh.0.clone()),
+            MeshMaterial3d(terrain_mat),
+            Transform::from_translation(pos_yup)
+                .with_scale(Vec3::new(transform.scale.x, 1.0, transform.scale.x)),
+            Pickable::IGNORE,
+            bevy::camera::visibility::RenderLayers::layer(crate::RenderCategory::TILES_3D),
+        )).id();
+
+        // Despawn the old StandardMaterial companion
+        commands.entity(old_companion).despawn();
+
+        // Update the TileMeshQuad to point to the new companion
+        commands.entity(tile_entity).queue_silenced(move |mut entity: EntityWorldMut| {
+            entity.insert(TileMeshQuad(new_companion));
+            entity.insert(GpuTerrainTile);
+        });
     }
 }

@@ -424,16 +424,19 @@ pub fn render_view3d_tab(ui: &mut egui::Ui, state: &mut View3DState, terrain: &m
     ui.checkbox(&mut terrain.enabled, "Enable 3D terrain");
 
     if terrain.enabled {
-        ui.horizontal(|ui| {
-            ui.label("Resolution:");
-            egui::ComboBox::from_id_salt("terrain_res")
-                .selected_text(format!("{}x{}", terrain.mesh_resolution, terrain.mesh_resolution))
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut terrain.mesh_resolution, 16, "16x16");
-                    ui.selectable_value(&mut terrain.mesh_resolution, 32, "32x32");
-                    ui.selectable_value(&mut terrain.mesh_resolution, 64, "64x64");
-                });
-        });
+        ui.checkbox(&mut terrain.gpu_terrain, "GPU vertex displacement");
+        if !terrain.gpu_terrain {
+            ui.horizontal(|ui| {
+                ui.label("Resolution:");
+                egui::ComboBox::from_id_salt("terrain_res")
+                    .selected_text(format!("{}x{}", terrain.mesh_resolution, terrain.mesh_resolution))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut terrain.mesh_resolution, 16, "16x16");
+                        ui.selectable_value(&mut terrain.mesh_resolution, 32, "32x32");
+                        ui.selectable_value(&mut terrain.mesh_resolution, 64, "64x64");
+                    });
+            });
+        }
     }
 
     ui.separator();

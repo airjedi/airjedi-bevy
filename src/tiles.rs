@@ -30,7 +30,7 @@ pub(crate) struct TileMeshQuad(pub Entity);
 
 /// Marker on 3D mesh quad companion entities so orphans can be detected.
 #[derive(Component)]
-struct TileQuad3d;
+pub(crate) struct TileQuad3d;
 
 /// Shared mesh handle for all 3D tile quads (sized to match DEFAULT_TILE_PIXELS).
 #[derive(Resource)]
