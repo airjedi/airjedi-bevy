@@ -307,29 +307,36 @@ fn handle_window_resize(
 /// so the larger perspective footprint is covered.
 /// When returning to 2D, clears spawned tile tracking so tiles are freshly re-displayed.
 fn handle_3d_view_tile_refresh(
+    mut commands: Commands,
     view3d_state: Res<view3d::View3DState>,
     mut download_events: MessageWriter<DownloadSlippyTilesMessage>,
     mut map_state: ResMut<MapState>,
-    zoom_state: Res<ZoomState>,
+    mut zoom_state: ResMut<ZoomState>,
     window_query: Query<&Window>,
     mut spawned_tiles: ResMut<SpawnedTiles>,
+    mut download_status: ResMut<SlippyTileDownloadStatus>,
+    all_tiles: Query<Entity, With<MapTile>>,
 ) {
     if !view3d_state.is_changed() {
         return;
     }
 
-    // When we've just returned to 2D mode, clear the spawned tiles tracker
-    // and restore the saved 2D zoom level.
-    // 3D mode uses multi-resolution tiles at different zoom levels and scales;
-    // without clearing, the dedup check in display_tiles_filtered would skip
-    // re-spawning tiles at the current zoom level, leaving a blank map.
+    // When we've just returned to 2D mode, despawn all existing tiles and reset
+    // tracking state so the tile pipeline starts fresh at the correct 2D zoom.
+    // This avoids stale 3D-zoom tiles being culled en masse and leaving gaps.
     if matches!(view3d_state.mode, view3d::ViewMode::Map2D) && !view3d_state.is_transitioning() {
+        // Despawn all existing tile entities from 3D mode
+        for entity in all_tiles.iter() {
+            commands.entity(entity).despawn();
+        }
         spawned_tiles.positions.clear();
-        // Restore the 2D zoom level that was saved when entering 3D mode
+        download_status.0.clear();
+        // Restore the 2D zoom level and reset camera zoom
         if let Some(saved_zoom) = view3d_state.saved_2d_zoom_level {
             if let Ok(zoom) = ZoomLevel::try_from(saved_zoom) {
                 map_state.zoom_level = zoom;
-                debug!("Restored 2D zoom level: {}", saved_zoom);
+                zoom_state.camera_zoom = 1.0;
+                debug!("Restored 2D zoom level: {} (camera_zoom reset, tiles cleared)", saved_zoom);
             }
         }
     }
@@ -337,11 +344,18 @@ fn handle_3d_view_tile_refresh(
     let Ok(window) = window_query.single() else {
         return;
     };
+    // Use 2D radius when in 2D mode to avoid requesting the 3D perspective
+    // footprint worth of tiles (which overwhelms the 2D tile budget).
+    let view3d_for_radius = if view3d_state.is_3d_active() {
+        Some(&*view3d_state)
+    } else {
+        None
+    };
     let radius = compute_tile_radius(
         window.width(),
         window.height(),
         zoom_state.camera_zoom,
-        Some(&view3d_state),
+        view3d_for_radius,
     );
     download_events.write(DownloadSlippyTilesMessage {
         tile_size: constants::DEFAULT_TILE_SIZE,
@@ -1055,15 +1069,25 @@ fn hide_tile_sprites_in_3d(
         }
     } else {
         // When returning to 2D, restore sprite visibility. Tiles spawned
-        // during 3D mode may have alpha=0 on both the sprite and fade_state
-        // (since the mesh quad rendered instead). Force them visible.
+        // during 3D mode had sprites zeroed while mesh quads rendered.
+        let mut hidden = 0;
+        let mut restored = 0;
+        let mut already_ok = 0;
         for (mut sprite, fade_state) in tile_query.iter_mut() {
-            if sprite.color.alpha() < fade_state.alpha {
-                sprite.color = Color::srgba(1.0, 1.0, 1.0, fade_state.alpha);
-            } else if sprite.color.alpha() == 0.0 {
-                // Tile was hidden in 3D and never faded in — make it visible
-                sprite.color = Color::srgba(1.0, 1.0, 1.0, 1.0);
+            let sprite_alpha = sprite.color.alpha();
+            if sprite_alpha < 0.01 {
+                hidden += 1;
+                // Force visible — use fade_state alpha if available, else full
+                let target = if fade_state.alpha > 0.01 { fade_state.alpha } else { 1.0 };
+                sprite.color = Color::srgba(1.0, 1.0, 1.0, target);
+                restored += 1;
+            } else {
+                already_ok += 1;
             }
+        }
+        if hidden > 0 {
+            debug!("hide_tile_sprites_in_3d 2D restore: {} hidden, {} restored, {} already ok",
+                   hidden, restored, already_ok);
         }
     }
 }
