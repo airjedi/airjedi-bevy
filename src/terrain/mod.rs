@@ -16,7 +16,7 @@ use bevy_slippy_tiles::MapTile;
 use crate::constants;
 use crate::map::MapState;
 use crate::tiles::{TileFadeState, TileMeshQuad};
-use crate::view3d::{self, View3DState};
+use crate::view3d::{self, View3DState, TransitionState};
 
 use heightmap::{HeightmapCache, TileKey};
 use mesh::{generate_terrain_mesh, resolution_for_zoom_offset, NeighborLod};
@@ -214,6 +214,11 @@ impl Plugin for TerrainPlugin {
                 Update,
                 update_ground_elevation
                     .after(heightmap::poll_heightmap_completions),
+            )
+            .add_systems(
+                Update,
+                animate_terrain_displacement
+                    .after(crate::tiles::sync_tile_mesh_transforms),
             );
     }
 }
@@ -387,5 +392,52 @@ fn update_ground_elevation(
     ) {
         let elevation_ft = (elevation_m * 3.28084) as i32;
         view3d_state.ground_elevation_ft = elevation_ft;
+    }
+}
+
+/// Animate terrain displacement during 2D↔3D transitions.
+///
+/// During transitions, scales the Y component of terrain mesh entities
+/// from 0.0 (flat, 2D) to 1.0 (full displacement, 3D) using the same
+/// smooth-step curve as the camera transition. This prevents terrain
+/// from popping in/out instantly when toggling view modes.
+fn animate_terrain_displacement(
+    view3d_state: Res<View3DState>,
+    terrain_state: Res<TerrainState>,
+    terrain_tiles: Query<&TileMeshQuad, (With<MapTile>, With<TerrainTile>)>,
+    mut mesh_transforms: Query<&mut Transform, Without<MapTile>>,
+) {
+    if !terrain_state.enabled {
+        return;
+    }
+
+    // Compute transition factor: 0.0 = fully 2D (flat), 1.0 = fully 3D.
+    // Must run every frame (not just during transitions) because
+    // sync_tile_mesh_transforms resets scale.y = 1.0 each frame.
+    let t = match view3d_state.transition {
+        TransitionState::Idle => match view3d_state.mode {
+            crate::view3d::ViewMode::Perspective3D => 1.0,
+            crate::view3d::ViewMode::Map2D => 0.0,
+        },
+        TransitionState::TransitioningTo3D { progress } => {
+            let s = progress;
+            s * s * (3.0 - 2.0 * s)
+        }
+        TransitionState::TransitioningTo2D { progress } => {
+            let s = 1.0 - progress;
+            s * s * (3.0 - 2.0 * s)
+        }
+    };
+
+    // When fully 3D and idle, no need to override (sync_tile_mesh_transforms sets 1.0)
+    if t >= 1.0 {
+        return;
+    }
+
+    for mesh_quad in terrain_tiles.iter() {
+        if let Ok(mut mesh_tf) = mesh_transforms.get_mut(mesh_quad.0) {
+            // Scale Y by transition factor. X and Z stay as set by sync_tile_mesh_transforms.
+            mesh_tf.scale.y = t;
+        }
     }
 }
