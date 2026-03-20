@@ -169,6 +169,11 @@ impl Plugin for TerrainPlugin {
                 Update,
                 evict_terrain_caches
                     .after(create_terrain_meshes),
+            )
+            .add_systems(
+                Update,
+                update_ground_elevation
+                    .after(heightmap::poll_heightmap_completions),
             );
     }
 }
@@ -284,5 +289,43 @@ fn evict_terrain_caches(
             "Terrain cache eviction: {} heightmaps, {} meshes removed (remaining: {} hm, {} mesh)",
             hm_removed, mesh_removed, heightmap_cache.len(), mesh_cache.meshes.len()
         );
+    }
+}
+
+/// Sample the heightmap at the camera's map center position and update
+/// `View3DState::ground_elevation_ft`. Only runs when terrain is enabled
+/// and 3D mode is active. Falls back to the existing airport-based detection
+/// when no heightmap data is available at the current position.
+fn update_ground_elevation(
+    terrain_state: Res<TerrainState>,
+    mut view3d_state: ResMut<View3DState>,
+    map_state: Res<MapState>,
+    mut heightmap_cache: ResMut<HeightmapCache>,
+) {
+    if !terrain_state.enabled || !view3d_state.is_3d_active() {
+        return;
+    }
+
+    let zoom = map_state.zoom_level.to_u8();
+    let zoom_level = map_state.zoom_level;
+
+    // Ensure the heightmap for the camera center tile is requested
+    let tile_coords = bevy_slippy_tiles::SlippyTileCoordinates::from_latitude_longitude(
+        map_state.latitude,
+        map_state.longitude,
+        zoom_level,
+    );
+    let center_key: heightmap::TileKey = (zoom, tile_coords.x, tile_coords.y);
+    if !heightmap_cache.contains(&center_key) {
+        heightmap_cache.request(center_key);
+    }
+
+    if let Some(elevation_m) = heightmap_cache.sample_elevation(
+        map_state.latitude,
+        map_state.longitude,
+        zoom_level,
+    ) {
+        let elevation_ft = (elevation_m * 3.28084) as i32;
+        view3d_state.ground_elevation_ft = elevation_ft;
     }
 }

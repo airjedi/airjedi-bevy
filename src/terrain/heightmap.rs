@@ -128,6 +128,60 @@ impl HeightmapCache {
     pub(crate) fn len(&self) -> usize {
         self.cache.len()
     }
+
+    /// Sample elevation in meters at a given lat/lon and zoom level.
+    /// Returns `None` if the heightmap tile isn't cached yet.
+    pub(crate) fn sample_elevation(
+        &self,
+        lat: f64,
+        lon: f64,
+        zoom_level: bevy_slippy_tiles::ZoomLevel,
+    ) -> Option<f32> {
+        let zoom = zoom_level.to_u8();
+        let tile_coords = bevy_slippy_tiles::SlippyTileCoordinates::from_latitude_longitude(
+            lat, lon, zoom_level,
+        );
+        let key: TileKey = (zoom, tile_coords.x, tile_coords.y);
+        let heightmap = self.cache.get(&key)?;
+
+        // Compute fractional position within the tile (0.0 to 1.0)
+        let n = 2.0_f64.powi(zoom as i32);
+        let lat_rad = lat.to_radians();
+
+        // Tile boundaries in lat/lon
+        let tile_lon_min = (tile_coords.x as f64 / n) * 360.0 - 180.0;
+        let tile_lon_max = ((tile_coords.x + 1) as f64 / n) * 360.0 - 180.0;
+
+        let tile_lat_max = (std::f64::consts::PI * (1.0 - 2.0 * tile_coords.y as f64 / n)).sinh().atan().to_degrees();
+        let tile_lat_min = (std::f64::consts::PI * (1.0 - 2.0 * (tile_coords.y + 1) as f64 / n)).sinh().atan().to_degrees();
+
+        // UV within tile: u = east fraction, v = south fraction
+        let u = ((lon - tile_lon_min) / (tile_lon_max - tile_lon_min)).clamp(0.0, 1.0) as f32;
+        let v = ((tile_lat_max - lat) / (tile_lat_max - tile_lat_min)).clamp(0.0, 1.0) as f32;
+
+        // Bilinear sample
+        let w = heightmap.width() as f32;
+        let h = heightmap.height() as f32;
+        let px = (u * (w - 1.0)).clamp(0.0, w - 1.0);
+        let py = (v * (h - 1.0)).clamp(0.0, h - 1.0);
+
+        let x0 = px.floor() as usize;
+        let y0 = py.floor() as usize;
+        let x1 = (x0 + 1).min(heightmap.width() - 1);
+        let y1 = (y0 + 1).min(heightmap.height() - 1);
+
+        let fx = px - px.floor();
+        let fy = py - py.floor();
+
+        let e00 = heightmap.elevation(x0, y0);
+        let e10 = heightmap.elevation(x1, y0);
+        let e01 = heightmap.elevation(x0, y1);
+        let e11 = heightmap.elevation(x1, y1);
+
+        let top = e00 * (1.0 - fx) + e10 * fx;
+        let bottom = e01 * (1.0 - fx) + e11 * fx;
+        Some(top * (1.0 - fy) + bottom * fy)
+    }
 }
 
 /// Spawn a background thread to fetch an elevation tile PNG, decode it, and
