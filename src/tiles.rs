@@ -1047,14 +1047,24 @@ pub(crate) fn sync_tile_mesh_transforms(
 /// In 2D mode this is a no-op since sprites already have correct alpha.
 fn hide_tile_sprites_in_3d(
     view3d_state: Res<view3d::View3DState>,
-    mut tile_query: Query<&mut Sprite, With<MapTile>>,
+    mut tile_query: Query<(&mut Sprite, &TileFadeState), With<MapTile>>,
 ) {
-    if !view3d_state.is_3d_active() {
-        return;
-    }
-
-    for mut sprite in tile_query.iter_mut() {
-        sprite.color = Color::srgba(1.0, 1.0, 1.0, 0.0);
+    if view3d_state.is_3d_active() {
+        for (mut sprite, _) in tile_query.iter_mut() {
+            sprite.color = Color::srgba(1.0, 1.0, 1.0, 0.0);
+        }
+    } else {
+        // When returning to 2D, restore sprite visibility. Tiles spawned
+        // during 3D mode may have alpha=0 on both the sprite and fade_state
+        // (since the mesh quad rendered instead). Force them visible.
+        for (mut sprite, fade_state) in tile_query.iter_mut() {
+            if sprite.color.alpha() < fade_state.alpha {
+                sprite.color = Color::srgba(1.0, 1.0, 1.0, fade_state.alpha);
+            } else if sprite.color.alpha() == 0.0 {
+                // Tile was hidden in 3D and never faded in — make it visible
+                sprite.color = Color::srgba(1.0, 1.0, 1.0, 1.0);
+            }
+        }
     }
 }
 
