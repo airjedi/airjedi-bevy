@@ -1022,7 +1022,7 @@ fn sync_tile_mesh_alpha(
 }
 
 /// Sync mesh companion transforms with tile sprite transforms.
-fn sync_tile_mesh_transforms(
+pub(crate) fn sync_tile_mesh_transforms(
     view3d_state: Res<view3d::View3DState>,
     tile_query: Query<(&Transform, &TileMeshQuad), With<MapTile>>,
     mut mesh_transforms: Query<&mut Transform, Without<MapTile>>,
