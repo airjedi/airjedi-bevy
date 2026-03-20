@@ -242,6 +242,11 @@ impl Plugin for TerrainPlugin {
                 Update,
                 create_gpu_terrain_tiles
                     .after(heightmap::request_heightmaps_for_tiles),
+            )
+            .add_systems(
+                Update,
+                (sync_gpu_terrain_transforms, cleanup_gpu_terrain_companions)
+                    .after(crate::tiles::sync_tile_mesh_transforms),
             );
     }
 }
@@ -275,6 +280,11 @@ fn create_terrain_meshes(
     terrain_tiles: Query<(Entity, &TileMeshQuad), (With<MapTile>, With<TerrainTile>)>,
     quad_mesh: Option<Res<crate::tiles::TileQuadMesh>>,
 ) {
+    // Skip CPU path when GPU terrain is active
+    if terrain_state.gpu_terrain && terrain_state.enabled && view3d_state.is_3d_active() {
+        return;
+    }
+
     // When terrain is disabled or we are in 2D mode, restore flat meshes.
     // The existing emissive material is kept — no material swap needed.
     if !terrain_state.enabled || !view3d_state.is_3d_active() {
@@ -465,9 +475,15 @@ fn animate_terrain_displacement(
     }
 }
 
-/// Marker for GPU-terrain companion entities using `TerrainMaterial`.
+/// Marker on tile entities that have been upgraded to GPU terrain.
 #[derive(Component)]
 struct GpuTerrainTile;
+
+/// Component on GPU terrain companion entities linking back to their source tile.
+#[derive(Component)]
+struct GpuTerrainCompanion {
+    source_tile: Entity,
+}
 
 /// Create the shared grid mesh used by all GPU terrain tiles.
 fn setup_terrain_grid_mesh(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
@@ -507,9 +523,9 @@ fn create_gpu_terrain_tiles(
 ) {
     // Only active when GPU terrain is enabled
     if !terrain_state.enabled || !terrain_state.gpu_terrain || !view3d_state.is_3d_active() {
-        // Cleanup: remove GpuTerrainTile markers when disabled
-        // (the StandardMaterial companion entities remain managed by tiles.rs)
-        for (entity, _) in gpu_tiles.iter() {
+        // Cleanup: unhide StandardMaterial companions and remove markers
+        for (entity, mesh_quad) in gpu_tiles.iter() {
+            commands.entity(mesh_quad.0).try_insert(Visibility::Visible);
             commands.entity(entity).try_remove::<GpuTerrainTile>();
         }
         return;
@@ -559,30 +575,57 @@ fn create_gpu_terrain_tiles(
             heightmap_texture: Some(heightmap_handle),
         });
 
-        // Replace the StandardMaterial companion with TerrainMaterial.
-        // We need to despawn the old companion and spawn a new one with TerrainMaterial
-        // because MeshMaterial3d<StandardMaterial> and MeshMaterial3d<TerrainMaterial>
-        // are different component types.
-        let old_companion = mesh_quad.0;
+        // Hide the original StandardMaterial companion (tiles.rs still manages its
+        // transform and lifecycle) and spawn a separate TerrainMaterial entity.
+        commands.entity(mesh_quad.0).insert(Visibility::Hidden);
+
         let pos_yup = view3d::zup_to_yup(transform.translation);
 
-        let new_companion = commands.spawn((
-            crate::tiles::TileQuad3d,
+        commands.spawn((
+            GpuTerrainCompanion { source_tile: tile_entity },
             Mesh3d(grid_mesh.0.clone()),
             MeshMaterial3d(terrain_mat),
             Transform::from_translation(pos_yup)
                 .with_scale(Vec3::new(transform.scale.x, 1.0, transform.scale.x)),
             Pickable::IGNORE,
             bevy::camera::visibility::RenderLayers::layer(crate::RenderCategory::TILES_3D),
-        )).id();
+        ));
 
-        // Despawn the old StandardMaterial companion
-        commands.entity(old_companion).despawn();
+        commands.entity(tile_entity).try_insert(GpuTerrainTile);
+    }
+}
 
-        // Update the TileMeshQuad to point to the new companion
-        commands.entity(tile_entity).queue_silenced(move |mut entity: EntityWorldMut| {
-            entity.insert(TileMeshQuad(new_companion));
-            entity.insert(GpuTerrainTile);
-        });
+/// Sync GPU terrain companion transforms with their source tile's
+/// StandardMaterial companion (which tiles.rs keeps positioned correctly).
+fn sync_gpu_terrain_transforms(
+    companions: Query<(&GpuTerrainCompanion, Entity)>,
+    tile_query: Query<(&Transform, &TileMeshQuad), With<MapTile>>,
+    mut transforms: Query<&mut Transform, Without<MapTile>>,
+) {
+    // Collect source positions first to avoid borrow conflicts
+    let updates: Vec<(Entity, Vec3, Vec3)> = companions.iter().filter_map(|(comp, comp_entity)| {
+        let (tile_tf, mesh_quad) = tile_query.get(comp.source_tile).ok()?;
+        let source_tf = transforms.get(mesh_quad.0).ok()?;
+        Some((comp_entity, source_tf.translation, source_tf.scale))
+    }).collect();
+
+    for (comp_entity, translation, scale) in updates {
+        if let Ok(mut tf) = transforms.get_mut(comp_entity) {
+            tf.translation = translation;
+            tf.scale = scale;
+        }
+    }
+}
+
+/// Despawn GPU terrain companion entities whose source tile no longer exists.
+fn cleanup_gpu_terrain_companions(
+    mut commands: Commands,
+    companions: Query<(Entity, &GpuTerrainCompanion)>,
+    tiles: Query<Entity, With<MapTile>>,
+) {
+    for (companion_entity, companion) in companions.iter() {
+        if tiles.get(companion.source_tile).is_err() {
+            commands.entity(companion_entity).despawn();
+        }
     }
 }
