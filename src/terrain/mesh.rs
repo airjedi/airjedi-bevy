@@ -12,6 +12,21 @@ use super::heightmap::HeightmapData;
 /// Default depth for skirt geometry (world units below edge vertices).
 const SKIRT_DEPTH: f32 = 50.0;
 
+/// Neighbor resolution info for edge stitching.
+/// When a neighbor has lower resolution than this tile, edge vertices
+/// are snapped to match the coarser grid to prevent T-junction cracks.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct NeighborLod {
+    /// Resolution of the neighbor on the top edge (row 0), or None if same/higher.
+    pub top: Option<u32>,
+    /// Resolution of the neighbor on the bottom edge (last row).
+    pub bottom: Option<u32>,
+    /// Resolution of the neighbor on the left edge (column 0).
+    pub left: Option<u32>,
+    /// Resolution of the neighbor on the right edge (last column).
+    pub right: Option<u32>,
+}
+
 /// Generate a terrain mesh from heightmap data.
 ///
 /// # Parameters
@@ -21,6 +36,7 @@ const SKIRT_DEPTH: f32 = 50.0;
 /// - `altitude_scale`: Combined scale factor (PIXEL_SCALE * ALTITUDE_EXAGGERATION = 400.0).
 ///   Elevation is converted to world units as: `elevation_m * 0.001 * altitude_scale`.
 /// - `add_skirts`: Whether to add skirt geometry for crack prevention between tiles
+/// - `neighbor_lod`: Resolution of adjacent tiles for edge stitching
 ///
 /// Returns a Bevy `Mesh` with positions, normals, UVs, and triangle indices.
 pub(crate) fn generate_terrain_mesh(
@@ -29,6 +45,7 @@ pub(crate) fn generate_terrain_mesh(
     resolution: u32,
     altitude_scale: f32,
     add_skirts: bool,
+    neighbor_lod: &NeighborLod,
 ) -> Mesh {
     let verts_per_side = resolution + 1;
     let vertex_count = (verts_per_side * verts_per_side) as usize;
@@ -64,6 +81,17 @@ pub(crate) fn generate_terrain_mesh(
             normals.push(normal.into());
         }
     }
+
+    // Edge stitching: snap edge vertices to match lower-resolution neighbors.
+    // For each edge where the neighbor has fewer subdivisions, intermediate
+    // vertices are linearly interpolated between the coarser grid points.
+    // This eliminates T-junction cracks at LOD boundaries.
+    stitch_edge_vertices(
+        &mut positions,
+        resolution,
+        verts_per_side,
+        neighbor_lod,
+    );
 
     // Generate triangle indices: two triangles per grid cell.
     let quad_count = (resolution * resolution) as usize;
@@ -173,6 +201,82 @@ fn compute_normal(
     // cancel when we normalise, so we can simplify:
     let normal = Vec3::new(-dh_dx, 2.0 * texel_size, -dh_dz).normalize_or(Vec3::Y);
     normal
+}
+
+/// Snap edge vertices to match a lower-resolution neighbor's grid.
+///
+/// When a neighbor tile has fewer subdivisions (e.g., 16 vs our 64), its edge
+/// has fewer vertices. Our edge vertices between the coarser grid points would
+/// not align, creating T-junction cracks. This function linearly interpolates
+/// the Y (height) of intermediate vertices between the coarser grid points so
+/// both tiles produce identical edge geometry.
+fn stitch_edge_vertices(
+    positions: &mut [[f32; 3]],
+    resolution: u32,
+    verts_per_side: u32,
+    neighbor_lod: &NeighborLod,
+) {
+    // For a given edge, `our_count` = resolution + 1 vertices.
+    // The neighbor has `neighbor_res + 1` vertices along the same edge.
+    // We only stitch when the neighbor is strictly coarser (lower resolution).
+    let stitch_edge = |positions: &mut [[f32; 3]],
+                       edge_indices: &[u32],
+                       neighbor_res: u32| {
+        if neighbor_res >= resolution || neighbor_res == 0 || resolution % neighbor_res != 0 {
+            return; // Same/higher res or not evenly divisible — skip.
+        }
+
+        // The coarser grid divides the edge into `neighbor_res` segments.
+        // Our grid divides it into `resolution` segments.
+        // The ratio tells us how many of our vertices fall between each
+        // pair of coarse grid points.
+        let step = resolution / neighbor_res; // e.g., 64/16 = 4
+
+        for coarse_seg in 0..neighbor_res {
+            let start_idx = (coarse_seg * step) as usize;
+            let end_idx = ((coarse_seg + 1) * step) as usize;
+
+            let start_y = positions[edge_indices[start_idx] as usize][1];
+            let end_y = positions[edge_indices[end_idx] as usize][1];
+
+            // Interpolate intermediate vertices
+            for k in 1..step as usize {
+                let t = k as f32 / step as f32;
+                let idx = edge_indices[start_idx + k] as usize;
+                positions[idx][1] = start_y * (1.0 - t) + end_y * t;
+            }
+        }
+    };
+
+    // Top edge: row 0, columns 0..=resolution
+    if let Some(neighbor_res) = neighbor_lod.top {
+        let edge: Vec<u32> = (0..verts_per_side).collect();
+        stitch_edge(positions, &edge, neighbor_res);
+    }
+
+    // Bottom edge: last row
+    if let Some(neighbor_res) = neighbor_lod.bottom {
+        let edge: Vec<u32> = (0..verts_per_side)
+            .map(|col| resolution * verts_per_side + col)
+            .collect();
+        stitch_edge(positions, &edge, neighbor_res);
+    }
+
+    // Left edge: column 0
+    if let Some(neighbor_res) = neighbor_lod.left {
+        let edge: Vec<u32> = (0..verts_per_side)
+            .map(|row| row * verts_per_side)
+            .collect();
+        stitch_edge(positions, &edge, neighbor_res);
+    }
+
+    // Right edge: last column
+    if let Some(neighbor_res) = neighbor_lod.right {
+        let edge: Vec<u32> = (0..verts_per_side)
+            .map(|row| row * verts_per_side + resolution)
+            .collect();
+        stitch_edge(positions, &edge, neighbor_res);
+    }
 }
 
 /// Add skirt geometry along the mesh edges to prevent cracks between
