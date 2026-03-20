@@ -1,0 +1,288 @@
+//! 3D Terrain rendering module.
+//!
+//! Provides real-time terrain mesh generation from elevation tile data,
+//! replacing flat tile quads with heightmap-displaced geometry in 3D mode.
+//! Uses AWS Terrain Tiles (Terrarium PNG format) as the elevation data source.
+
+pub(crate) mod provider;
+pub(crate) mod heightmap;
+pub(crate) mod mesh;
+
+use std::collections::HashMap;
+
+use bevy::prelude::*;
+use bevy_slippy_tiles::MapTile;
+
+use crate::constants;
+use crate::map::MapState;
+use crate::tiles::{TileFadeState, TileMeshQuad};
+use crate::view3d::{self, View3DState};
+
+use heightmap::{HeightmapCache, TileKey};
+use mesh::{generate_terrain_mesh, resolution_for_zoom_offset};
+use provider::TerrainProvider;
+
+// ---------------------------------------------------------------------------
+// Resources and components
+// ---------------------------------------------------------------------------
+
+/// Controls whether terrain rendering is active and its parameters.
+#[derive(Resource, Reflect)]
+#[reflect(Resource)]
+pub(crate) struct TerrainState {
+    /// Whether terrain mesh generation is enabled (vs flat tile quads).
+    pub enabled: bool,
+    /// Base mesh resolution for nearest tiles (vertices per side: 32 or 64).
+    pub mesh_resolution: u32,
+}
+
+impl Default for TerrainState {
+    fn default() -> Self {
+        Self {
+            enabled: false, // Start disabled, user opt-in
+            mesh_resolution: 32,
+        }
+    }
+}
+
+/// Marker component on entities that have terrain mesh geometry
+/// (as opposed to flat tile quads).
+#[derive(Component)]
+pub(crate) struct TerrainTile;
+
+/// Cache of generated terrain mesh handles, keyed by tile coordinates.
+#[derive(Resource, Default)]
+pub(crate) struct TerrainMeshCache {
+    meshes: HashMap<TileKey, Handle<Mesh>>,
+}
+
+impl TerrainMeshCache {
+    /// Evict mesh entries outside the active zoom band and enforce a size cap.
+    fn evict(&mut self, current_zoom: u8, max_entries: usize) -> usize {
+        let mut removed = 0;
+        let min_zoom = current_zoom.saturating_sub(4);
+
+        self.meshes.retain(|&(zoom, _, _), _| {
+            let keep = zoom >= min_zoom && zoom <= current_zoom;
+            if !keep { removed += 1; }
+            keep
+        });
+
+        if self.meshes.len() > max_entries {
+            let excess = self.meshes.len() - max_entries;
+            let keys_to_remove: Vec<TileKey> = self.meshes.keys().take(excess).copied().collect();
+            for key in keys_to_remove {
+                self.meshes.remove(&key);
+                removed += 1;
+            }
+        }
+
+        removed
+    }
+}
+
+/// Timer that controls how often cache eviction runs.
+#[derive(Resource)]
+struct EvictionTimer(Timer);
+
+impl Default for EvictionTimer {
+    fn default() -> Self {
+        Self(Timer::from_seconds(5.0, TimerMode::Repeating))
+    }
+}
+
+/// Max cached heightmaps (256×256×f32 ≈ 256KB each → 400 = ~100MB)
+const MAX_HEIGHTMAP_ENTRIES: usize = 400;
+/// Max cached terrain meshes
+const MAX_MESH_ENTRIES: usize = 400;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/// Compute the slippy tile key for a tile entity from its world-space transform.
+///
+/// Converts the tile's transform position back to world-pixel coordinates,
+/// then to lat/lon, then to slippy tile coordinates.
+pub(crate) fn tile_key_from_transform(
+    transform: &Transform,
+    fade_state: &TileFadeState,
+    tile_settings: &bevy_slippy_tiles::SlippyTilesSettings,
+    zoom_level: bevy_slippy_tiles::ZoomLevel,
+) -> TileKey {
+    let reference_ll = bevy_slippy_tiles::LatitudeLongitudeCoordinates {
+        latitude: tile_settings.reference_latitude,
+        longitude: tile_settings.reference_longitude,
+    };
+    let reference_pixel = bevy_slippy_tiles::world_coords_to_world_pixel(
+        &reference_ll,
+        constants::DEFAULT_TILE_SIZE,
+        zoom_level,
+    );
+
+    let world_px_x = transform.translation.x as f64 + reference_pixel.0;
+    let world_px_y = transform.translation.y as f64 + reference_pixel.1;
+
+    let ll = bevy_slippy_tiles::world_pixel_to_world_coords(
+        world_px_x,
+        world_px_y,
+        constants::DEFAULT_TILE_SIZE,
+        zoom_level,
+    );
+    let tile_coords = bevy_slippy_tiles::SlippyTileCoordinates::from_latitude_longitude(
+        ll.latitude,
+        ll.longitude,
+        zoom_level,
+    );
+
+    (fade_state.tile_zoom, tile_coords.x, tile_coords.y)
+}
+
+// ---------------------------------------------------------------------------
+// Plugin
+// ---------------------------------------------------------------------------
+
+pub(crate) struct TerrainPlugin;
+
+impl Plugin for TerrainPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<TerrainState>()
+            .init_resource::<TerrainMeshCache>()
+            .init_resource::<EvictionTimer>()
+            .insert_resource(HeightmapCache::new(TerrainProvider::default()))
+            .register_type::<TerrainState>()
+            .add_systems(
+                Update,
+                heightmap::poll_heightmap_completions,
+            )
+            .add_systems(
+                Update,
+                heightmap::request_heightmaps_for_tiles
+                    .after(heightmap::poll_heightmap_completions),
+            )
+            .add_systems(
+                Update,
+                create_terrain_meshes
+                    .after(heightmap::request_heightmaps_for_tiles),
+            )
+            .add_systems(
+                Update,
+                evict_terrain_caches
+                    .after(create_terrain_meshes),
+            );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Systems
+// ---------------------------------------------------------------------------
+
+/// Upgrade flat tile mesh quads to terrain meshes when heightmap data is available.
+///
+/// This system checks tiles that already have a flat `TileMeshQuad` companion,
+/// computes their slippy tile coordinates from their world-space position,
+/// looks up their heightmap data, and if available, replaces the flat mesh
+/// with a terrain-displaced mesh.
+fn create_terrain_meshes(
+    mut commands: Commands,
+    terrain_state: Res<TerrainState>,
+    view3d_state: Res<View3DState>,
+    map_state: Res<MapState>,
+    tile_settings: Res<bevy_slippy_tiles::SlippyTilesSettings>,
+    heightmap_cache: Res<HeightmapCache>,
+    mut terrain_mesh_cache: ResMut<TerrainMeshCache>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    // Tiles that have a mesh quad companion but no terrain marker yet
+    tiles_to_upgrade: Query<
+        (Entity, &Transform, &TileFadeState, &TileMeshQuad),
+        (With<MapTile>, Without<TerrainTile>),
+    >,
+    mut mesh_query: Query<&mut Mesh3d>,
+    // Tiles that already have terrain — used for cleanup when terrain is disabled
+    terrain_tiles: Query<(Entity, &TileMeshQuad), (With<MapTile>, With<TerrainTile>)>,
+    quad_mesh: Option<Res<crate::tiles::TileQuadMesh>>,
+) {
+    // When terrain is disabled or we are in 2D mode, restore flat meshes.
+    // The existing emissive material is kept — no material swap needed.
+    if !terrain_state.enabled || !view3d_state.is_3d_active() {
+        if let Some(ref quad_mesh) = quad_mesh {
+            for (entity, mesh_quad) in terrain_tiles.iter() {
+                if let Ok(mut mesh3d) = mesh_query.get_mut(mesh_quad.0) {
+                    mesh3d.0 = quad_mesh.0.clone();
+                }
+                commands.entity(entity).try_remove::<TerrainTile>();
+            }
+        }
+        return;
+    }
+
+    let current_zoom = map_state.zoom_level.to_u8();
+    let altitude_scale = view3d::PIXEL_SCALE * view3d_state.altitude_scale;
+
+    for (tile_entity, transform, fade_state, mesh_quad) in tiles_to_upgrade.iter() {
+        let tile_key = tile_key_from_transform(transform, fade_state, &tile_settings, map_state.zoom_level);
+
+        // Check if we already have a cached terrain mesh for this tile
+        let mesh_handle = if let Some(handle) = terrain_mesh_cache.meshes.get(&tile_key) {
+            handle.clone()
+        } else {
+            // Generate terrain mesh from heightmap data (skip if not yet downloaded)
+            let Some(heightmap) = heightmap_cache.get(&tile_key) else {
+                continue;
+            };
+
+            let zoom_offset = current_zoom.saturating_sub(fade_state.tile_zoom);
+            let resolution = resolution_for_zoom_offset(zoom_offset as u32);
+
+            let terrain_mesh = generate_terrain_mesh(
+                heightmap,
+                constants::DEFAULT_TILE_PIXELS,
+                resolution,
+                altitude_scale,
+                true, // add skirts for crack prevention
+            );
+
+            let handle = meshes.add(terrain_mesh);
+            terrain_mesh_cache.meshes.insert(tile_key, handle.clone());
+            handle
+        };
+
+        // Replace the flat mesh with the terrain mesh. The existing emissive
+        // material from sync_tile_mesh_quads is kept — it renders correctly
+        // with the HDR camera. Visual depth comes from the 3D geometry itself.
+        // True lit shading (sun/shadow on normals) requires a custom shader
+        // that bypasses HDR exposure (Phase 2).
+        if let Ok(mut mesh3d) = mesh_query.get_mut(mesh_quad.0) {
+            mesh3d.0 = mesh_handle;
+        }
+
+        // Mark this tile so we don't try to upgrade it again
+        commands.entity(tile_entity).try_insert(TerrainTile);
+    }
+}
+
+/// Periodically evict stale heightmap and mesh cache entries to bound memory usage.
+/// Runs every 5 seconds. Removes entries outside the active zoom band and enforces
+/// size caps on both caches.
+fn evict_terrain_caches(
+    time: Res<Time>,
+    map_state: Res<MapState>,
+    mut timer: ResMut<EvictionTimer>,
+    mut heightmap_cache: ResMut<HeightmapCache>,
+    mut mesh_cache: ResMut<TerrainMeshCache>,
+) {
+    if !timer.0.tick(time.delta()).just_finished() {
+        return;
+    }
+
+    let current_zoom = map_state.zoom_level.to_u8();
+    let hm_removed = heightmap_cache.evict(current_zoom, MAX_HEIGHTMAP_ENTRIES);
+    let mesh_removed = mesh_cache.evict(current_zoom, MAX_MESH_ENTRIES);
+
+    if hm_removed > 0 || mesh_removed > 0 {
+        debug!(
+            "Terrain cache eviction: {} heightmaps, {} meshes removed (remaining: {} hm, {} mesh)",
+            hm_removed, mesh_removed, heightmap_cache.len(), mesh_cache.meshes.len()
+        );
+    }
+}
