@@ -35,17 +35,17 @@ pub(crate) struct TerrainParams {
 /// satellite texture as emissive with subtle directional shading.
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
 pub(crate) struct TerrainMaterial {
-    #[uniform(0)]
+    #[uniform(0, visibility(all))]
     pub params: TerrainParams,
 
     /// Satellite imagery texture (the visible map tile).
-    #[texture(1)]
-    #[sampler(2)]
+    #[texture(1, visibility(all))]
+    #[sampler(2, visibility(all))]
     pub satellite_texture: Option<Handle<Image>>,
 
     /// Heightmap texture (Terrarium-encoded PNG, RGB → elevation).
-    #[texture(3)]
-    #[sampler(4)]
+    #[texture(3, visibility(all))]
+    #[sampler(4, visibility(all))]
     pub heightmap_texture: Option<Handle<Image>>,
 }
 
