@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use bevy::asset::AssetLoadFailedEvent;
+use bevy::image::Image;
 use bevy::pbr::StandardMaterial;
 use bevy_slippy_tiles::*;
 
@@ -86,6 +87,19 @@ impl Default for AltitudeChangeTracker {
     }
 }
 
+/// Stores the original tile image handle so the grid overlay can be toggled off.
+#[derive(Component)]
+pub(crate) struct TileOriginalImage(pub Handle<Image>);
+
+/// Controls whether tiles display a procedural grid instead of their imagery.
+#[derive(Resource, Reflect)]
+#[reflect(Resource)]
+pub(crate) struct GridOverlay {
+    pub enabled: bool,
+    #[reflect(ignore)]
+    pub texture: Handle<Image>,
+}
+
 /// Fixed emissive boost for 3D tile materials. With emissive_exposure_weight=0.0
 /// the emissive bypasses both per-material and global exposure in the tonemapping
 /// pass, so a fixed multiplier gives consistent brightness at any EV.
@@ -103,7 +117,9 @@ impl Plugin for TilesPlugin {
             .init_resource::<Tile3DRefreshTimer>()
             .init_resource::<AltitudeChangeTracker>()
             .init_resource::<Previous3DZoom>()
-            .add_systems(Startup, setup_tile_quad_mesh)
+            .register_type::<GridOverlay>()
+            .add_systems(Startup, (setup_tile_quad_mesh, setup_grid_overlay))
+            .add_systems(Update, toggle_grid_overlay)
             .add_systems(Update, handle_window_resize)
             .add_systems(Update, handle_3d_view_tile_refresh)
             .add_systems(Update, request_3d_tiles_continuous
@@ -123,6 +139,94 @@ impl Plugin for TilesPlugin {
             .add_systems(Update, sync_tile_mesh_transforms.after(sync_tile_mesh_quads))
             .add_systems(Update, hide_tile_sprites_in_3d.after(sync_tile_mesh_quads))
             .add_systems(Update, cleanup_orphaned_tile_quads.after(sync_tile_mesh_quads));
+    }
+}
+
+// =============================================================================
+// Grid Overlay
+// =============================================================================
+
+/// Generate a procedural grid texture (512x512) with a dark background and
+/// lighter grid lines showing tile subdivisions.
+fn setup_grid_overlay(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
+    let size = constants::DEFAULT_TILE_PIXELS as u32; // 512
+    let mut data = vec![0u8; (size * size * 4) as usize];
+
+    let bg = [40u8, 44, 52, 255];         // dark charcoal
+    let line_major = [100u8, 110, 130, 255]; // lighter for outer border
+    let line_minor = [70u8, 78, 90, 255];    // subtle inner grid
+
+    let subdivisions = 4u32; // 4x4 inner grid
+    let cell = size / subdivisions;
+
+    for y in 0..size {
+        for x in 0..size {
+            let idx = ((y * size + x) * 4) as usize;
+            let on_border = x == 0 || x == size - 1 || y == 0 || y == size - 1
+                || x == 1 || y == 1;
+            let on_minor = x % cell == 0 || y % cell == 0;
+
+            let color = if on_border {
+                &line_major
+            } else if on_minor {
+                &line_minor
+            } else {
+                &bg
+            };
+            data[idx..idx + 4].copy_from_slice(color);
+        }
+    }
+
+    let image = Image::new(
+        bevy::render::render_resource::Extent3d {
+            width: size,
+            height: size,
+            depth_or_array_layers: 1,
+        },
+        bevy::render::render_resource::TextureDimension::D2,
+        data,
+        bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
+        bevy::asset::RenderAssetUsages::default(),
+    );
+
+    let handle = images.add(image);
+    commands.insert_resource(GridOverlay {
+        enabled: false,
+        texture: handle,
+    });
+}
+
+/// When `GridOverlay.enabled` changes, swap all tile sprite images between
+/// the grid texture and their original imagery. Also force 3D mesh quad
+/// recreation by stripping `TileMeshQuad` and despawning companions.
+fn toggle_grid_overlay(
+    mut commands: Commands,
+    grid: Res<GridOverlay>,
+    mut tiles: Query<(Entity, &mut Sprite, &TileOriginalImage, Option<&TileMeshQuad>), With<MapTile>>,
+    quad_entities: Query<Entity, With<TileQuad3d>>,
+) {
+    if !grid.is_changed() {
+        return;
+    }
+
+    for (entity, mut sprite, original, mesh_quad) in tiles.iter_mut() {
+        if grid.enabled {
+            sprite.image = grid.texture.clone();
+        } else {
+            sprite.image = original.0.clone();
+        }
+        // Force mesh quad recreation so the 3D material picks up the new texture
+        if let Some(quad) = mesh_quad {
+            commands.entity(quad.0).despawn();
+            commands.entity(entity).remove::<TileMeshQuad>();
+        }
+    }
+
+    if grid.enabled {
+        // Also despawn any orphaned quads
+        for quad_entity in quad_entities.iter() {
+            commands.entity(quad_entity).despawn();
+        }
     }
 }
 
@@ -595,6 +699,7 @@ fn display_tiles_filtered(
     mut spawned_tiles: ResMut<SpawnedTiles>,
     logger: Option<Res<ZoomDebugLogger>>,
     view3d_state: Res<view3d::View3DState>,
+    grid: Option<Res<GridOverlay>>,
 ) {
     let current_zoom = map_state.zoom_level.to_u8();
 
@@ -658,8 +763,14 @@ fn display_tiles_filtered(
         }
 
         let tile_path = event.path.clone();
-        let tile_handle = asset_server.load(tile_path.clone());
+        let tile_handle: Handle<Image> = asset_server.load(tile_path.clone());
         asset_server.reload(tile_path);
+
+        // Use grid texture if the overlay is enabled, otherwise use the tile image
+        let display_handle = match &grid {
+            Some(g) if g.enabled => g.texture.clone(),
+            _ => tile_handle.clone(),
+        };
 
         // Spawn new tiles translucent and slightly above old tiles so they
         // fade in on top, hiding the old zoom level progressively.
@@ -675,10 +786,11 @@ fn display_tiles_filtered(
         commands.spawn((
             Name::new(format!("Map Tile z{}", event_zoom)),
             Sprite {
-                image: tile_handle,
+                image: display_handle,
                 color: Color::srgba(1.0, 1.0, 1.0, 0.0),
                 ..default()
             },
+            TileOriginalImage(tile_handle),
             Transform::from_xyz(transform_x, transform_y, tile_z)
                 .with_scale(Vec3::splat(rescale)),
             MapTile,
