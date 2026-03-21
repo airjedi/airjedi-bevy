@@ -494,9 +494,10 @@ impl<'a> Behavior<DockPane> for DockBehavior<'a> {
                         ResMut<crate::terrain::TerrainState>,
                         ResMut<TimeState>,
                         Res<SunState>,
+                        Option<ResMut<crate::tiles::GridOverlay>>,
                     )>::new(world);
-                    let (mut view3d, mut terrain, mut time, sun) = state.get_mut(world);
-                    tools_window::render_view3d_tab(ui, &mut view3d, &mut terrain, &mut time, &sun);
+                    let (mut view3d, mut terrain, mut time, sun, mut grid) = state.get_mut(world);
+                    tools_window::render_view3d_tab(ui, &mut view3d, &mut terrain, &mut time, &sun, grid.as_deref_mut());
                 });
             }
 

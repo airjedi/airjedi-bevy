@@ -14,6 +14,7 @@ use crate::export::{ExportState, ExportFormat};
 use crate::recording::{RecordingState, PlaybackState};
 use crate::view3d::{View3DState, ViewMode, sky::{TimeState, SunState}};
 use crate::terrain::TerrainState;
+use crate::tiles::GridOverlay;
 use crate::theme::{AppTheme, to_egui_color32, to_egui_color32_alpha};
 
 /// Which tab is currently active in the tools window.
@@ -59,6 +60,7 @@ pub fn render_tools_window(
     mut app_config: ResMut<crate::config::AppConfig>,
     ingest_status: Option<Res<crate::data_ingest::IngestStatus>>,
     mut ingest_ui: Option<ResMut<crate::data_ingest::IngestUiState>>,
+    mut grid_overlay: Option<ResMut<GridOverlay>>,
 ) {
     if !tools_state.open {
         return;
@@ -122,7 +124,7 @@ pub fn render_tools_window(
                         ToolsTab::DataSources => render_data_sources_tab(ui, &mut datasource_mgr),
                         ToolsTab::Export => render_export_tab(ui, &mut export_state),
                         ToolsTab::Recording => render_recording_tab(ui, &mut recording, &mut playback),
-                        ToolsTab::View3D => render_view3d_tab(ui, &mut view3d_state, &mut terrain_state, &mut time_state, &sun_state),
+                        ToolsTab::View3D => render_view3d_tab(ui, &mut view3d_state, &mut terrain_state, &mut time_state, &sun_state, grid_overlay.as_deref_mut()),
                         ToolsTab::Ingest => render_ingest_tab(ui, ingest_status.as_deref(), &mut app_config, ingest_ui.as_deref_mut()),
                     }
                 });
@@ -341,7 +343,7 @@ pub fn render_export_tab(ui: &mut egui::Ui, export_state: &mut ExportState) {
     }
 }
 
-pub fn render_view3d_tab(ui: &mut egui::Ui, state: &mut View3DState, terrain: &mut TerrainState, time_state: &mut TimeState, sun_state: &SunState) {
+pub fn render_view3d_tab(ui: &mut egui::Ui, state: &mut View3DState, terrain: &mut TerrainState, time_state: &mut TimeState, sun_state: &SunState, mut grid_overlay: Option<&mut GridOverlay>) {
     ui.colored_label(egui::Color32::YELLOW, "This feature is in research/prototype stage");
     ui.separator();
 
@@ -416,6 +418,13 @@ pub fn render_view3d_tab(ui: &mut egui::Ui, state: &mut View3DState, terrain: &m
                 .suffix(" units")
                 .logarithmic(true));
         });
+    }
+
+    ui.separator();
+    ui.label("Tiles:");
+
+    if let Some(ref mut grid) = grid_overlay {
+        ui.checkbox(&mut grid.enabled, "Show grid overlay");
     }
 
     ui.separator();
