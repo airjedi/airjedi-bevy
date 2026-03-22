@@ -6,4 +6,5 @@
 /assets/*.tile.png
 /tmp/
 /.worktrees/
+/.superpowers/
 config.toml
