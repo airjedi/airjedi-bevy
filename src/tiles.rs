@@ -700,8 +700,15 @@ fn display_tiles_filtered(
     logger: Option<Res<ZoomDebugLogger>>,
     view3d_state: Res<view3d::View3DState>,
     grid: Option<Res<GridOverlay>>,
+    basemap_state: Res<crate::config::CurrentBasemapState>,
 ) {
     let current_zoom = map_state.zoom_level.to_u8();
+
+    // Scale factor to compensate when the tile server returns smaller images
+    // than the requested tile size (e.g. ESRI returns 256px for @2x/512 requests).
+    let native_px = basemap_state.style.native_tile_pixels() as f32;
+    let requested_px = constants::DEFAULT_TILE_SIZE.to_pixels() as f32;
+    let tile_scale = requested_px / native_px;
 
     for event in tile_events.read() {
         // In 3D mode, accept tiles within 4 zoom levels below current (multi-resolution bands).
@@ -788,6 +795,11 @@ fn display_tiles_filtered(
             Sprite {
                 image: display_handle,
                 color: Color::srgba(1.0, 1.0, 1.0, 0.0),
+                custom_size: if tile_scale != 1.0 {
+                    Some(Vec2::splat(requested_px))
+                } else {
+                    None
+                },
                 ..default()
             },
             TileOriginalImage(tile_handle),

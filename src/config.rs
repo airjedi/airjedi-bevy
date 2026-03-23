@@ -54,6 +54,16 @@ impl BasemapStyle {
         matches!(self, BasemapStyle::EsriSatellite)
     }
 
+    /// The native tile pixel size served by this provider.
+    /// CartoDB supports @2x (512px) tiles. OSM and ESRI only serve 256px
+    /// tiles regardless of the requested size.
+    pub fn native_tile_pixels(&self) -> u32 {
+        match self {
+            BasemapStyle::CartoDark | BasemapStyle::CartoLight => 512,
+            BasemapStyle::OpenStreetMap | BasemapStyle::EsriSatellite => 256,
+        }
+    }
+
     /// Get all available styles
     pub fn all() -> &'static [BasemapStyle] {
         &[
