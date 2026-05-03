@@ -120,6 +120,7 @@ impl Plugin for TilesPlugin {
             .register_type::<GridOverlay>()
             .add_systems(Startup, (setup_tile_quad_mesh, setup_grid_overlay))
             .add_systems(Update, toggle_grid_overlay)
+            .add_systems(Update, handle_basemap_change)
             .add_systems(Update, handle_window_resize)
             .add_systems(Update, handle_3d_view_tile_refresh)
             .add_systems(Update, request_3d_tiles_continuous
@@ -345,6 +346,49 @@ pub(crate) fn request_tiles_at_location(
 // =============================================================================
 // Tile Systems
 // =============================================================================
+
+/// Detect basemap style changes and clear all stale tile entities so the new
+/// basemap's tiles can load cleanly without old imagery bleeding through.
+fn handle_basemap_change(
+    mut commands: Commands,
+    basemap_state: Res<crate::config::CurrentBasemapState>,
+    tile_query: Query<(Entity, Option<&TileMeshQuad>), With<MapTile>>,
+    mut spawned_tiles: ResMut<SpawnedTiles>,
+    mut download_status: ResMut<SlippyTileDownloadStatus>,
+    mut download_events: MessageWriter<DownloadSlippyTilesMessage>,
+    map_state: Res<MapState>,
+    mut last_style: Local<Option<crate::config::BasemapStyle>>,
+) {
+    let current = basemap_state.style;
+    if *last_style == Some(current) {
+        return;
+    }
+    let is_first_run = last_style.is_none();
+    *last_style = Some(current);
+    if is_first_run {
+        return;
+    }
+
+    info!("Basemap changed to {:?} - clearing all tile entities", current);
+
+    for (entity, mesh_quad) in tile_query.iter() {
+        if let Some(quad) = mesh_quad {
+            commands.entity(quad.0).despawn();
+        }
+        commands.entity(entity).despawn();
+    }
+
+    spawned_tiles.positions.clear();
+    download_status.0.clear();
+
+    request_tiles_at_location(
+        &mut download_events,
+        map_state.latitude,
+        map_state.longitude,
+        map_state.zoom_level,
+        true,
+    );
+}
 
 /// When a tile image fails to load, check if the cached file is corrupt and remove it.
 /// The tile will be re-requested automatically by bevy_slippy_tiles on the next frame.

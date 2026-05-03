@@ -283,6 +283,26 @@ pub fn remove_corrupt_cached_tile(asset_path: &Path) {
     }
 }
 
+/// Returns the platform-appropriate terrain/elevation cache directory.
+///
+/// - macOS:   `~/Library/Caches/airjedi/terrain`
+/// - Linux:   `~/.cache/airjedi/terrain`
+/// - Windows: `%LOCALAPPDATA%\airjedi\cache\terrain`
+pub fn terrain_cache_dir() -> PathBuf {
+    crate::paths::cache_dir().join("terrain")
+}
+
+/// Ensures the terrain cache directory exists.
+/// Called once at startup alongside `setup_tile_cache()`.
+pub fn setup_terrain_cache() {
+    let cache_dir = terrain_cache_dir();
+    if let Err(e) = fs::create_dir_all(&cache_dir) {
+        warn!("Failed to create terrain cache directory {:?}: {}", cache_dir, e);
+        return;
+    }
+    info!("Terrain cache: {:?}", cache_dir);
+}
+
 fn assets_tiles_path() -> PathBuf {
     crate::paths::assets_dir().join("tiles")
 }

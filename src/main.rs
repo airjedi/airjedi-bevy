@@ -487,6 +487,7 @@ pub(crate) fn setup_map(
 
     // Set up centralized tile cache (creates cache dir + symlink into assets/)
     tile_cache::setup_tile_cache();
+    tile_cache::setup_terrain_cache();
     tile_cache::clear_legacy_tiles();
     tile_cache::remove_invalid_tiles();
 

@@ -899,7 +899,7 @@ mod tests {
     fn test_view3d_tab_shows_pitch_label() {
         let harness = Harness::new_ui_state(
             |ui, state: &mut View3DTabTestState| {
-                render_view3d_tab(ui, &mut state.view3d, &mut state.terrain, &mut state.time, &state.sun);
+                render_view3d_tab(ui, &mut state.view3d, &mut state.terrain, &mut state.time, &state.sun, None);
             },
             View3DTabTestState::default(),
         );
@@ -911,7 +911,7 @@ mod tests {
     fn test_view3d_tab_shows_altitude_label() {
         let harness = Harness::new_ui_state(
             |ui, state: &mut View3DTabTestState| {
-                render_view3d_tab(ui, &mut state.view3d, &mut state.terrain, &mut state.time, &state.sun);
+                render_view3d_tab(ui, &mut state.view3d, &mut state.terrain, &mut state.time, &state.sun, None);
             },
             View3DTabTestState::default(),
         );
@@ -923,7 +923,7 @@ mod tests {
     fn test_view3d_tab_shows_mode_selectable_labels() {
         let harness = Harness::new_ui_state(
             |ui, state: &mut View3DTabTestState| {
-                render_view3d_tab(ui, &mut state.view3d, &mut state.terrain, &mut state.time, &state.sun);
+                render_view3d_tab(ui, &mut state.view3d, &mut state.terrain, &mut state.time, &state.sun, None);
             },
             View3DTabTestState::default(),
         );

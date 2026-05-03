@@ -3,8 +3,12 @@
 use bevy::prelude::*;
 use crossbeam_channel::{Receiver, Sender};
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use super::provider::TerrainProvider;
+
+const MAX_CONCURRENT_FETCHES: usize = 8;
 
 /// Key for a terrain tile: (zoom, x, y)
 pub(crate) type TileKey = (u8, u32, u32);
@@ -80,6 +84,7 @@ pub(crate) struct HeightmapCache {
     sender: Sender<(TileKey, HeightmapData)>,
     receiver: Receiver<(TileKey, HeightmapData)>,
     pub provider: TerrainProvider,
+    active_fetches: Arc<AtomicUsize>,
 }
 
 impl HeightmapCache {
@@ -92,6 +97,7 @@ impl HeightmapCache {
             sender,
             receiver,
             provider,
+            active_fetches: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -106,12 +112,16 @@ impl HeightmapCache {
     }
 
     /// Spawn an async fetch for the given tile if it is not already cached or pending.
+    /// Skips if the concurrency limit has been reached; the tile will be re-requested next frame.
     pub(crate) fn request(&mut self, key: TileKey) {
         if self.cache.contains_key(&key) || self.pending.contains(&key) {
             return;
         }
+        if self.active_fetches.load(Ordering::Relaxed) >= MAX_CONCURRENT_FETCHES {
+            return;
+        }
         self.pending.insert(key);
-        fetch_and_decode(self.provider.clone(), key, self.sender.clone());
+        fetch_and_decode(self.provider.clone(), key, self.sender.clone(), self.active_fetches.clone());
     }
 
     /// Drain the receiver channel, inserting all completed heightmaps into the cache.
@@ -215,24 +225,52 @@ impl HeightmapCache {
     }
 }
 
+/// Disk cache path for a terrain tile: `{terrain_cache_dir}/{zoom}.{x}.{y}.png`
+fn disk_cache_path(zoom: u8, x: u32, y: u32) -> std::path::PathBuf {
+    crate::tile_cache::terrain_cache_dir().join(format!("{zoom}.{x}.{y}.png"))
+}
+
 /// Spawn a background thread to fetch an elevation tile PNG, decode it, and
 /// send the resulting heightmap data back through the channel.
+/// Checks disk cache before making an HTTP request, and persists downloaded
+/// tiles to disk for future runs.
 fn fetch_and_decode(
     provider: TerrainProvider,
     key: TileKey,
     sender: Sender<(TileKey, HeightmapData)>,
+    active_fetches: Arc<AtomicUsize>,
 ) {
     let (zoom, x, y) = key;
-    let url = provider.tile_url(zoom, x, y);
+    active_fetches.fetch_add(1, Ordering::Relaxed);
 
     std::thread::spawn(move || {
-        let bytes = match reqwest::blocking::get(&url).and_then(|r| r.bytes()) {
-            Ok(b) => b,
-            Err(_) => return,
+        let _guard = FetchGuard(active_fetches);
+
+        let cache_path = disk_cache_path(zoom, x, y);
+        let bytes = if cache_path.exists() {
+            match std::fs::read(&cache_path) {
+                Ok(b) => b.into(),
+                Err(_) => {
+                    let _ = std::fs::remove_file(&cache_path);
+                    return;
+                }
+            }
+        } else {
+            let url = provider.tile_url(zoom, x, y);
+            let downloaded = match reqwest::blocking::get(&url).and_then(|r| r.bytes()) {
+                Ok(b) => b,
+                Err(_) => return,
+            };
+            let _ = std::fs::write(&cache_path, &downloaded);
+            downloaded
         };
+
         let img = match image::load_from_memory(&bytes) {
             Ok(i) => i.to_rgb8(),
-            Err(_) => return,
+            Err(_) => {
+                let _ = std::fs::remove_file(&cache_path);
+                return;
+            }
         };
         let (w, h) = (img.width(), img.height());
         let mut elevations = Vec::with_capacity((w * h) as usize);
@@ -254,6 +292,16 @@ fn fetch_and_decode(
             max_elevation: max_elev,
         }));
     });
+}
+
+/// RAII guard that decrements the active fetch counter on drop,
+/// ensuring correct accounting even on early returns.
+struct FetchGuard(Arc<AtomicUsize>);
+
+impl Drop for FetchGuard {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::Relaxed);
+    }
 }
 
 // ---------------------------------------------------------------------------
